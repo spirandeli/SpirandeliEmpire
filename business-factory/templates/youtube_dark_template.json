@@ -1,0 +1,27 @@
+{
+  "id": "youtube-dark-bible",
+  "name": "Canal YouTube Dark - Histórias Bíblicas",
+  "pipeline": [
+    "bible_research",
+    "script_drafting",
+    "theological_qa",
+    "piper_tts_narration",
+    "image_generation",
+    "ffmpeg_vertical_assembly",
+    "human_review",
+    "youtube_upload"
+  ],
+  "default_storage": {
+    "scripts": "content/scripts",
+    "audios": "content/audio",
+    "images": "content/images",
+    "renders": "content/renders"
+  },
+  "guardrails": [
+    "No verse fabrication",
+    "Strict theological accuracy",
+    "Royalty-free background music",
+    "Max 5 shorts/day to ensure quality and prevent rate limiting"
+  ]
+}
+

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BusinessFactoryQuestionnaire",
+  "type": "object",
+  "required": ["name", "category", "target_audience", "monetization_model"],
+  "properties": {
+    "name": { "type": "string" },
+    "category": {
+      "type": "string",
+      "enum": ["youtube_dark", "amazon_kdp", "digital_goods", "printables", "other"]
+    },
+    "description": { "type": "string" },
+    "target_audience": { "type": "string" },
+    "target_country": { "type": "string", "default": "Brasil" },
+    "languages": { "type": "array", "items": { "type": "string" }, "default": ["pt-BR"] },
+    "monetization_model": { "type": "string" },
+    "monthly_budget_cap_brl": { "type": "number", "default": 50.0 },
+    "requires_gpu": { "type": "boolean", "default": false },
+    "automation_level": {
+      "type": "string",
+      "enum": ["manual_review", "semi_autonomous", "autonomous"],
+      "default": "manual_review"
+    }
+  }
+}
+

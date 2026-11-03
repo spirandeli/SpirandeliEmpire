@@ -1,0 +1,56 @@
+{
+    # Global options
+    email {$ADMIN_EMAIL:admin@example.com}
+    admin off
+}
+
+# In local/testing mode with IP or domain:
+{$DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
+    # API and Backend routes pass to Laravel PHP-FPM
+    @api {
+        path /api/*
+        path /sanctum/*
+        path /broadcasting/*
+    }
+    handle @api {
+        root * /var/www/backend/public
+        php_fastcgi core-app:9000 {
+            resolve_root_symlink
+        }
+        file_server
+    }
+
+    # Monitoring interface proxy (Uptime Kuma)
+    handle_path /kuma* {
+        reverse_proxy monitoring:3001
+    }
+
+    # Frontend Single Page Application (Vue 3)
+    handle {
+        root * /var/www/frontend
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10MB
+            roll_keep 5
+        }
+        format json
+    }
+}
+

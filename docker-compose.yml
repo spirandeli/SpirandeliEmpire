@@ -1,0 +1,235 @@
+version: '3.8'
+
+services:
+  # --- REVERSE PROXY & AUTOMATIC TLS ---
+  caddy:
+    image: caddy:2-alpine
+    container_name: empire_caddy
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./core/frontend/dist:/var/www/frontend:ro
+      - ./core/backend/public:/var/www/backend/public:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - empire-network
+    depends_on:
+      - core-app
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # --- CORE BACKEND (LARAVEL PHP 8.3 FPM) ---
+  core-app:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: empire_backend
+    restart: unless-stopped
+    working_dir: /var/www/backend
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - APP_KEY=${APP_KEY}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
+      - DB_USERNAME=${DB_USERNAME:-empire_admin}
+      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+      - AI_PROVIDER=${AI_PROVIDER:-hybrid}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LLAMA_MODEL=${LLAMA_MODEL:-llama3.2:3b}
+      - DEFAULT_TEXT_MODEL=${DEFAULT_TEXT_MODEL:-llama3.2:3b}
+      - TOKEN_ROUTING_ENABLED=${TOKEN_ROUTING_ENABLED:-true}
+      - TOKEN_THRESHOLD_LOCAL_MAX=${TOKEN_THRESHOLD_LOCAL_MAX:-800}
+      - TOKEN_THRESHOLD_LONG_CONTEXT=${TOKEN_THRESHOLD_LONG_CONTEXT:-3500}
+      - DAILY_API_TOKEN_CAP=${DAILY_API_TOKEN_CAP:-500000}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - MONTHLY_BUDGET_LIMIT_BRL=${MONTHLY_BUDGET_LIMIT_BRL:-200.00}
+    volumes:
+      - ./core/backend:/var/www/backend
+      - ./storage:/var/www/backend/storage
+      - ./storage/businesses:/var/spirandeli/businesses
+    networks:
+      - empire-network
+      - internal-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # --- CORE QUEUE WORKER ---
+  core-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: empire_worker
+    restart: unless-stopped
+    working_dir: /var/www/backend
+    command: php artisan queue:work redis --queue=default,high,low --tries=3 --timeout=120
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+    volumes:
+      - ./core/backend:/var/www/backend
+      - ./storage:/var/www/backend/storage
+    networks:
+      - internal-network
+    depends_on:
+      - core-app
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # --- JEFFREY ORCHESTRATOR & AGENTS WORKER ---
+  jeffrey-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/ai-worker.Dockerfile
+    container_name: empire_jeffrey_worker
+    restart: unless-stopped
+    working_dir: /app
+    command: python -u /app/jeffrey/core/orchestrator_worker.py
+    environment:
+      - AI_PROVIDER=${AI_PROVIDER:-hybrid}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LLAMA_MODEL=${LLAMA_MODEL:-llama3.2:3b}
+      - DEFAULT_TEXT_MODEL=${DEFAULT_TEXT_MODEL:-llama3.2:3b}
+      - TOKEN_ROUTING_ENABLED=${TOKEN_ROUTING_ENABLED:-true}
+      - TOKEN_THRESHOLD_LOCAL_MAX=${TOKEN_THRESHOLD_LOCAL_MAX:-800}
+      - TOKEN_THRESHOLD_LONG_CONTEXT=${TOKEN_THRESHOLD_LONG_CONTEXT:-3500}
+      - DAILY_API_TOKEN_CAP=${DAILY_API_TOKEN_CAP:-500000}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+      - DB_HOST=postgres
+      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
+      - DB_USERNAME=${DB_USERNAME:-empire_admin}
+      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
+      - MONTHLY_BUDGET_LIMIT_BRL=${MONTHLY_BUDGET_LIMIT_BRL:-200.00}
+    volumes:
+      - ./:/app
+      - ./storage:/app/storage
+    networks:
+      - internal-network
+      - ai-network
+    depends_on:
+      - redis
+      - postgres
+      - ollama
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # --- DATABASE (POSTGRESQL 16) ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: empire_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-spirandeli_empire}
+      POSTGRES_USER: ${DB_USERNAME:-empire_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret_postgres_password_replace_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-empire_admin} -d ${DB_DATABASE:-spirandeli_empire}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  # --- CACHE & QUEUE BROKER (REDIS 7) ---
+  redis:
+    image: redis:7-alpine
+    container_name: empire_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-secret_redis_password_replace_me} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-secret_redis_password_replace_me}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # --- LOCAL AI TEXT INFERENCE (OLLAMA) ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: empire_ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai-network
+    deploy:
+      resources:
+        limits:
+          memory: 4608M
+
+  # --- MONITORING (UPTIME KUMA) ---
+  monitoring:
+    image: louislam/uptime-kuma:1-alpine
+    container_name: empire_monitoring
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - empire-network
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+networks:
+  empire-network:
+    driver: bridge
+  internal-network:
+    driver: bridge
+  ai-network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  redis_data:
+  ollama_data:
+  uptime_kuma_data:
+

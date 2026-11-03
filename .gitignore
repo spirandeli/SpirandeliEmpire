@@ -1,0 +1,84 @@
+# SpirandeliEmpire OS - Git Ignore
+
+# Environment files
+.env
+.env.backup
+.env.production
+.env.local
+
+# Sensitive credentials & keys
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+*.pub
+secrets/
+credentials/
+tokens/
+
+# Storage & Runtime data
+storage/logs/*
+!storage/logs/.gitkeep
+storage/backups/*
+!storage/backups/.gitkeep
+storage/businesses/*
+!storage/businesses/.gitkeep
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Laravel backend
+core/backend/vendor/
+core/backend/.phpunit.result.cache
+core/backend/Homestead.json
+core/backend/Homestead.yaml
+core/backend/npm-debug.log
+core/backend/yarn-error.log
+
+# Frontend (Vue 3 / Vite)
+core/frontend/node_modules/
+core/frontend/dist/
+core/frontend/.vite/
+
+# Python & AI Engine cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+ai-engine/**/models/*.bin
+ai-engine/**/models/*.safetensors
+ai-engine/**/models/*.gguf
+ai-engine/**/output/*
+!ai-engine/**/output/.gitkeep
+
+# Docker volumes and temp data
+.docker-data/
+caddy_data/
+caddy_config/
+postgres_data/
+redis_data/
+uptime_kuma_data/
+ollama_data/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
