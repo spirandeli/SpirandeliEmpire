@@ -65,9 +65,15 @@ class GeminiClientService
 
     /**
      * Generate completion via Google Gemini REST API (forces IPv4 to prevent Docker IPv6 cURL error 28 timeouts).
+     * Supports native multi-turn conversation history with alternating roles.
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, array $inlineMedia = []): array
-    {
+    public function generate(
+        string $prompt,
+        ?string $systemPrompt = null,
+        ?string $model = null,
+        array $inlineMedia = [],
+        array $conversationTurns = []
+    ): array {
         if (!$this->isConfigured()) {
             return [
                 'success' => false,
@@ -93,13 +99,45 @@ class GeminiClientService
             }
         }
 
+        // Build structured multi-turn contents if history turns provided
+        $contents = [];
+        if (!empty($conversationTurns)) {
+            foreach ($conversationTurns as $turn) {
+                $role = in_array($turn['role'] ?? 'user', ['model', 'assistant'], true) ? 'model' : 'user';
+                $text = trim((string)($turn['text'] ?? $turn['content'] ?? ''));
+                if ($text === '') continue;
+
+                // Merge with previous turn if same role to satisfy Gemini API alternating contract
+                $lastIdx = count($contents) - 1;
+                if ($lastIdx >= 0 && $contents[$lastIdx]['role'] === $role) {
+                    $contents[$lastIdx]['parts'][0]['text'] .= "\n\n" . $text;
+                } else {
+                    $contents[] = [
+                        'role' => $role,
+                        'parts' => [['text' => $text]],
+                    ];
+                }
+            }
+
+            // Ensure first turn starts with user
+            if (!empty($contents) && $contents[0]['role'] === 'model') {
+                array_shift($contents);
+            }
+        }
+
+        // Append active user prompt turn
+        $lastIdx = count($contents) - 1;
+        if ($lastIdx >= 0 && $contents[$lastIdx]['role'] === 'user') {
+            $contents[$lastIdx]['parts'] = array_merge($contents[$lastIdx]['parts'], $userParts);
+        } else {
+            $contents[] = [
+                'role' => 'user',
+                'parts' => $userParts,
+            ];
+        }
+
         $payload = [
-            'contents' => [
-                [
-                    'role' => 'user',
-                    'parts' => $userParts,
-                ]
-            ],
+            'contents' => $contents,
             'generationConfig' => [
                 'temperature' => $this->temperature,
                 'maxOutputTokens' => $this->maxTokens,
@@ -115,7 +153,7 @@ class GeminiClientService
         }
 
         $candidateModels = [$targetModel];
-        foreach (['gemini-2.5-flash', 'gemini-2.0-flash'] as $altModel) {
+        foreach (['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as $altModel) {
             if (!in_array($altModel, $candidateModels, true)) {
                 $candidateModels[] = $altModel;
             }

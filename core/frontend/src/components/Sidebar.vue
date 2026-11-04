@@ -2,7 +2,7 @@
   <aside
     class="flex flex-col justify-between h-full select-none transition-all duration-300"
     :class="[
-      isMobile ? 'w-72 max-w-[85vw] p-3' : (isCollapsed ? 'w-20' : 'w-60 sm:w-64'),
+      isMobile ? 'w-72 max-w-[85vw] p-3 bg-[#241207] border-r-2 border-[#5c3419] shadow-2xl' : (isCollapsed ? 'w-20' : 'w-60 sm:w-64'),
     ]"
   >
     <!-- Top & Middle Section -->

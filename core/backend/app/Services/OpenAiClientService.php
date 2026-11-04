@@ -62,10 +62,14 @@ class OpenAiClientService
     }
 
     /**
-     * Generate completion via OpenAI Chat Completions API.
+     * Generate completion via OpenAI Chat Completions API with native multi-turn support.
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null): array
-    {
+    public function generate(
+        string $prompt,
+        ?string $systemPrompt = null,
+        ?string $model = null,
+        array $conversationTurns = []
+    ): array {
         if (!$this->isConfigured()) {
             return [
                 'success' => false,
@@ -85,6 +89,17 @@ class OpenAiClientService
                     'content' => $systemPrompt,
                 ];
             }
+
+            if (!empty($conversationTurns)) {
+                foreach ($conversationTurns as $turn) {
+                    $role = in_array($turn['role'] ?? 'user', ['assistant', 'model'], true) ? 'assistant' : 'user';
+                    $text = trim((string)($turn['text'] ?? $turn['content'] ?? ''));
+                    if ($text !== '') {
+                        $messages[] = ['role' => $role, 'content' => $text];
+                    }
+                }
+            }
+
             $messages[] = [
                 'role' => 'user',
                 'content' => $prompt,

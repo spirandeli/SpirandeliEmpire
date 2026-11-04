@@ -172,11 +172,26 @@ PROMPT;
 Você é Jeffrey, o agente executivo central e arquiteto de software do SpirandeliEmpire OS.
 Sua missão: Administrar o império de forma automatizada, gerir cada negócio usando suas contas vinculadas e parâmetros operacionais, planejar novos negócios digitais, analisar código de projetos existentes, gerenciar tarefas e coordenar a VPS.
 
-PERFIL DO COMANDANTE ATIVO:
+<commander_profile>
 {$userProfileSummary}
+Orçamento Mensal: R$ {$budgetStatus['monthly_limit_brl']} (Gasto Atual: R$ {$budgetStatus['current_spent_brl']})
+</commander_profile>
 
-DIRETRIZES FUNDAMENTAIS E ANTI-ALUCINAÇÃO:
-1. Respeite sempre o limite orçamentário mensal de R$ 200,00 (Atual: R$ {$budgetStatus['current_spent_brl']} / R$ {$budgetStatus['monthly_limit_brl']}).
+<business_context>
+{$projectContext}
+{$businessContext}
+</business_context>
+
+<tasks_and_telemetry>
+{$tasksContext}
+</tasks_and_telemetry>
+
+<operational_memories>
+{$formattedMemories}
+</operational_memories>
+
+<anti_hallucination_rules>
+1. Respeite sempre o limite orçamentário mensal de R$ 200,00.
 2. PROIBIDO INVENTAR LINKS FALSOS OU DADOS FICTÍCIOS: Jamais invente URLs como 'https://www.tiktokshop.com.br/nome-produto' (esse domínio/formato não existe). Utilize EXCLUSIVAMENTE as URLs reais fornecidas em <live_web_research_results> ou links reais de busca no formato https://www.tiktok.com/search?q=Nome+do+Produto.
 3. Baseie toda recomendação de produtos, preços e tendências nos dados reais coletados em <live_web_research_results>.
 4. Jamais invente versículos ou dados históricos falsos para o RISADA.exe.
@@ -187,24 +202,28 @@ DIRETRIZES FUNDAMENTAIS E ANTI-ALUCINAÇÃO:
    Sintaxe:
    [TOOL_CALL: create_task_pipeline, {"steps": [{"title": "Etapa 1/2: Pesquisar...", "type": "research", "agent_name": "Research Agent", "prompt": "..."}, {"title": "Etapa 2/2: Planejar hooks...", "type": "content_creation", "agent_name": "Copy & Hooks Agent", "prompt": "..."}]}]
 7. Jamais responda apenas com uma tag `[TOOL_CALL: ...]` vazia sem texto executivo para o Comandante.
+</anti_hallucination_rules>
 
-CONTEXTO ATUAL:
-{$projectContext}
-{$businessContext}
-TAREFAS ATIVAS/RECENTES:
-{$tasksContext}
-
-MEMÓRIA OPERACIONAL ATIVA:
-{$formattedMemories}
-
+<tools_catalog>
 {$toolsManifest}
+</tools_catalog>
 
-Responda sempre com postura executiva, clara, proativa, técnica e em português brasileiro.
+<response_guidelines>
+1. Responda em português brasileiro com postura executiva de alto nível, assertiva, técnica e proativa.
+2. Use formatação Markdown rica: use títulos (###), tabelas comparativas quando houver produtos/preços, negritos estratégicos e blocos de código com linguagem indicada.
+3. Se disparar ferramentas ou pipelines em segundo plano, explique claramente o objetivo antes.
+4. Ao final da resposta, inclua sempre 2 a 3 sugestões de ações práticas imediatas para o Comandante avançar com um clique, no seguinte formato estrito:
+<suggested_actions>
+- Sugestão de Ação 1
+- Sugestão de Ação 2
+- Sugestão de Ação 3
+</suggested_actions>
+</response_guidelines>
 PROMPT;
         }
 
-        // 4. Build message history (keep short on local CPU to avoid timeout)
-        $historyLimit = $useCompactLocalPrompt ? 2 : 8;
+        // 4. Build message history (both native turns for Gemini/OpenAI and flat text for local Llama)
+        $historyLimit = $useCompactLocalPrompt ? 3 : 10;
         $previousMessages = Message::where('conversation_id', $conversation->id)
             ->where('id', '<', $userMsgRecord->id)
             ->orderBy('id', 'desc')
@@ -212,10 +231,15 @@ PROMPT;
             ->get()
             ->reverse();
 
+        $conversationTurns = [];
         $conversationHistory = '';
         foreach ($previousMessages as $pm) {
             $sender = $pm->role === 'user' ? 'Comandante' : 'Jeffrey';
             $conversationHistory .= "{$sender}: {$pm->content}\n\n";
+            $conversationTurns[] = [
+                'role' => $pm->role === 'user' ? 'user' : 'model',
+                'content' => $pm->content,
+            ];
         }
 
         $fullPrompt = $conversationHistory . "Comandante: " . $userMessage;
@@ -317,14 +341,14 @@ PROMPT;
         $taskRole = $this->aiGateway->getTokenManager()->classifyTaskRole($userMessage);
         if (!empty($inlineMedia)) {
             // Multimodal (Voice message, Image screenshot, or PDF) -> Gemini 3.8 Flash (if authorized for user)
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia, $user);
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia, $user, $conversationTurns);
         } elseif ($cloudConfigured && !$forceLocal && (!empty($attachedTextsForLlama) || preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage))) {
             $rawContextForLlama = !empty($attachedTextsForLlama)
                 ? implode("\n\n", $attachedTextsForLlama)
                 : "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
             $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider, $user);
         } else {
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole, [], $user);
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole, [], $user, $conversationTurns);
         }
 
         if ($response['success']) {
@@ -474,11 +498,30 @@ PROMPT;
             }
         }
 
+        // Extract structured suggested next actions if present in reply
+        $suggestedActions = [];
+        if (preg_match('/<suggested_actions>(.*?)<\/suggested_actions>/is', $replyText, $m)) {
+            $rawActions = trim($m[1]);
+            $lines = explode("\n", $rawActions);
+            foreach ($lines as $line) {
+                $cleanLine = trim(preg_replace('/^[-*•\d.]+\s*/', '', trim($line)));
+                if ($cleanLine !== '' && mb_strlen($cleanLine) < 80) {
+                    $suggestedActions[] = $cleanLine;
+                }
+            }
+            $replyText = trim(str_replace($m[0], '', $replyText));
+        }
+
         if (trim($replyText) === '') {
             $replyText = "Ordem recebida e processada, Comandante. Verifique os resultados acima ou no Monitor do Jeffrey ao lado.";
         }
 
         // 7. Persist Assistant Message
+        $tokensPayload = is_array($response['tokens'] ?? null) ? $response['tokens'] : [];
+        if (!empty($suggestedActions)) {
+            $tokensPayload['suggested_actions'] = $suggestedActions;
+        }
+
         $assistantMsg = Message::create([
             'conversation_id' => $conversation->id,
             'role' => 'assistant',
@@ -486,7 +529,7 @@ PROMPT;
             'provider' => $response['provider'] ?? 'none',
             'model' => $response['model'] ?? 'offline',
             'latency_ms' => $response['latency_ms'] ?? 0,
-            'tokens' => $response['tokens'] ?? null,
+            'tokens' => !empty($tokensPayload) ? $tokensPayload : null,
             'tool_calls' => !empty($toolCallsExecuted) ? $toolCallsExecuted : null,
             'tool_results' => !empty($toolResults) ? $toolResults : null,
             'fallback_used' => $response['fallback_used'] ?? false,

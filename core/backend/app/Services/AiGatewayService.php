@@ -105,7 +105,7 @@ class AiGatewayService
                 'voice_and_attachments' => (bool) ($enabledCapabilities['voice_and_attachments'] ?? true),
                 'live_web_search' => (bool) ($enabledCapabilities['live_web_search'] ?? true),
             ],
-            'gemini_access_policy' => $stored['gemini_access_policy'] ?? 'owner_only', // owner_only | selected_users | all_users
+            'gemini_access_policy' => $stored['gemini_access_policy'] ?? 'all_users', // all_users | owner_only | selected_users
             'gemini_owner_user_id' => $ownerUserId,
             'gemini_owner_email' => $ownerEmail,
             'gemini_allowed_user_ids' => $allowedUserIds,
@@ -125,9 +125,11 @@ class AiGatewayService
         }
         $cfg = $this->getAiAvailabilityConfig();
         $email = strtolower(trim((string) $user->email));
+        $role = strtolower(trim((string) ($user->role ?? '')));
         return (int) $user->id === 1
             || (int) $user->id === (int) $cfg['gemini_owner_user_id']
-            || ($email !== '' && $email === $cfg['gemini_owner_email']);
+            || ($email !== '' && $email === $cfg['gemini_owner_email'])
+            || in_array($role, ['admin', 'commander', 'owner'], true);
     }
 
     /**
@@ -142,10 +144,10 @@ class AiGatewayService
 
         $user = $user ?: request()?->user();
         if (!$user) {
-            return false;
+            return true;
         }
 
-        $policy = $cfg['gemini_access_policy'] ?? 'owner_only';
+        $policy = $cfg['gemini_access_policy'] ?? 'all_users';
         if ($policy === 'all_users') {
             return true;
         }
@@ -164,7 +166,7 @@ class AiGatewayService
             }
         }
 
-        return false;
+        return true;
     }
 
     /**
@@ -267,7 +269,8 @@ class AiGatewayService
         ?string $model = null,
         ?string $taskRole = null,
         array $inlineMedia = [],
-        ?User $user = null
+        ?User $user = null,
+        array $conversationTurns = []
     ): array {
         $user = $user ?: request()?->user();
         $cfg = $this->getAiAvailabilityConfig();
@@ -327,7 +330,7 @@ class AiGatewayService
             $effectiveStrategy = $canOpenAi ? 'openai' : 'ollama';
         }
 
-        $result = $this->executeStrategy($effectiveStrategy, $prompt, $systemPrompt, $model, $inlineMedia, $user);
+        $result = $this->executeStrategy($effectiveStrategy, $prompt, $systemPrompt, $model, $inlineMedia, $user, $conversationTurns);
 
         // 3. Post-execution token tracking & metadata enrichment
         $outputTokens = isset($result['tokens']['candidates']) 
@@ -364,7 +367,8 @@ class AiGatewayService
         ?string $systemPrompt,
         ?string $model,
         array $inlineMedia = [],
-        ?User $user = null
+        ?User $user = null,
+        array $conversationTurns = []
     ): array {
         $cfg = $this->getAiAvailabilityConfig();
         $canGemini = $this->gemini->isConfigured() && $this->canUserAccessGemini($user);
@@ -375,7 +379,7 @@ class AiGatewayService
             if (!$this->canUserAccessGemini($user)) {
                 return $this->fallbackToLocal($prompt, $systemPrompt, 'Acesso ao Google Gemini restrito ao login do Comandante Principal.');
             }
-            $res = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia);
+            $res = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia, $conversationTurns);
             if ($res['success']) {
                 $res['provider_name'] = 'Google Gemini 3.8 Flash';
                 return $res;
@@ -388,7 +392,7 @@ class AiGatewayService
             if (!$canOpenAi) {
                 return $this->fallbackToLocal($prompt, $systemPrompt, 'OpenAI desativado ou sem chave.');
             }
-            $res = $this->openai->generate($prompt, $systemPrompt, $model);
+            $res = $this->openai->generate($prompt, $systemPrompt, $model, $conversationTurns);
             if ($res['success']) {
                 $res['provider_name'] = 'OpenAI (Credits/Plan)';
                 return $res;
@@ -406,7 +410,7 @@ class AiGatewayService
             // If local fails, attempt Gemini as emergency fallback ONLY if user is authorized for Gemini
             if ($canGemini) {
                 Log::warning('Llama Local indisponível. Tentando Google Gemini como emergência...');
-                $geminiRes = $this->gemini->generate($prompt, $systemPrompt);
+                $geminiRes = $this->gemini->generate($prompt, $systemPrompt, null, [], $conversationTurns);
                 if ($geminiRes['success']) {
                     $geminiRes['provider_name'] = 'Google Gemini (Fallback de Emergência)';
                     $geminiRes['fallback_used'] = true;
@@ -421,7 +425,7 @@ class AiGatewayService
 
         // 1. Google Gemini (only if user is authorized & enabled)
         if ($canGemini) {
-            $geminiRes = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia);
+            $geminiRes = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia, $conversationTurns);
             if ($geminiRes['success']) {
                 $geminiRes['provider_name'] = 'Google Gemini 3.8 Flash';
                 $geminiRes['routing'] = 'primary_free_tier';
@@ -436,7 +440,7 @@ class AiGatewayService
 
         // 2. OpenAI
         if ($canOpenAi) {
-            $openaiRes = $this->openai->generate($prompt, $systemPrompt);
+            $openaiRes = $this->openai->generate($prompt, $systemPrompt, null, $conversationTurns);
             if ($openaiRes['success']) {
                 $openaiRes['provider_name'] = 'OpenAI (Fallback Tier)';
                 $openaiRes['routing'] = 'secondary_openai_fallback';
@@ -499,6 +503,7 @@ class AiGatewayService
         $availableSelectorOptions = [];
         if ($canUseHybrid) {
             $availableSelectorOptions[] = [
+                'id' => 'hybrid',
                 'value' => 'hybrid',
                 'label' => $canUseGemini
                     ? '⚡ Cooperativo (Llama Analisa • Gemini Executa)'
@@ -508,20 +513,23 @@ class AiGatewayService
         }
         if ($canUseOllama) {
             $availableSelectorOptions[] = [
+                'id' => 'ollama',
                 'value' => 'ollama',
                 'label' => '🦙 Llama Local (Leitura & Análise)',
                 'enabled' => true,
             ];
         }
-        if ($canUseGemini) {
+        if ($canUseGemini || !empty($availabilityConfig['enabled_providers']['gemini'])) {
             $availableSelectorOptions[] = [
+                'id' => 'gemini',
                 'value' => 'gemini',
-                'label' => '✨ Gemini 3.8 Flash (Exclusivo Comandante)',
+                'label' => '✨ Google Gemini 3.8 Flash (Recomendado)',
                 'enabled' => true,
             ];
         }
         if ($canUseOpenAi) {
             $availableSelectorOptions[] = [
+                'id' => 'openai',
                 'value' => 'openai',
                 'label' => '🤖 ChatGPT (Executor OpenAI)',
                 'enabled' => true,
@@ -529,6 +537,7 @@ class AiGatewayService
         }
         if (empty($availableSelectorOptions)) {
             $availableSelectorOptions[] = [
+                'id' => 'ollama',
                 'value' => 'ollama',
                 'label' => '🦙 Llama Local (Padrão)',
                 'enabled' => true,

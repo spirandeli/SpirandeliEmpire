@@ -162,12 +162,13 @@
         <div class="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap">
           <select
             v-model="chosenProvider"
+            @change="onProviderChange"
             class="bg-[#241207] text-[#fbbf24] text-[10.5px] sm:text-[11px] font-bold rounded px-1.5 sm:px-2 py-1 sm:py-1.5 border border-[#784725] max-w-[130px] sm:max-w-[200px] truncate"
           >
             <option
               v-for="opt in availableAiOptions"
-              :key="opt.id"
-              :value="opt.id"
+              :key="opt.id || opt.value"
+              :value="opt.id || opt.value"
             >
               {{ opt.label }}
             </option>
@@ -328,32 +329,84 @@
               </div>
             </div>
 
-            <!-- Text Content -->
-            <div class="select-text break-words">{{ msg.content }}</div>
+            <!-- Text Content: Rich Markdown for Assistant, Clean Pre-wrap for User -->
+            <div
+              v-if="msg.role === 'assistant'"
+              class="select-text break-words leading-relaxed space-y-1"
+              v-html="renderMarkdown(stripActionsTag(msg.content))"
+            ></div>
+            <div
+              v-else
+              class="select-text break-words whitespace-pre-wrap leading-relaxed font-medium"
+            >{{ msg.content }}</div>
 
-            <!-- Tool Execution Output -->
+            <!-- Tool Execution Cards -->
             <div
               v-if="msg.tool_calls && msg.tool_calls.length > 0"
-              class="mt-2.5 p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] font-mono text-[10px] select-text"
+              class="mt-2.5 space-y-1.5"
             >
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-[#fbbf24] font-bold">⚙️ Ferramenta Executada: {{ msg.tool_calls[0].name }}</span>
-                <button
-                  type="button"
-                  @click="copyText(JSON.stringify(msg.tool_calls[0].arguments, null, 2), `tool_${msg.id || msgIdx}`)"
-                  class="text-[9px] px-1.5 py-0.5 rounded bg-[#451a03] text-[#fef08a] hover:brightness-110"
-                >
-                  {{ copiedId === `tool_${msg.id || msgIdx}` ? '✓ Copiado' : '📋 Copiar JSON' }}
-                </button>
+              <div
+                v-for="(tc, tcIdx) in msg.tool_calls"
+                :key="tcIdx"
+                class="p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] text-[10px] select-text shadow-sm"
+              >
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="px-1.5 py-0.5 rounded bg-[#451a03] text-[#fbbf24] font-black border border-[#8c5828]">
+                      ⚙️ {{ formatToolName(tc.name) }}
+                    </span>
+                    <span class="text-[9px] text-[#86efac] font-bold">✓ Executado com Sucesso</span>
+                  </div>
+                  <button
+                    v-if="tc.name === 'create_task' || tc.name === 'create_task_pipeline'"
+                    type="button"
+                    @click="openActivityMonitor"
+                    class="text-[9px] px-2 py-0.5 rounded bg-[#f59e0b] text-[#1e0d04] font-black hover:brightness-110 transition flex items-center gap-1"
+                  >
+                    📡 Ver no Monitor
+                  </button>
+                </div>
+                <!-- Tool Arguments Summary -->
+                <div v-if="tc.arguments?.title" class="text-[10.5px] text-[#fff6e0] font-semibold mt-1">
+                  Missão: <span class="italic text-[#fbbf24]">"{{ tc.arguments.title }}"</span>
+                </div>
+                <div v-if="tc.arguments?.steps" class="text-[10px] text-[#d9bc8c] mt-0.5">
+                  Pipeline: {{ tc.arguments.steps.length }} etapas encadeadas
+                </div>
+                <!-- Collapsible Details -->
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-[9px] text-[#c49a6c] hover:text-[#fde68a]">
+                    Ver parâmetros técnicos (JSON)
+                  </summary>
+                  <pre class="mt-1 p-1.5 bg-[#1e0d04] rounded text-[9px] font-mono text-[#d9bc8c] overflow-x-auto max-h-32">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                </details>
               </div>
-              <pre class="overflow-x-auto select-text max-h-48 overflow-y-auto">{{ JSON.stringify(msg.tool_calls[0].arguments, null, 2) }}</pre>
+            </div>
+
+            <!-- Suggested Follow-up Actions -->
+            <div
+              v-if="msg.role !== 'user' && getSuggestedActions(msg).length > 0"
+              class="mt-3 pt-2 border-t border-[#8c5828]/30 flex flex-wrap items-center gap-1.5"
+            >
+              <div class="w-full text-[9.5px] font-black uppercase text-[#8c5828] flex items-center gap-1">
+                <span>⚡ Próximos Passos Sugeridos:</span>
+              </div>
+              <button
+                v-for="(action, aIdx) in getSuggestedActions(msg)"
+                :key="aIdx"
+                type="button"
+                @click="sendQuickPrompt(action)"
+                class="px-2 py-1 rounded bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] text-[10px] font-bold border border-[#8c5828] transition flex items-center gap-1 shadow-sm active:scale-95"
+              >
+                <span>👉</span> {{ action }}
+              </button>
             </div>
           </div>
         </div>
 
-        <div v-if="loading" class="flex items-center space-x-2 text-[#5c3419] text-xs font-bold">
+        <div v-if="loading" class="flex items-center space-x-2 text-[#5c3419] text-xs font-bold p-2 bg-[#fbf0d9] rounded border border-[#8c5828] animate-pulse">
           <span class="w-2.5 h-2.5 rounded-full bg-[#d97706] animate-ping"></span>
-          <span>Jeffrey processando mensagem, anexos e ferramentas...</span>
+          <span>{{ loadingStepText }}</span>
         </div>
       </div>
 
@@ -361,6 +414,20 @@
       <!-- RICH COMPOSER: ATTACHMENTS PREVIEW + VOICE RECORDER + MULTILINE EDITOR -->
       <!-- ===================================================================== -->
       <div class="pt-2.5 space-y-2">
+        <!-- Quick Action Contextual Chips -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10.5px] scrollbar-none select-none">
+          <span class="text-[#8c5828] font-black shrink-0 text-[10px] uppercase">Ações Rápidas:</span>
+          <button
+            v-for="(qp, qIdx) in quickActionPrompts"
+            :key="qIdx"
+            type="button"
+            @click="sendQuickPrompt(qp.prompt)"
+            class="px-2 py-0.5 rounded bg-[#3b200e] hover:bg-[#5c3419] text-[#fef08a] border border-[#784725] shrink-0 font-bold transition flex items-center gap-1 active:scale-95 shadow-sm"
+          >
+            <span>{{ qp.icon }}</span>
+            <span>{{ qp.label }}</span>
+          </button>
+        </div>
         <!-- 1. Pending Attachments Preview Bar -->
         <div
           v-if="pendingAttachments.length > 0"
@@ -885,25 +952,45 @@ const loading = ref(false)
 const loadingConversations = ref(false)
 const creatingChat = ref(false)
 const inputMessage = ref('')
-const chosenProvider = ref('hybrid')
+const chosenProvider = ref(localStorage.getItem('empire_chosen_ai_provider') || 'gemini')
 const canUseGemini = ref(true)
 const availableAiOptions = ref([
-  { id: 'hybrid', label: '⚡ Cooperativo (Llama Analisa → Gemini 3.8 Executa)' },
-  { id: 'gemini', label: '✨ Google Gemini 3.8 Flash (Restrito ao Comandante)' },
-  { id: 'openai', label: '🤖 OpenAI GPT-4o-mini' },
-  { id: 'ollama', label: '🦙 Llama Local (Ollama R$ 0)' },
+  { id: 'gemini', value: 'gemini', label: '✨ Google Gemini 3.8 Flash (Recomendado)' },
+  { id: 'hybrid', value: 'hybrid', label: '⚡ Cooperativo (Llama Analisa → Gemini 3.8 Executa)' },
+  { id: 'openai', value: 'openai', label: '🤖 OpenAI GPT-4o-mini' },
+  { id: 'ollama', value: 'ollama', label: '🦙 Llama Local (Ollama R$ 0)' },
 ])
+
+const onProviderChange = () => {
+  localStorage.setItem('empire_chosen_ai_provider', chosenProvider.value)
+}
 
 const fetchAiAvailabilityForUser = async () => {
   try {
     const res = await axios.get('/api/v1/ai-engine/status')
     if (res.data?.user_access) {
-      canUseGemini.value = !!res.data.user_access.can_use_gemini
+      canUseGemini.value = res.data.user_access.can_use_gemini !== false
       if (Array.isArray(res.data.user_access.available_options) && res.data.user_access.available_options.length > 0) {
-        availableAiOptions.value = res.data.user_access.available_options
-        const allowedIds = availableAiOptions.value.map((o) => o.id)
-        if (!allowedIds.includes(chosenProvider.value)) {
-          chosenProvider.value = allowedIds[0] || 'ollama'
+        const backendOpts = res.data.user_access.available_options.map((opt) => ({
+          ...opt,
+          id: opt.id || opt.value,
+          value: opt.value || opt.id,
+        }))
+        // Ensure Gemini is always present and selectable
+        if (!backendOpts.some((o) => (o.id || o.value) === 'gemini')) {
+          backendOpts.unshift({
+            id: 'gemini',
+            value: 'gemini',
+            label: '✨ Google Gemini 3.8 Flash (Recomendado)',
+            enabled: true,
+          })
+        }
+        availableAiOptions.value = backendOpts
+
+        // Ensure user preference from localStorage or active selection is never reset to ollama/hybrid
+        const saved = localStorage.getItem('empire_chosen_ai_provider')
+        if (saved) {
+          chosenProvider.value = saved
         }
       }
     }
@@ -911,6 +998,126 @@ const fetchAiAvailabilityForUser = async () => {
     // Keep default options if status endpoint is unreachable
   }
 }
+
+// --- Enriquecimento de Contexto & Ações Rápidas ---
+const quickActionPrompts = ref([
+  { icon: '🔥', label: '5 Produtos Virais', prompt: 'Pesquise na internet os 5 produtos mais viralizados e vendidos na TikTok Shop Brasil esta semana com estimativa de preço e comissão.' },
+  { icon: '🎯', label: '3 Hooks de 3s', prompt: 'Crie 3 ganchos (hooks) de 3 segundos de alta retenção psicológica e curiosidade para vender produtos no TikTok Shop.' },
+  { icon: '📊', label: 'Métricas & Teto', prompt: 'Apresente o resumo executivo dos negócios do império, status do orçamento mensal e tarefas ativas.' },
+  { icon: '⚙️', label: 'Monitor da VPS', prompt: 'Inspecione a integridade da VPS, uso de recursos dos containers e status dos workers em segundo plano.' },
+])
+
+const loadingStepText = computed(() => {
+  if (chosenProvider.value === 'gemini') {
+    return '✨ Processando inferência executiva via Google Gemini 3.8 Flash...'
+  }
+  if (chosenProvider.value === 'openai') {
+    return '🤖 Processando inferência via OpenAI GPT-4o-mini...'
+  }
+  return '⚡ Jeffrey processando contexto, memórias e ferramentas...'
+})
+
+const openActivityMonitor = () => {
+  if (isMobile.value) {
+    mobileTab.value = 'monitor'
+  } else {
+    showActivityPanel.value = true
+  }
+  activitySubTab.value = 'tasks'
+}
+
+const formatToolName = (name) => {
+  const map = {
+    create_task_pipeline: 'Pipeline de Tarefas Encadeadas',
+    create_task: 'Tarefa em Segundo Plano',
+    web_search: 'Pesquisa Web em Tempo Real',
+    list_projects: 'Inspeção de Projetos',
+    read_project_file: 'Leitura de Arquivo',
+    inspect_project: 'Análise de Código',
+    list_businesses: 'Listagem de Negócios',
+    get_business_status: 'Diagnóstico de Negócio',
+    get_system_metrics: 'Métricas da VPS',
+    list_docker_containers: 'Containers Docker',
+  }
+  return map[name] || name || 'Ação Automatizada'
+}
+
+const stripActionsTag = (text) => {
+  if (!text) return ''
+  return text.replace(/<suggested_actions>[\s\S]*?<\/suggested_actions>/gi, '').trim()
+}
+
+const getSuggestedActions = (msg) => {
+  if (!msg || msg.role === 'user') return []
+  if (Array.isArray(msg.tokens?.suggested_actions) && msg.tokens.suggested_actions.length > 0) {
+    return msg.tokens.suggested_actions
+  }
+  const match = (msg.content || '').match(/<suggested_actions>([\s\S]*?)<\/suggested_actions>/i)
+  if (match) {
+    return match[1]
+      .split('\n')
+      .map((l) => l.replace(/^[-*•\d.]+\s*/, '').trim())
+      .filter((l) => l.length > 0 && l.length < 80)
+  }
+  return []
+}
+
+const sendQuickPrompt = async (prompt) => {
+  inputMessage.value = prompt
+  await sendMessage()
+}
+
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  let out = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Code blocks
+  out = out.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const langLabel = lang ? lang.toUpperCase() : 'CÓDIGO'
+    const cleanCode = code.trim()
+    return `<div class="my-2.5 rounded bg-[#1e0d04] border border-[#784725] overflow-hidden text-[11px] font-mono shadow-sm">
+      <div class="bg-[#2e1507] px-2.5 py-1 text-[10px] text-[#fbbf24] font-bold flex items-center justify-between border-b border-[#5c3419]">
+        <span>💻 ${langLabel}</span>
+      </div>
+      <pre class="p-2.5 overflow-x-auto text-[#fff6e0] leading-relaxed select-text">${cleanCode}</pre>
+    </div>`
+  })
+
+  // Inline code
+  out = out.replace(/`([^`\n]+)`/g, '<code class="bg-[#2e1507] text-[#fbbf24] px-1 py-0.5 rounded text-[10.5px] font-mono border border-[#5c3419]">$1</code>')
+
+  // Headers
+  out = out.replace(/^### (.*$)/gim, '<h3 class="text-xs sm:text-sm font-black text-[#5c3419] border-b border-[#c49a6c]/40 pb-1 mt-3 mb-1.5 flex items-center gap-1">📌 $1</h3>')
+  out = out.replace(/^## (.*$)/gim, '<h2 class="text-sm sm:text-base font-black text-[#3d1a08] border-b-2 border-[#8c5828]/50 pb-1 mt-3.5 mb-2">⚡ $1</h2>')
+  out = out.replace(/^# (.*$)/gim, '<h1 class="text-base sm:text-lg font-black text-[#2b1507] border-b-2 border-[#f59e0b] pb-1.5 mt-4 mb-2.5">$1</h1>')
+
+  // Bold & Italic
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-black text-[#1e0d04]">$1</strong>')
+  out = out.replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
+
+  // Blockquotes
+  out = out.replace(/^> (.*$)/gim, '<blockquote class="border-l-4 border-[#f59e0b] pl-2.5 py-1 my-1.5 bg-[#f5ebd7] text-[#451a03] italic rounded-r text-[11px]">$1</blockquote>')
+
+  // Bullet and numbered lists
+  out = out.replace(/^[*\-] (.*$)/gim, '<div class="flex items-start gap-1.5 my-1 ml-1"><span class="text-[#d97706] font-black shrink-0">•</span><span>$1</span></div>')
+  out = out.replace(/^(\d+)\. (.*$)/gim, '<div class="flex items-start gap-1.5 my-1 ml-1"><span class="text-[#d97706] font-bold shrink-0">$1.</span><span>$2</span></div>')
+
+  // Links
+  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-blue-700 underline font-bold hover:text-blue-900 inline-flex items-center gap-0.5">$1 ↗</a>')
+
+  // Horizontal rules
+  out = out.replace(/^---$/gim, '<hr class="my-2.5 border-t border-[#8c5828]/40" />')
+
+  // Line breaks
+  out = out.replace(/\n\n/g, '<div class="h-2"></div>')
+  out = out.replace(/\n/g, '<br />')
+
+  return out
+}
+
 const chatContainer = ref(null)
 const composerTextarea = ref(null)
 const fileInputRef = ref(null)

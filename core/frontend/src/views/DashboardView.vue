@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4 max-w-[1400px]">
+  <div class="space-y-4 max-w-[1400px] w-full">
     <!-- 1. TOP KPI PARCHMENT CARDS ROW (4 Cards) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
       <!-- KPI 1: Negócios no Ecossistema -->

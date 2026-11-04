@@ -237,7 +237,7 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
             base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
         candidate_models = [GEMINI_MODEL]
-        for fallback_m in ("gemini-2.5-flash", "gemini-2.0-flash"):
+        for fallback_m in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
             if fallback_m not in candidate_models:
                 candidate_models.append(fallback_m)
 

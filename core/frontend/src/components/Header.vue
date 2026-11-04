@@ -72,7 +72,7 @@
       <!-- VPS Settings Button -->
       <router-link
         to="/vps"
-        class="pixel-btn-wood h-9 w-9 sm:h-11 sm:w-11 flex items-center justify-center text-base sm:text-xl shadow"
+        class="pixel-btn-wood h-9 w-9 sm:h-11 sm:w-11 hidden sm:flex items-center justify-center text-base sm:text-xl shadow"
         title="Administração VPS & Configurações"
       >
         ⚙️

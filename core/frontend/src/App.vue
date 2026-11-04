@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative flex h-[100dvh] w-screen overflow-hidden p-1.5 sm:p-2.5 md:p-3.5 gap-2 sm:gap-3 md:gap-4 bg-[#1a2e12] bg-cover bg-center select-none"
+    class="relative flex flex-col lg:flex-row h-[100dvh] w-screen overflow-hidden p-1 sm:p-2 md:p-3.5 gap-2 sm:gap-3 md:gap-4 bg-[#1a2e12] bg-cover bg-center select-none"
     style="background-image: url('/assets/rpg-village-bg.jpg');"
   >
     <!-- Subtle warm vignette so UI panels pop clearly over the village -->
@@ -209,8 +209,8 @@
         />
       </div>
 
-      <!-- Main Column: Top Server Bar + Viewport Area + Bottom Mobile Dock -->
-      <div class="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden gap-2 sm:gap-3">
+      <!-- Main Column: Top Server Bar + Viewport Area -->
+      <div class="relative z-10 flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden gap-2 sm:gap-3">
         <Header
           class="shrink-0"
           :user="currentUser"
@@ -220,37 +220,37 @@
           @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
           @logout="logoutCommander"
         />
-        <main class="flex-1 overflow-y-auto pr-0.5 sm:pr-1 pb-16 md:pb-4">
+        <main class="flex-1 overflow-y-auto pr-0.5 sm:pr-1 pb-20 md:pb-4 w-full">
           <router-view />
         </main>
       </div>
 
       <!-- Bottom Mobile Dock (< 768px) -->
       <nav
-        class="md:hidden fixed bottom-0 left-0 right-0 z-40 pixel-wood rpg-rivets px-2 py-1.5 flex items-center justify-around border-t-2 border-[#1e0d04] shadow-[0_-4px_10px_rgba(0,0,0,0.6)] select-none pb-safe"
+        class="md:hidden !fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-[#1b0d04] via-[#331808] to-[#45220c] border-t-2 border-[#140802] px-2 py-1 flex items-center justify-around shadow-[0_-4px_16px_rgba(0,0,0,0.85)] select-none pb-safe"
       >
         <router-link
           v-for="dockItem in mobileDock"
           :key="dockItem.path"
           :to="dockItem.path"
-          class="flex flex-col items-center justify-center py-1 px-2.5 rounded transition-all text-center relative"
+          class="flex flex-col items-center justify-center py-1 px-3 rounded transition-all text-center relative"
           :class="isActiveRoute(dockItem.path)
             ? 'text-[#fbbf24] font-black'
             : 'text-[#d9bc8c] hover:text-[#fff6df]'"
         >
-          <span class="text-lg leading-none mb-0.5 relative">
+          <span class="text-xl leading-none mb-0.5 relative">
             {{ dockItem.icon }}
           </span>
-          <span class="text-[9.5px] truncate rpg-text-outline-sm">{{ dockItem.name }}</span>
+          <span class="text-[10px] font-bold tracking-tight rpg-text-outline-sm">{{ dockItem.name }}</span>
         </router-link>
 
         <button
           type="button"
           @click="mobileMenuOpen = true"
-          class="flex flex-col items-center justify-center py-1 px-2.5 rounded text-[#d9bc8c] hover:text-[#fff6df]"
+          class="flex flex-col items-center justify-center py-1 px-3 rounded text-[#d9bc8c] hover:text-[#fff6df] transition-all"
         >
-          <span class="text-lg leading-none mb-0.5">☰</span>
-          <span class="text-[9.5px] truncate rpg-text-outline-sm">Mais</span>
+          <span class="text-xl leading-none mb-0.5">☰</span>
+          <span class="text-[10px] font-bold tracking-tight rpg-text-outline-sm">Mais</span>
         </button>
       </nav>
     </template>
