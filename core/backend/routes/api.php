@@ -94,6 +94,7 @@ Route::prefix('v1')->group(function () {
         // --- 8. AI Engine & Specialized Agents ---
         Route::get('/ai-engine/status', [AiEngineController::class, 'status']);
         Route::post('/ai-engine/configure-keys', [AiEngineController::class, 'configureKeys']);
+        Route::post('/ai-engine/configure-availability', [AiEngineController::class, 'configureAvailability']);
         Route::post('/ai-engine/test-provider', [AiEngineController::class, 'testProvider']);
         Route::post('/ai-engine/complete', [AiEngineController::class, 'complete']);
         Route::post('/ai-engine/estimate-tokens', [AiEngineController::class, 'estimateTokens']);

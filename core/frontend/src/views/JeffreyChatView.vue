@@ -1,16 +1,69 @@
 <template>
   <div
-    class="h-[calc(100vh-7.5rem)] flex gap-3 max-w-[1400px]"
+    class="h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-7.5rem)] flex flex-col md:flex-row gap-2 sm:gap-3 max-w-[1500px] w-full relative"
     @dragover.prevent="isDraggingOver = true"
     @dragleave.prevent="isDraggingOver = false"
     @drop.prevent="handleDropFiles"
   >
-    <!-- 1. LEFT SIDEBAR: Persistent Conversations History -->
-    <div class="w-56 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden hidden lg:flex shrink-0">
+    <!-- MOBILE VIEW TABS (< md) -->
+    <div class="md:hidden flex items-center justify-between gap-1 pixel-wood rpg-rivets p-1 shrink-0 select-none">
       <button
-        @click="createNewConversation"
+        type="button"
+        @click="mobileTab = 'chat'"
+        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5"
+        :class="mobileTab === 'chat'
+          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
+          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+      >
+        <span>💬 Chat</span>
+      </button>
+      <button
+        type="button"
+        @click="mobileTab = 'history'"
+        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5"
+        :class="mobileTab === 'history'
+          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
+          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+      >
+        <span>🗂️ Histórico</span>
+        <span class="text-[10px] px-1 py-0.5 rounded bg-[#3b200e] text-[#fde68a]">
+          {{ conversations.length }}
+        </span>
+      </button>
+      <button
+        type="button"
+        @click="mobileTab = 'monitor'"
+        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5 relative"
+        :class="mobileTab === 'monitor'
+          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
+          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+      >
+        <span class="relative">
+          📡 Monitor
+          <span
+            v-if="jeffreyActivity.is_working"
+            class="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-emerald-400 animate-ping"
+          ></span>
+        </span>
+        <span
+          v-if="jeffreyActivity.counts?.in_progress || jeffreyActivity.counts?.pending"
+          class="text-[10px] px-1 py-0.5 rounded bg-amber-800 text-amber-100 font-mono"
+        >
+          {{ (jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) }}
+        </span>
+      </button>
+    </div>
+
+    <!-- 1. LEFT SIDEBAR: Persistent Conversations History -->
+    <div
+      v-if="(!isMobile && showConversationsPanel) || (isMobile && mobileTab === 'history')"
+      class="pixel-wood rpg-rivets p-2 sm:p-2.5 flex flex-col overflow-hidden shrink-0"
+      :class="isMobile ? 'w-full flex-1 h-full' : 'w-56 lg:w-60 h-full'"
+    >
+      <button
+        @click="createNewConversationMobile"
         :disabled="creatingChat"
-        class="pixel-btn-gold w-full py-2 px-3 text-xs flex items-center justify-center gap-1.5 mb-2.5"
+        class="pixel-btn-gold w-full py-2 px-3 text-xs flex items-center justify-center gap-1.5 mb-2.5 shrink-0"
       >
         <span>+</span> Nova Conversa
       </button>
@@ -19,7 +72,7 @@
         <div
           v-for="conv in conversations"
           :key="conv.id"
-          @click="selectConversation(conv.id)"
+          @click="selectConversationMobile(conv.id)"
           class="p-2 rounded cursor-pointer transition flex items-center justify-between border"
           :class="activeConversationId === conv.id
             ? 'bg-[#5c3419] text-[#fef08a] border-[#f59e0b]'
@@ -45,7 +98,10 @@
     </div>
 
     <!-- 2. CENTER AREA: Chat Messages Stream, Attachments, Voice & Rich Editor -->
-    <div class="flex-1 min-w-0 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden relative">
+    <div
+      v-if="!isMobile || mobileTab === 'chat'"
+      class="flex-1 min-w-0 pixel-wood rpg-rivets p-2.5 sm:p-3 flex flex-col overflow-hidden relative h-full"
+    >
       <!-- Drag & Drop Overlay -->
       <div
         v-if="isDraggingOver"
@@ -56,66 +112,84 @@
       </div>
 
       <!-- Top Header Bar -->
-      <div class="pixel-wood-inset p-2.5 mb-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center space-x-2.5 min-w-0">
-          <div class="w-9 h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-lg flex items-center justify-center shrink-0">
+      <div class="pixel-wood-inset p-2 sm:p-2.5 mb-2 sm:mb-2.5 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <div class="flex items-center space-x-2 min-w-0 flex-1">
+          <!-- Toggle Conversations Button on Desktop/Tablet -->
+          <button
+            type="button"
+            @click="showConversationsPanel = !showConversationsPanel"
+            class="hidden md:flex pixel-btn-wood h-8 px-2 items-center justify-center text-xs shrink-0"
+            :title="showConversationsPanel ? 'Ocultar Histórico' : 'Mostrar Histórico'"
+          >
+            <span>🗂️</span>
+            <span class="hidden xl:inline ml-1 text-[10px]">{{ showConversationsPanel ? 'Ocultar' : 'Histórico' }}</span>
+          </button>
+
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-base sm:text-lg flex items-center justify-center shrink-0">
             🧙‍♂️
           </div>
-          <div class="min-w-0">
-            <div class="font-extrabold text-xs text-[#fff6e0] flex items-center gap-2 flex-wrap">
-              <span class="truncate">{{ currentConversation?.title || 'Jeffrey AI & Agentes' }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="font-extrabold text-[11.5px] sm:text-xs text-[#fff6e0] flex items-center gap-1.5 flex-wrap">
+              <span class="truncate max-w-[140px] sm:max-w-[220px]">{{ currentConversation?.title || 'Jeffrey AI' }}</span>
               <span
                 v-if="jeffreyActivity.is_working"
-                class="text-[10px] px-2 py-0.5 rounded bg-[#78350f] text-[#fef08a] border border-[#f59e0b] flex items-center gap-1.5 animate-pulse"
+                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#78350f] text-[#fef08a] border border-[#f59e0b] flex items-center gap-1 animate-pulse"
               >
-                <span class="w-2 h-2 rounded-full bg-[#fbbf24]"></span>
-                ⚙️ TRABALHANDO ({{ jeffreyActivity.counts?.in_progress || 1 }} ativa)
+                <span class="w-1.5 h-1.5 rounded-full bg-[#fbbf24]"></span>
+                <span>TRABALHANDO</span>
               </span>
               <span
                 v-else-if="jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0"
-                class="text-[10px] px-2 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#d97706] flex items-center gap-1.5"
+                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#d97706] flex items-center gap-1"
               >
-                <span class="w-2 h-2 rounded-full bg-[#f59e0b]"></span>
-                ⏳ NA FILA ({{ jeffreyActivity.counts?.pending || 0 }} aguardando)
+                <span class="w-1.5 h-1.5 rounded-full bg-[#f59e0b]"></span>
+                <span>NA FILA</span>
               </span>
               <span
                 v-else
-                class="text-[10px] px-2 py-0.5 rounded bg-[#14532d] text-[#86efac] border border-[#22c55e] flex items-center gap-1"
+                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#14532d] text-[#86efac] border border-[#22c55e] hidden sm:flex items-center gap-1"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-[#4ade80]"></span>
-                OCIOSO (Aguardando Ordens)
+                OCIOSO
               </span>
             </div>
-            <div class="text-[10px] text-[#d9bc8c] truncate">
-              Suporte a Cópia de Texto, Anexos (Imagens/Docs/Planilhas) e Mensagens de Voz
+            <div class="text-[9.5px] sm:text-[10px] text-[#d9bc8c] truncate hidden sm:block">
+              Suporte a Texto, Prints, Documentos e Voz
             </div>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 flex-wrap">
+        <div class="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap">
           <select
             v-model="chosenProvider"
-            class="bg-[#241207] text-[#fbbf24] text-[11px] font-bold rounded px-2 py-1.5 border border-[#784725]"
+            class="bg-[#241207] text-[#fbbf24] text-[10.5px] sm:text-[11px] font-bold rounded px-1.5 sm:px-2 py-1 sm:py-1.5 border border-[#784725] max-w-[130px] sm:max-w-[200px] truncate"
           >
-            <option value="hybrid">⚡ Cooperativo (Llama Analisa → Gemini 3.8 Executa)</option>
-            <option value="gemini">✨ Google Gemini 3.8 Flash</option>
-            <option value="openai">🤖 OpenAI GPT-4o-mini</option>
-            <option value="ollama">🦙 Llama Local (Ollama R$ 0)</option>
+            <option
+              v-for="opt in availableAiOptions"
+              :key="opt.id"
+              :value="opt.id"
+            >
+              {{ opt.label }}
+            </option>
           </select>
 
           <button
             @click="promptNewBackgroundTask"
-            class="pixel-btn-gold px-2.5 py-1.5 text-[11px] flex items-center gap-1"
+            class="pixel-btn-gold px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-[11px] flex items-center gap-1"
+            title="Criar Tarefa Real em Segundo Plano"
           >
-            <span>⚡</span> + Tarefa Real
+            <span>⚡</span>
+            <span class="hidden sm:inline">+ Tarefa</span>
           </button>
 
           <button
-            @click="showActivityPanel = !showActivityPanel"
-            class="pixel-btn-wood px-2.5 py-1.5 text-[11px] flex items-center gap-1"
+            @click="isMobile ? (mobileTab = 'monitor') : (showActivityPanel = !showActivityPanel)"
+            class="pixel-btn-wood px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-[11px] flex items-center gap-1"
+            :title="showActivityPanel ? 'Ocultar Monitor' : 'Abrir Monitor ao Vivo'"
           >
             <span>📋</span>
-            <span>Progresso ({{ jeffreyActivity.counts?.total || 0 }})</span>
+            <span class="hidden sm:inline">Progresso</span>
+            <span>({{ jeffreyActivity.counts?.total || 0 }})</span>
           </button>
         </div>
       </div>
@@ -195,7 +269,7 @@
 
           <!-- Message Content Bubble -->
           <div
-            class="max-w-3xl p-3.5 rounded-lg text-xs leading-relaxed border-2 select-text"
+            class="w-full sm:max-w-3xl p-2.5 sm:p-3.5 rounded-lg text-xs leading-relaxed border-2 select-text"
             :class="msg.role === 'user'
               ? 'bg-[#5c3419] text-[#fff6e0] border-[#1e0d04] font-medium whitespace-pre-wrap'
               : 'bg-[#fbf0d9] text-[#231104] border-[#8c5828] whitespace-pre-wrap font-medium'"
@@ -272,7 +346,7 @@
                   {{ copiedId === `tool_${msg.id || msgIdx}` ? '✓ Copiado' : '📋 Copiar JSON' }}
                 </button>
               </div>
-              <pre class="overflow-x-auto select-text">{{ JSON.stringify(msg.tool_calls[0].arguments, null, 2) }}</pre>
+              <pre class="overflow-x-auto select-text max-h-48 overflow-y-auto">{{ JSON.stringify(msg.tool_calls[0].arguments, null, 2) }}</pre>
             </div>
           </div>
         </div>
@@ -372,8 +446,8 @@
         </div>
 
         <!-- 3. Quick Prompt Chips + Hidden File Input -->
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 max-w-full">
             <button
               v-for="chip in quickChips"
               :key="chip.label"
@@ -384,8 +458,8 @@
               {{ chip.label }}
             </button>
           </div>
-          <span class="text-[10px] text-[#d9bc8c] hidden sm:inline">
-            💡 <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Enter</kbd> envia • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Shift+Enter</kbd> quebra linha • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Ctrl+V</kbd> cola print/arquivo
+          <span class="text-[10px] text-[#d9bc8c] hidden xl:inline shrink-0">
+            💡 <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Enter</kbd> envia • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Shift+Enter</kbd> quebra linha
           </span>
         </div>
 
@@ -399,16 +473,16 @@
         />
 
         <!-- 4. Main Multiline Editor + Attachment + Voice + Send Buttons -->
-        <div class="flex items-end gap-2">
+        <div class="flex items-end gap-1.5 sm:gap-2">
           <!-- Attach File / Image Button -->
           <button
             type="button"
             @click="triggerFilePicker"
             :disabled="loading"
-            class="pixel-btn-wood h-11 px-3 flex items-center justify-center gap-1 text-xs shrink-0"
+            class="pixel-btn-wood h-10 sm:h-11 px-2.5 sm:px-3 flex items-center justify-center gap-1 text-xs shrink-0"
             title="Anexar imagens, prints, roteiros, PDFs, CSVs ou áudios"
           >
-            <span class="text-base">📎</span>
+            <span class="text-sm sm:text-base">📎</span>
             <span class="hidden sm:inline font-bold">Anexar</span>
           </button>
 
@@ -417,13 +491,13 @@
             type="button"
             @click="toggleVoiceRecording"
             :disabled="loading"
-            class="h-11 px-3 rounded flex items-center justify-center gap-1 text-xs font-extrabold border-2 transition shrink-0"
+            class="h-10 sm:h-11 px-2.5 sm:px-3 rounded flex items-center justify-center gap-1 text-xs font-extrabold border-2 transition shrink-0"
             :class="isRecordingVoice
               ? 'bg-red-600 text-white border-red-300 animate-pulse'
               : 'pixel-btn-wood'"
             title="Gravar mensagem de voz e transcrever fala em português"
           >
-            <span class="text-base">🎙️</span>
+            <span class="text-sm sm:text-base">🎙️</span>
             <span class="hidden sm:inline font-bold">{{ isRecordingVoice ? 'Gravando...' : 'Voz' }}</span>
           </button>
 
@@ -432,11 +506,11 @@
             ref="composerTextarea"
             v-model="inputMessage"
             rows="2"
-            placeholder="Digite ou fale com o Jeffrey... (Cole prints com Ctrl+V, arraste arquivos ou grave áudio no 🎙️)"
+            placeholder="Mensagem para o Jeffrey... (Cole prints com Ctrl+V)"
             :disabled="loading"
             @keydown="handleEditorKeydown"
             @paste="handleEditorPaste"
-            class="flex-1 pixel-wood-inset px-3.5 py-2 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b] resize-y min-h-[44px] max-h-36 select-text leading-relaxed"
+            class="flex-1 pixel-wood-inset px-2.5 sm:px-3.5 py-2 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b] resize-y min-h-[40px] sm:min-h-[44px] max-h-32 sm:max-h-36 select-text leading-relaxed"
           ></textarea>
 
           <!-- Send Button -->
@@ -444,9 +518,9 @@
             type="button"
             @click="sendMessage"
             :disabled="loading || (!inputMessage.trim() && pendingAttachments.length === 0)"
-            class="pixel-btn-gold h-11 px-5 text-xs font-extrabold shrink-0 flex items-center gap-1.5"
+            class="pixel-btn-gold h-10 sm:h-11 px-3.5 sm:px-5 text-xs font-extrabold shrink-0 flex items-center gap-1"
           >
-            <span>Enviar</span>
+            <span class="hidden sm:inline">Enviar</span>
             <span>➔</span>
           </button>
         </div>
@@ -455,22 +529,41 @@
 
     <!-- 3. RIGHT SIDEBAR: LIVE JEFFREY ACTIVITY, TASKS & PROGRESS MONITOR -->
     <div
-      v-if="showActivityPanel"
-      class="w-80 xl:w-96 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden shrink-0 select-text"
+      v-if="(!isMobile && showActivityPanel) || (isMobile && mobileTab === 'monitor')"
+      class="pixel-wood rpg-rivets p-2 sm:p-2.5 flex flex-col overflow-hidden shrink-0 select-text"
+      :class="isMobile ? 'w-full flex-1 h-full' : 'w-72 lg:w-80 xl:w-96 h-full'"
     >
-      <div class="pixel-wood-inset p-2.5 mb-2 flex items-center justify-between">
-        <div>
-          <div class="font-extrabold text-xs text-[#fef08a] flex items-center gap-1.5">
+      <div class="pixel-wood-inset p-2 sm:p-2.5 mb-2 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="font-extrabold text-xs text-[#fef08a] flex items-center gap-1.5 truncate">
             <span>📡</span>
-            <span>Monitor do Jeffrey (Ao Vivo)</span>
+            <span class="truncate">Monitor do Jeffrey (Ao Vivo)</span>
           </div>
-          <div class="text-[10px] text-[#d9bc8c]">
-            Atualiza a cada 4s • Fila Redis: {{ jeffreyActivity.queue_length || 0 }}
+          <div class="text-[9.5px] sm:text-[10px] text-[#d9bc8c] truncate">
+            Atualiza a cada 4s • Fila: {{ jeffreyActivity.queue_length || 0 }}
           </div>
         </div>
-        <button @click="fetchJeffreyActivity" class="pixel-btn-wood px-2 py-1 text-[10px]">
-          ↻ Atualizar
-        </button>
+        <div class="flex items-center gap-1 shrink-0">
+          <button @click="fetchJeffreyActivity" class="pixel-btn-wood px-2 py-1 text-[10px]">
+            ↻
+          </button>
+          <button
+            v-if="isMobile"
+            @click="mobileTab = 'chat'"
+            class="pixel-btn-gold px-2 py-1 text-[10px] font-black"
+            title="Voltar ao Chat"
+          >
+            💬 Chat
+          </button>
+          <button
+            v-else
+            @click="showActivityPanel = false"
+            class="pixel-btn-wood px-2 py-1 text-[10px] font-bold"
+            title="Fechar Monitor"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-4 gap-1.5 mb-2 text-center">
@@ -771,8 +864,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
+
+// Viewport & Responsive Layout State
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+const onResize = () => {
+  windowWidth.value = window.innerWidth
+}
+const isMobile = computed(() => windowWidth.value < 768)
+const mobileTab = ref('chat') // 'chat' | 'history' | 'monitor'
+const showConversationsPanel = ref(typeof window !== 'undefined' ? window.innerWidth >= 1280 : true)
 
 const conversations = ref([])
 const activeConversationId = ref(null)
@@ -784,6 +886,31 @@ const loadingConversations = ref(false)
 const creatingChat = ref(false)
 const inputMessage = ref('')
 const chosenProvider = ref('hybrid')
+const canUseGemini = ref(true)
+const availableAiOptions = ref([
+  { id: 'hybrid', label: '⚡ Cooperativo (Llama Analisa → Gemini 3.8 Executa)' },
+  { id: 'gemini', label: '✨ Google Gemini 3.8 Flash (Restrito ao Comandante)' },
+  { id: 'openai', label: '🤖 OpenAI GPT-4o-mini' },
+  { id: 'ollama', label: '🦙 Llama Local (Ollama R$ 0)' },
+])
+
+const fetchAiAvailabilityForUser = async () => {
+  try {
+    const res = await axios.get('/api/v1/ai-engine/status')
+    if (res.data?.user_access) {
+      canUseGemini.value = !!res.data.user_access.can_use_gemini
+      if (Array.isArray(res.data.user_access.available_options) && res.data.user_access.available_options.length > 0) {
+        availableAiOptions.value = res.data.user_access.available_options
+        const allowedIds = availableAiOptions.value.map((o) => o.id)
+        if (!allowedIds.includes(chosenProvider.value)) {
+          chosenProvider.value = allowedIds[0] || 'ollama'
+        }
+      }
+    }
+  } catch (e) {
+    // Keep default options if status endpoint is unreachable
+  }
+}
 const chatContainer = ref(null)
 const composerTextarea = ref(null)
 const fileInputRef = ref(null)
@@ -1102,7 +1229,22 @@ const cancelVoiceRecording = () => {
   isRecordingVoice.value = false
 }
 
-const showActivityPanel = ref(true)
+const showActivityPanel = ref(typeof window !== 'undefined' ? window.innerWidth >= 1440 : false)
+
+const selectConversationMobile = (id) => {
+  selectConversation(id)
+  if (isMobile.value) {
+    mobileTab.value = 'chat'
+  }
+}
+
+const createNewConversationMobile = async () => {
+  await createNewConversation()
+  if (isMobile.value) {
+    mobileTab.value = 'chat'
+  }
+}
+
 const activitySubTab = ref('tasks')
 const expandedTaskId = ref(null)
 const jeffreyActivity = ref({
@@ -1193,6 +1335,9 @@ const submitNewBackgroundTask = async () => {
     if (res.data?.task) {
       showNewTaskModal.value = false
       showActivityPanel.value = true
+      if (isMobile.value) {
+        mobileTab.value = 'monitor'
+      }
       activitySubTab.value = 'tasks'
       await fetchJeffreyActivity()
       if (activeConversationId.value) {
@@ -1238,6 +1383,9 @@ const sendTaskResultToChat = (task) => {
     latency_ms: task.result.latency_ms || 0,
   })
   scrollToBottom()
+  if (isMobile.value) {
+    mobileTab.value = 'chat'
+  }
 }
 
 const fetchConversations = async () => {
@@ -1373,12 +1521,16 @@ const sendMessage = async () => {
 
 let pollTimer = null
 onMounted(() => {
+  window.addEventListener('resize', onResize)
+  onResize()
+  fetchAiAvailabilityForUser()
   fetchConversations()
   fetchJeffreyActivity()
   pollTimer = setInterval(fetchJeffreyActivity, 4000)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
   if (pollTimer) clearInterval(pollTimer)
   cancelVoiceRecording()
   if ('speechSynthesis' in window) {

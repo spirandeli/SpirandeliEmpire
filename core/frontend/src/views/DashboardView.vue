@@ -119,19 +119,19 @@
     <!-- 2. STRATEGIC BUSINESSES WOODEN BOARD -->
     <div class="relative pt-3">
       <!-- Raised Wooden Nameplate Tab (Top-Left) -->
-      <div class="inline-flex items-center gap-2.5 pixel-wood rpg-rivets px-4 py-1.5 ml-3 -mb-3 relative z-20">
+      <div class="inline-flex items-center gap-2 pixel-wood rpg-rivets px-3 sm:px-4 py-1 sm:py-1.5 ml-2 sm:ml-3 -mb-3 relative z-20 max-w-[90%]">
         <img
           src="/assets/sprites/icon-shop.png"
           alt="Loja"
-          class="w-7 h-6 object-contain"
+          class="w-6 h-5 sm:w-7 sm:h-6 object-contain shrink-0"
         />
-        <h2 class="font-extrabold text-sm sm:text-[15px] text-[#fff6e0] tracking-wide rpg-text-outline-sm">
+        <h2 class="font-extrabold text-xs sm:text-sm md:text-[15px] text-[#fff6e0] tracking-wide rpg-text-outline-sm truncate">
           Negócios Estratégicos & Gestão Autônoma
         </h2>
       </div>
 
       <!-- Main Wooden Container Frame -->
-      <div class="pixel-wood rpg-rivets p-3.5 pt-5">
+      <div class="pixel-wood rpg-rivets p-2.5 sm:p-3.5 pt-4 sm:pt-5">
         <!-- Top Wooden Horizontal Beam Decoration -->
         <div class="flex items-center justify-between mb-3 px-1 flex-wrap gap-2">
           <span class="text-[11px] text-[#d9bc8c] font-medium">

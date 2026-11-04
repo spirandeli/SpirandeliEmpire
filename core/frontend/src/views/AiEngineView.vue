@@ -43,6 +43,14 @@
               : '🦙 MODO 100% LOCAL (Insira a API Key abaixo para ativar divisão)' }}
           </span>
           <button
+            v-if="userAccess.is_owner"
+            @click="showAvailabilityConfig = !showAvailabilityConfig"
+            class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs transition"
+          >
+            🛡️ {{ showAvailabilityConfig ? 'Fechar Controle de IAs' : 'IAs Disponíveis & Acesso Gemini' }}
+          </button>
+          <button
+            v-if="userAccess.is_owner"
             @click="showKeyConfig = !showKeyConfig"
             class="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs transition"
           >
@@ -50,6 +58,274 @@
           </button>
         </div>
       </div>
+
+      <!-- Current Login Access Status Pill -->
+      <div class="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono">
+        <div class="flex items-center gap-2">
+          <span class="text-sm">{{ userAccess.can_use_gemini ? '👑' : '🔒' }}</span>
+          <span class="text-slate-300">
+            Login Ativo:
+            <strong class="text-white">{{ userAccess.user_name || 'Comandante' }}</strong>
+            <span v-if="userAccess.user_email" class="text-slate-400">({{ userAccess.user_email }})</span>
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span
+            class="px-2.5 py-0.5 rounded border text-[10px] font-bold"
+            :class="userAccess.can_use_gemini
+              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-700'
+              : 'bg-rose-950/90 text-rose-300 border-rose-700'"
+          >
+            {{ userAccess.can_use_gemini
+              ? '✓ ACESSO AO GEMINI 3.8 FLASH LIBERADO NESTE LOGIN'
+              : '🔒 GEMINI RESTRITO AO COMANDANTE (USANDO LLAMA LOCAL)' }}
+          </span>
+          <span class="px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-700 text-[10px]">
+            Política: {{ availabilityForm.gemini_access_policy === 'owner_only' ? 'Exclusivo Meu Login' : (availabilityForm.gemini_access_policy === 'selected_users' ? 'Logins Selecionados' : 'Todos os Perfis') }}
+          </span>
+        </div>
+      </div>
+
+      <!-- ====================================================================== -->
+      <!-- PAINEL DE SELEÇÃO DE TIPOS DE IA DISPONIBILIZADOS & RESTRIÇÃO GEMINI -->
+      <!-- ====================================================================== -->
+      <form
+        v-if="showAvailabilityConfig && userAccess.is_owner"
+        @submit.prevent="saveAvailabilityConfig"
+        class="p-5 rounded-xl bg-slate-950/95 border border-amber-700/70 space-y-5 text-xs font-mono"
+      >
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div>
+            <h4 class="text-sm font-bold text-amber-400 uppercase flex items-center gap-2">
+              <span>🛡️</span>
+              <span>Configuração de Tipos de IA Disponibilizados & Restrição de Login (Gemini)</span>
+            </h4>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Selecione quais motores e modos de IA ficam disponíveis no sistema e mantenha o Google Gemini 3.8 Flash restrito exclusivamente ao seu login.
+            </p>
+          </div>
+          <span class="text-[10px] px-2.5 py-1 rounded bg-amber-950/80 text-amber-300 border border-amber-700 shrink-0">
+            👑 Exclusivo do Login Comandante
+          </span>
+        </div>
+
+        <!-- 1. Seleção dos Tipos de IA Disponibilizados -->
+        <div class="space-y-2.5">
+          <div class="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">
+            1. Tipos de IA que você deseja disponibilizar no Sistema:
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Hybrid Cooperative -->
+            <label
+              class="p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-2"
+              :class="availabilityForm.enabled_providers.hybrid
+                ? 'bg-cyan-950/40 border-cyan-600 text-slate-100'
+                : 'bg-slate-900/50 border-slate-800 text-slate-500'"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-cyan-300">⚡ IA Híbrida Cooperativa</span>
+                <input type="checkbox" v-model="availabilityForm.enabled_providers.hybrid" class="accent-cyan-400 w-4 h-4" />
+              </div>
+              <div class="text-[10px] leading-relaxed text-slate-400">
+                Llama Local lê e analisa os dados brutos; Gemini 3.8 Flash ou ChatGPT executa a tarefa final.
+              </div>
+            </label>
+
+            <!-- Google Gemini 3.8 Flash -->
+            <label
+              class="p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-2"
+              :class="availabilityForm.enabled_providers.gemini
+                ? 'bg-emerald-950/40 border-emerald-600 text-slate-100'
+                : 'bg-slate-900/50 border-slate-800 text-slate-500'"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-emerald-300">✨ Google Gemini 3.8 Flash</span>
+                <input type="checkbox" v-model="availabilityForm.enabled_providers.gemini" class="accent-emerald-400 w-4 h-4" />
+              </div>
+              <div class="text-[10px] leading-relaxed text-slate-400">
+                Executor principal cloud (1M tokens, multimodal, voz e imagens). Respeita a trava de login abaixo.
+              </div>
+            </label>
+
+            <!-- OpenAI ChatGPT -->
+            <label
+              class="p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-2"
+              :class="availabilityForm.enabled_providers.openai
+                ? 'bg-amber-950/40 border-amber-600 text-slate-100'
+                : 'bg-slate-900/50 border-slate-800 text-slate-500'"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-amber-300">🤖 OpenAI GPT-4o-mini</span>
+                <input type="checkbox" v-model="availabilityForm.enabled_providers.openai" class="accent-amber-400 w-4 h-4" />
+              </div>
+              <div class="text-[10px] leading-relaxed text-slate-400">
+                Executor cloud alternativo para copywriting avançado e contingência automática.
+              </div>
+            </label>
+
+            <!-- Ollama Llama Local -->
+            <label
+              class="p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-2"
+              :class="availabilityForm.enabled_providers.ollama
+                ? 'bg-purple-950/40 border-purple-600 text-slate-100'
+                : 'bg-slate-900/50 border-slate-800 text-slate-500'"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs text-purple-300">🦙 Llama / Qwen Local</span>
+                <input type="checkbox" v-model="availabilityForm.enabled_providers.ollama" class="accent-purple-400 w-4 h-4" />
+              </div>
+              <div class="text-[10px] leading-relaxed text-slate-400">
+                IA 100% local no container Ollama (qwen2.5:3b) a custo R$ 0,00 para leitura, triagem e fallback.
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. Recursos e Módulos Inteligentes Disponibilizados -->
+        <div class="space-y-2.5">
+          <div class="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">
+            2. Recursos e Módulos de IA Ativos no Jeffrey:
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" v-model="availabilityForm.enabled_capabilities.cooperative_pipeline" class="accent-cyan-400 mt-0.5 w-4 h-4" />
+              <div>
+                <div class="font-bold text-slate-200 text-xs">⛓️ Pipeline Encadeado (2 Tasks)</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Cria automaticamente Task #1 (Pesquisa) e Task #2 (Hooks de 3s aguardando a 1ª).</div>
+              </div>
+            </label>
+            <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" v-model="availabilityForm.enabled_capabilities.live_web_search" class="accent-cyan-400 mt-0.5 w-4 h-4" />
+              <div>
+                <div class="font-bold text-slate-200 text-xs">🌐 Pesquisa Web Ao Vivo Anti-Alucinação</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Consulta preços reais e produtos virais na web antes de responder, bloqueando links inventados.</div>
+              </div>
+            </label>
+            <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" v-model="availabilityForm.enabled_capabilities.voice_and_attachments" class="accent-cyan-400 mt-0.5 w-4 h-4" />
+              <div>
+                <div class="font-bold text-slate-200 text-xs">🎙️ Multimodalidade (Voz, Áudio & Anexos)</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Permite envio de mensagens de voz gravadas, prints, PDFs e planilhas no chat do Jeffrey.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 3. Restrição de Acesso ao Gemini por Login -->
+        <div class="p-4 rounded-xl bg-slate-900/90 border border-amber-800/60 space-y-4">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div class="text-xs font-bold text-amber-300 uppercase flex items-center gap-1.5">
+                <span>🔒</span>
+                <span>3. Restrição de Acesso ao Google Gemini por Login</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-0.5">
+                Garante que apenas o seu login consuma a chave do Gemini 3.8 Flash. Outros logins serão roteados automaticamente para a IA padrão definida ao lado.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] text-amber-400 mb-1 font-bold">Quem pode usar o Google Gemini?</label>
+              <select
+                v-model="availabilityForm.gemini_access_policy"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:border-amber-500 outline-none"
+              >
+                <option value="owner_only">👑 Exclusivo ao Meu Login Principal (Recomendado)</option>
+                <option value="selected_users">👥 Meu Login + Perfis Selecionados Abaixo</option>
+                <option value="all_users">🌐 Liberado para Todos os Perfis Logados</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[10px] text-cyan-400 mb-1 font-bold">E-mail do Seu Login Proprietário (Dono do Gemini)</label>
+              <input
+                v-model="availabilityForm.gemini_owner_email"
+                type="email"
+                placeholder="Ex: comandante@spirandeliempire.tech"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:border-cyan-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[10px] text-purple-400 mb-1 font-bold">IA Padrão para Outros Logins (Sem Acesso ao Gemini)</label>
+              <select
+                v-model="availabilityForm.default_provider_for_others"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:border-purple-500 outline-none"
+              >
+                <option value="ollama">🦙 Llama Local via Ollama (Custo R$ 0,00)</option>
+                <option value="openai">🤖 OpenAI GPT-4o-mini (se ativa)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Lista de Perfis Cadastrados e Status de Acesso ao Gemini -->
+          <div v-if="registeredUsers.length > 0" class="space-y-2 pt-2 border-t border-slate-800">
+            <div class="text-[10px] text-slate-400 font-bold uppercase">
+              Perfis Cadastrados no Sistema & Permissão do Gemini:
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div
+                v-for="u in registeredUsers"
+                :key="u.id"
+                class="p-2.5 rounded-lg border flex items-center justify-between gap-2"
+                :class="(u.is_owner || availabilityForm.gemini_access_policy === 'all_users' || (availabilityForm.gemini_access_policy === 'selected_users' && availabilityForm.gemini_allowed_user_ids.includes(u.id)))
+                  ? 'bg-emerald-950/30 border-emerald-800/70 text-slate-200'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-400'"
+              >
+                <div class="min-w-0">
+                  <div class="font-bold text-xs truncate flex items-center gap-1.5">
+                    <span>{{ u.is_owner ? '👑' : '👤' }}</span>
+                    <span>{{ u.name }}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 truncate">{{ u.email }}</div>
+                </div>
+
+                <div class="shrink-0 flex items-center gap-2">
+                  <span
+                    v-if="u.is_owner"
+                    class="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 text-[9px] font-bold"
+                  >
+                    SEU LOGIN (DONO)
+                  </span>
+                  <label
+                    v-else-if="availabilityForm.gemini_access_policy === 'selected_users'"
+                    class="flex items-center gap-1 text-[10px] cursor-pointer text-cyan-300"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="u.id"
+                      v-model="availabilityForm.gemini_allowed_user_ids"
+                      class="accent-cyan-400"
+                    />
+                    <span>Permitir Gemini</span>
+                  </label>
+                  <span
+                    v-else
+                    class="px-2 py-0.5 rounded text-[9px] font-bold border"
+                    :class="availabilityForm.gemini_access_policy === 'all_users'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      : 'bg-rose-950/80 text-rose-300 border-rose-800'"
+                  >
+                    {{ availabilityForm.gemini_access_policy === 'all_users' ? 'Liberado' : 'Bloqueado (Usa Llama)' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button
+            type="submit"
+            :disabled="savingAvailability"
+            class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
+          >
+            {{ savingAvailability ? 'Salvando Permissões...' : '💾 Salvar IAs Disponíveis & Restrição do Meu Login' }}
+          </button>
+        </div>
+      </form>
 
       <!-- Collapsible API Key Configurator -->
       <form
@@ -556,11 +832,59 @@ const loadingStatus = ref(false)
 const testingProvider = ref(null)
 const testResult = ref(null)
 const showKeyConfig = ref(false)
+const showAvailabilityConfig = ref(true)
 const savingKeys = ref(false)
+const savingAvailability = ref(false)
 const keyForm = ref({
   gemini_api_key: '',
   openai_api_key: '',
 })
+
+const userAccess = ref({
+  user_id: null,
+  user_name: 'Comandante',
+  user_email: '',
+  is_owner: true,
+  can_use_gemini: true,
+  available_options: [],
+})
+
+const registeredUsers = ref([])
+
+const availabilityForm = ref({
+  enabled_providers: {
+    ollama: true,
+    gemini: true,
+    openai: true,
+    hybrid: true,
+  },
+  enabled_capabilities: {
+    cooperative_pipeline: true,
+    voice_and_attachments: true,
+    live_web_search: true,
+  },
+  gemini_access_policy: 'owner_only',
+  gemini_owner_email: '',
+  gemini_allowed_user_ids: [],
+  default_provider_for_others: 'ollama',
+})
+
+const saveAvailabilityConfig = async () => {
+  savingAvailability.value = true
+  try {
+    const res = await axios.post('/api/v1/ai-engine/configure-availability', availabilityForm.value)
+    testResult.value = {
+      provider: 'CATÁLOGO DE IAs & RESTRIÇÃO DE LOGIN GEMINI',
+      success: true,
+      message: res.data?.message || 'Configuração de IAs disponibilizadas e restrição de login salva com sucesso!',
+    }
+    await fetchEngineStatus()
+  } catch (err) {
+    alert(err.response?.data?.message || 'Erro ao salvar configuração de IAs disponíveis.')
+  } finally {
+    savingAvailability.value = false
+  }
+}
 
 const saveApiKeys = async () => {
   savingKeys.value = true
@@ -636,6 +960,35 @@ const fetchEngineStatus = async () => {
     }
     if (res.data?.token_governance) {
       tokenGov.value = res.data.token_governance
+    }
+    if (res.data?.user_access) {
+      userAccess.value = res.data.user_access
+      if (!userAccess.value.can_use_gemini && selectedProvider.value === 'gemini') {
+        selectedProvider.value = 'ollama'
+      }
+    }
+    if (res.data?.registered_users) {
+      registeredUsers.value = res.data.registered_users
+    }
+    if (res.data?.availability_config) {
+      const cfg = res.data.availability_config
+      availabilityForm.value = {
+        enabled_providers: {
+          ollama: cfg.enabled_providers?.ollama ?? true,
+          gemini: cfg.enabled_providers?.gemini ?? true,
+          openai: cfg.enabled_providers?.openai ?? true,
+          hybrid: cfg.enabled_providers?.hybrid ?? true,
+        },
+        enabled_capabilities: {
+          cooperative_pipeline: cfg.enabled_capabilities?.cooperative_pipeline ?? true,
+          voice_and_attachments: cfg.enabled_capabilities?.voice_and_attachments ?? true,
+          live_web_search: cfg.enabled_capabilities?.live_web_search ?? true,
+        },
+        gemini_access_policy: cfg.gemini_access_policy || 'owner_only',
+        gemini_owner_email: cfg.gemini_owner_email || userAccess.value.user_email || '',
+        gemini_allowed_user_ids: Array.isArray(cfg.gemini_allowed_user_ids) ? cfg.gemini_allowed_user_ids : [],
+        default_provider_for_others: cfg.default_provider_for_others || 'ollama',
+      }
     }
   } catch (e) {
     console.error('Falha ao obter status do AI Engine', e)

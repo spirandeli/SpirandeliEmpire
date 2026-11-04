@@ -196,6 +196,34 @@ def _get_active_api_keys() -> Tuple[str, str]:
     return g_key, o_key
 
 
+def _get_ai_availability_config() -> Dict[str, Any]:
+    """Read AI availability & login access control configuration saved by Commander."""
+    defaults = {
+        "enabled_providers": {
+            "ollama": True,
+            "gemini": True,
+            "openai": True,
+            "hybrid": True,
+        },
+        "gemini_access_policy": "owner_only",
+        "default_provider_for_others": "ollama",
+    }
+    try:
+        r = get_redis_client()
+        raw = r.get("empire:ai:config")
+        if raw:
+            cfg = json.loads(raw)
+            if isinstance(cfg.get("enabled_providers"), dict):
+                defaults["enabled_providers"].update(cfg["enabled_providers"])
+            if cfg.get("gemini_access_policy"):
+                defaults["gemini_access_policy"] = cfg["gemini_access_policy"]
+            if cfg.get("default_provider_for_others"):
+                defaults["default_provider_for_others"] = cfg["default_provider_for_others"]
+    except Exception:
+        pass
+    return defaults
+
+
 def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google_search: bool = False) -> Optional[Dict[str, Any]]:
     g_key, _ = _get_active_api_keys()
     if len(g_key) <= 10:
@@ -393,17 +421,30 @@ def _llama_read_and_analyze(raw_context: str, task_goal: str) -> Optional[Dict[s
     return query_ollama(analysis_prompt, analysis_system)
 
 
-def determine_optimal_provider(estimated_tokens: int, requested_provider: Optional[str] = None, task_role: str = "execute_task") -> Tuple[str, str]:
+def determine_optimal_provider(
+    estimated_tokens: int,
+    requested_provider: Optional[str] = None,
+    task_role: str = "execute_task",
+    allow_gemini: bool = True,
+) -> Tuple[str, str]:
     g_key, o_key = _get_active_api_keys()
-    has_gemini = len(g_key) > 10
-    has_openai = len(o_key) > 10
+    avail_cfg = _get_ai_availability_config()
+    enabled_provs = avail_cfg.get("enabled_providers", {})
+    has_gemini = len(g_key) > 10 and bool(enabled_provs.get("gemini", True)) and allow_gemini
+    has_openai = len(o_key) > 10 and bool(enabled_provs.get("openai", True))
 
     if requested_provider and requested_provider not in ("hybrid", "auto"):
+        if requested_provider == "gemini" and not has_gemini:
+            fallback_p = "openai" if has_openai else "ollama"
+            return fallback_p, f"Acesso ao Gemini restrito ao login do Comandante ou desativado. Redirecionado para {fallback_p}."
+        if requested_provider == "openai" and not has_openai:
+            fallback_p = "gemini" if has_gemini else "ollama"
+            return fallback_p, f"OpenAI desativado ou sem chave. Redirecionado para {fallback_p}."
         if requested_provider in ("ollama", "llama") and estimated_tokens > 6000 and has_gemini:
             return "gemini", f"Contexto de {estimated_tokens} tokens excede janela segura do Llama local. Delegado ao Gemini."
         return requested_provider, f"Provedor {requested_provider} requisitado explicitamente."
 
-    # Cooperative Division when Gemini or OpenAI API Key is configured:
+    # Cooperative Division when Gemini or OpenAI API Key is configured and permitted:
     # - Llama Local (Ollama) -> Read & Analyze ('read_analyze')
     # - Gemini or OpenAI Chat -> Execute Tasks ('execute_task')
     if has_gemini or has_openai:
@@ -413,17 +454,25 @@ def determine_optimal_provider(estimated_tokens: int, requested_provider: Option
             return "gemini", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao Google Gemini (após leitura/análise do Llama)."
         return "openai", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao OpenAI Chat (após leitura/análise do Llama)."
 
-    return "ollama", f"Provedores cloud não configurados; executando localmente no Ollama (~{estimated_tokens} tokens)."
+    return "ollama", f"Provedores cloud não disponíveis para este login; executando localmente no Ollama (~{estimated_tokens} tokens)."
 
 
-def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: Optional[str] = None, task_role: str = "execute_task") -> Dict[str, Any]:
+def query_ai_engine(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    provider: Optional[str] = None,
+    task_role: str = "execute_task",
+    allow_gemini: bool = True,
+) -> Dict[str, Any]:
     """Execute AI inference with smart provider routing (Llama = Read/Analyze, Gemini/OpenAI = Execute) and full fallback chain."""
     full_text = prompt + (" " + system_prompt if system_prompt else "")
     est_tokens = estimate_tokens(full_text)
-    optimal_prov, delegation_reason = determine_optimal_provider(est_tokens, provider, task_role)
+    optimal_prov, delegation_reason = determine_optimal_provider(est_tokens, provider, task_role, allow_gemini)
     g_key, o_key = _get_active_api_keys()
-    has_gemini = len(g_key) > 10
-    has_openai = len(o_key) > 10
+    avail_cfg = _get_ai_availability_config()
+    enabled_provs = avail_cfg.get("enabled_providers", {})
+    has_gemini = len(g_key) > 10 and bool(enabled_provs.get("gemini", True)) and allow_gemini
+    has_openai = len(o_key) > 10 and bool(enabled_provs.get("openai", True))
 
     logger.info(f"Token analysis: ~{est_tokens} tokens | Role: [{task_role}] | Routing: [{optimal_prov}] | {delegation_reason}")
     prov = optimal_prov
@@ -1396,8 +1445,13 @@ def process_task(task: Dict[str, Any]) -> None:
             })
 
         task_role = _classify_task_role(prompt, task_type)
+        allow_gemini = bool(payload.get("allow_gemini", True))
+        avail_cfg = _get_ai_availability_config()
+        enabled_provs = avail_cfg.get("enabled_providers", {})
         g_key, o_key = _get_active_api_keys()
-        cloud_executor_ready = (len(g_key) > 10 or len(o_key) > 10) and provider not in ("ollama", "llama")
+        has_gemini_allowed = len(g_key) > 10 and bool(enabled_provs.get("gemini", True)) and allow_gemini
+        has_openai_allowed = len(o_key) > 10 and bool(enabled_provs.get("openai", True))
+        cloud_executor_ready = (has_gemini_allowed or has_openai_allowed) and provider not in ("ollama", "llama")
 
         llama_analysis_block = ""
         llama_analyzer_model = None
@@ -1427,7 +1481,7 @@ def process_task(task: Dict[str, Any]) -> None:
                     )
 
             if r_live:
-                exec_name = "Google Gemini" if len(g_key) > 10 else "OpenAI ChatGPT"
+                exec_name = "Google Gemini" if has_gemini_allowed else "OpenAI ChatGPT"
                 _set_worker_state(r_live, {
                     "status": "working",
                     "task_id": task_id,
@@ -1438,8 +1492,8 @@ def process_task(task: Dict[str, Any]) -> None:
                     "started_at": datetime.utcnow().isoformat()
                 })
 
-        logger.info(f"Task [#{task_id}] querying AI engine (provider={provider or 'auto'}, role={task_role})...")
-        ai_result = query_ai_engine(enriched_prompt, system_prompt, provider, task_role)
+        logger.info(f"Task [#{task_id}] querying AI engine (provider={provider or 'auto'}, role={task_role}, allow_gemini={allow_gemini})...")
+        ai_result = query_ai_engine(enriched_prompt, system_prompt, provider, task_role, allow_gemini=allow_gemini)
 
         # Post-processing anti-hallucination guard: replace any invented tiktokshop.com.br/slug URLs with real TikTok search URLs
         if ai_result.get("success") and ai_result.get("response"):

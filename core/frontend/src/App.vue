@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative flex h-screen w-screen overflow-hidden p-2.5 sm:p-3.5 gap-3 sm:gap-4 bg-[#1a2e12] bg-cover bg-center"
+    class="relative flex h-[100dvh] w-screen overflow-hidden p-1.5 sm:p-2.5 md:p-3.5 gap-2 sm:gap-3 md:gap-4 bg-[#1a2e12] bg-cover bg-center select-none"
     style="background-image: url('/assets/rpg-village-bg.jpg');"
   >
     <!-- Subtle warm vignette so UI panels pop clearly over the village -->
@@ -186,56 +186,104 @@
     </div>
 
     <template v-else>
-      <!-- Left Column: Profile + RPG Sidebar + Bottom Jeffrey Status -->
+      <!-- Desktop Sidebar (>= 1024px) -->
       <Sidebar
-        class="relative z-20 shrink-0"
+        class="hidden lg:flex relative z-20 shrink-0"
         :user="currentUser"
+        :is-collapsed="sidebarCollapsed"
         @open-profile="openProfileModal"
       />
 
-      <!-- Right Column: Top Server Bar + Main Content Area -->
-      <div class="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden gap-3">
+      <!-- Mobile / Tablet Drawer (< 1024px) with Backdrop -->
+      <div
+        v-if="mobileMenuOpen"
+        class="lg:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex transition-opacity"
+        @click.self="mobileMenuOpen = false"
+      >
+        <Sidebar
+          class="h-full z-10 shadow-2xl"
+          :user="currentUser"
+          :is-mobile="true"
+          @close-mobile="mobileMenuOpen = false"
+          @open-profile="openProfileModal(); mobileMenuOpen = false"
+        />
+      </div>
+
+      <!-- Main Column: Top Server Bar + Viewport Area + Bottom Mobile Dock -->
+      <div class="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden gap-2 sm:gap-3">
         <Header
           class="shrink-0"
           :user="currentUser"
+          :is-collapsed="sidebarCollapsed"
           @open-profile="openProfileModal"
+          @toggle-menu="mobileMenuOpen = !mobileMenuOpen"
+          @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
           @logout="logoutCommander"
         />
-        <main class="flex-1 overflow-y-auto pr-1 pb-6">
+        <main class="flex-1 overflow-y-auto pr-0.5 sm:pr-1 pb-16 md:pb-4">
           <router-view />
         </main>
       </div>
+
+      <!-- Bottom Mobile Dock (< 768px) -->
+      <nav
+        class="md:hidden fixed bottom-0 left-0 right-0 z-40 pixel-wood rpg-rivets px-2 py-1.5 flex items-center justify-around border-t-2 border-[#1e0d04] shadow-[0_-4px_10px_rgba(0,0,0,0.6)] select-none pb-safe"
+      >
+        <router-link
+          v-for="dockItem in mobileDock"
+          :key="dockItem.path"
+          :to="dockItem.path"
+          class="flex flex-col items-center justify-center py-1 px-2.5 rounded transition-all text-center relative"
+          :class="isActiveRoute(dockItem.path)
+            ? 'text-[#fbbf24] font-black'
+            : 'text-[#d9bc8c] hover:text-[#fff6df]'"
+        >
+          <span class="text-lg leading-none mb-0.5 relative">
+            {{ dockItem.icon }}
+          </span>
+          <span class="text-[9.5px] truncate rpg-text-outline-sm">{{ dockItem.name }}</span>
+        </router-link>
+
+        <button
+          type="button"
+          @click="mobileMenuOpen = true"
+          class="flex flex-col items-center justify-center py-1 px-2.5 rounded text-[#d9bc8c] hover:text-[#fff6df]"
+        >
+          <span class="text-lg leading-none mb-0.5">☰</span>
+          <span class="text-[9.5px] truncate rpg-text-outline-sm">Mais</span>
+        </button>
+      </nav>
     </template>
 
     <!-- MODAL: MEU PERFIL & SISTEMA DE CADASTROS -->
     <div
       v-if="showProfileModal"
-      class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
       @click.self="showProfileModal = false"
     >
-      <div class="w-full max-w-2xl pixel-wood rpg-rivets p-4 shadow-2xl my-auto">
-        <div class="pixel-wood-inset p-3 mb-3 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <img src="/assets/sprites/avatar.png" alt="Avatar" class="w-11 h-11 rounded border-2 border-[#f59e0b] object-cover" />
-            <div>
-              <h2 class="text-sm sm:text-base font-extrabold text-[#fff7e6] uppercase rpg-text-outline-sm">
+      <div class="w-full max-w-2xl pixel-wood rpg-rivets p-3 sm:p-4 shadow-2xl my-auto max-h-[94vh] overflow-y-auto">
+        <div class="pixel-wood-inset p-2.5 sm:p-3 mb-3 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <img src="/assets/sprites/avatar.png" alt="Avatar" class="w-10 h-10 sm:w-11 sm:h-11 rounded border-2 border-[#f59e0b] object-cover shrink-0" />
+            <div class="min-w-0">
+              <h2 class="text-xs sm:text-base font-extrabold text-[#fff7e6] uppercase rpg-text-outline-sm truncate">
                 👤 Gestão de Perfil & Cadastros
               </h2>
-              <p class="text-[11px] text-[#d9bc8c]">
-                As informações deste perfil são salvas no banco e enviadas automaticamente ao Jeffrey AI
+              <p class="text-[10px] sm:text-[11px] text-[#d9bc8c] truncate">
+                As informações deste perfil são salvas no banco
               </p>
             </div>
           </div>
           <button
             @click="showProfileModal = false"
-            class="pixel-btn-red px-2.5 py-1 text-xs font-black"
+            class="pixel-btn-red px-2.5 py-1 text-xs font-black shrink-0"
           >
             ✕
           </button>
         </div>
 
         <!-- Sub-tabs inside modal: Editar Meu Perfil vs Perfis Cadastrados / Novo Perfil -->
-        <div class="flex gap-2 mb-3">
+        <div class="flex flex-wrap gap-2 mb-3">
           <button
             @click="profileTab = 'edit'"
             class="px-3 py-1.5 rounded text-xs font-extrabold uppercase border-2 transition"
@@ -530,9 +578,26 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
+
+const route = useRoute()
+const mobileMenuOpen = ref(false)
+const sidebarCollapsed = ref(false)
+
+const mobileDock = [
+  { name: 'Início', path: '/', icon: '🏠' },
+  { name: 'Jeffrey', path: '/jeffrey', icon: '🧙‍♂️' },
+  { name: 'Negócios', path: '/businesses', icon: '💼' },
+  { name: 'Factory', path: '/factory', icon: '🏭' },
+]
+
+const isActiveRoute = (path) => {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
 
 const isAuthenticated = ref(false)
 const authSetupRequired = ref(false)

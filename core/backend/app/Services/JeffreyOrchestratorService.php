@@ -145,9 +145,11 @@ class JeffreyOrchestratorService
             $tasksContext = implode(" | ", $taskLines);
         }
 
-        // Check if cloud providers (Gemini or OpenAI) are configured via .env or UI Config;
+        // Check if cloud providers (Gemini or OpenAI) are configured & authorized for this user login;
         // if running purely on CPU local Ollama, use a compact prompt (~160 tokens) so CPU prompt-evaluation takes ~2s.
-        $cloudConfigured = $this->aiGateway->isCloudExecutorConfigured();
+        $availabilityCfg = $this->aiGateway->getAiAvailabilityConfig();
+        $enabledCaps = $availabilityCfg['enabled_capabilities'] ?? [];
+        $cloudConfigured = $this->aiGateway->isCloudExecutorConfigured($user);
         $forceLocal = in_array($provider ?: env('AI_PROVIDER', 'hybrid'), ['ollama', 'llama'], true);
         $useCompactLocalPrompt = !$cloudConfigured || $forceLocal;
 
@@ -219,7 +221,8 @@ PROMPT;
         $fullPrompt = $conversationHistory . "Comandante: " . $userMessage;
 
         // Check upfront if this is a 2-stage chained pipeline mission (e.g. "Pesquise 10 produtos... e crie 3 hooks...")
-        $pipelineStages = $this->detectChainedPipelineStages($userMessage);
+        $pipelineAllowed = ($enabledCaps['cooperative_pipeline'] ?? true) !== false;
+        $pipelineStages = $pipelineAllowed ? $this->detectChainedPipelineStages($userMessage) : null;
 
         // Fast-path orchestration for 2-stage chained task pipelines:
         // Immediately create and enqueue Task #1 (Research) and Task #2 (Hooks/Copy waiting on Task #1)
@@ -274,7 +277,8 @@ PROMPT;
 
         // 4.5 Automatic Real-Time Web Search before AI generation when message asks for products, TikTok Shop, trends, prices, or web research
         $liveWebResults = [];
-        if (preg_match('/(pesquis|internet|web|tiktok|produto|viral|virais|tendência|tendencia|mercado|concorr|amazon|kdp|shopee|top\s*\d+|identific|levantamento|preço|preco|notícia|noticia|atual|hoje|2025|2026|vendido|afiliado)/iu', $userMessage)) {
+        $webSearchAllowed = ($enabledCaps['live_web_search'] ?? true) !== false;
+        if ($webSearchAllowed && preg_match('/(pesquis|internet|web|tiktok|produto|viral|virais|tendência|tendencia|mercado|concorr|amazon|kdp|shopee|top\s*\d+|identific|levantamento|preço|preco|notícia|noticia|atual|hoje|2025|2026|vendido|afiliado)/iu', $userMessage)) {
             $liveWebResults = $this->tools->performWebSearch($userMessage);
             if (!empty($liveWebResults)) {
                 $webBlockLines = ["<live_web_research_results>"];
@@ -309,18 +313,18 @@ PROMPT;
         }
         $fullPrompt .= "\n\nJeffrey:";
 
-        // 5. Query AI Gateway with Role Division (Llama = Read/Analyze, Gemini/OpenAI = Execute Tasks)
+        // 5. Query AI Gateway with Role Division (Llama = Read/Analyze, Gemini/OpenAI = Execute Tasks) & User Login Restriction
         $taskRole = $this->aiGateway->getTokenManager()->classifyTaskRole($userMessage);
         if (!empty($inlineMedia)) {
-            // Multimodal (Voice message, Image screenshot, or PDF) -> Gemini 3.8 Flash
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia);
+            // Multimodal (Voice message, Image screenshot, or PDF) -> Gemini 3.8 Flash (if authorized for user)
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia, $user);
         } elseif ($cloudConfigured && !$forceLocal && (!empty($attachedTextsForLlama) || preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage))) {
             $rawContextForLlama = !empty($attachedTextsForLlama)
                 ? implode("\n\n", $attachedTextsForLlama)
                 : "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
-            $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider);
+            $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider, $user);
         } else {
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole);
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole, [], $user);
         }
 
         if ($response['success']) {
@@ -510,7 +514,7 @@ PROMPT;
     /**
      * Legacy stateless chat method for backward compatibility (e.g. Telegram Bot / API direct).
      */
-    public function talk(string $message, ?int $businessId = null, ?string $provider = null): array
+    public function talk(string $message, ?int $businessId = null, ?string $provider = null, ?int $userId = null): array
     {
         // Auto-create or get latest system conversation
         $conversation = Conversation::firstOrCreate(
@@ -518,7 +522,7 @@ PROMPT;
             ['business_id' => $businessId]
         );
 
-        $assistantMsg = $this->talkInConversation($conversation, $message, $provider);
+        $assistantMsg = $this->talkInConversation($conversation, $message, $provider, $userId);
 
         return [
             'reply' => $assistantMsg->content,

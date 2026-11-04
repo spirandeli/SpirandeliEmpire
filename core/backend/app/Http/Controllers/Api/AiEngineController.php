@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\Redis;
 class AiEngineController extends Controller
 {
     /**
-     * Get consolidated status of all AI engines, cooperative role division, and token governance.
+     * Get consolidated status of all AI engines, cooperative role division, token governance, and user-level access permissions.
      */
-    public function status(AiGatewayService $aiGateway): JsonResponse
+    public function status(Request $request, AiGatewayService $aiGateway): JsonResponse
     {
-        $status = $aiGateway->getProvidersStatus();
+        $status = $aiGateway->getProvidersStatus($request->user());
 
         return response()->json(array_merge($status, [
             'tts_engine' => 'Piper (Local CPU pt_BR-faber-medium)',
@@ -29,57 +29,93 @@ class AiEngineController extends Controller
     }
 
     /**
-     * Save Gemini and/or OpenAI API keys dynamically so both PHP Backend and Python Worker
-     * immediately activate the cooperative mode (Llama = Read & Analyze, Gemini/Chat = Execute Tasks).
+     * Load existing dynamic AI config from Redis / PostgreSQL.
      */
-    public function configureKeys(Request $request): JsonResponse
+    protected function loadStoredAiConfig(): array
     {
-        $validated = $request->validate([
-            'gemini_api_key' => 'nullable|string|max:255',
-            'openai_api_key' => 'nullable|string|max:255',
-        ]);
-
         $existingConfig = [];
         try {
             $raw = Redis::get('empire:ai:config');
             if ($raw) {
                 $existingConfig = json_decode($raw, true) ?: [];
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {}
 
         if (empty($existingConfig)) {
-            $mem = JeffreyMemory::where('category', 'system_ai_keys')->where('is_active', true)->first();
-            if ($mem && !empty($mem->content)) {
-                $existingConfig = json_decode($mem->content, true) ?: [];
-            }
+            try {
+                $mem = JeffreyMemory::where('category', 'system_ai_keys')->where('is_active', true)->first();
+                if ($mem && !empty($mem->content)) {
+                    $existingConfig = json_decode($mem->content, true) ?: [];
+                }
+            } catch (\Throwable $e) {}
         }
 
-        if (array_key_exists('gemini_api_key', $validated) && $validated['gemini_api_key'] !== null) {
-            $existingConfig['gemini_api_key'] = trim($validated['gemini_api_key']);
-        }
-        if (array_key_exists('openai_api_key', $validated) && $validated['openai_api_key'] !== null) {
-            $existingConfig['openai_api_key'] = trim($validated['openai_api_key']);
-        }
-        $existingConfig['cooperative_mode'] = 'llama_analyze_cloud_execute';
-        $existingConfig['updated_at'] = now()->toIso8601String();
+        return is_array($existingConfig) ? $existingConfig : [];
+    }
 
-        // 1. Save to Redis for instant Python Worker + Laravel pickup
+    /**
+     * Save dynamic AI config to Redis and PostgreSQL.
+     */
+    protected function persistAiConfig(array $config): void
+    {
+        $config['updated_at'] = now()->toIso8601String();
+
         try {
-            Redis::set('empire:ai:config', json_encode($existingConfig));
-        } catch (\Exception $e) {}
+            Redis::set('empire:ai:config', json_encode($config));
+        } catch (\Throwable $e) {}
 
-        // 2. Persist in PostgreSQL JeffreyMemory so it survives Redis flushes
         try {
             JeffreyMemory::updateOrCreate(
                 ['category' => 'system_ai_keys', 'business_id' => null],
                 [
-                    'content' => json_encode($existingConfig),
+                    'key' => 'global_ai_config',
+                    'content' => json_encode($config),
                     'is_active' => true,
                 ]
             );
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {}
+    }
 
-        // 3. Best-effort update of .env if writable
+    /**
+     * Save Gemini and/or OpenAI API keys dynamically (restricted to the primary Commander login).
+     */
+    public function configureKeys(Request $request, AiGatewayService $aiGateway): JsonResponse
+    {
+        $user = $request->user();
+        if ($user && !$aiGateway->isOwnerUser($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Acesso negado: Somente o login principal do Comandante pode alterar as chaves de API.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'gemini_api_key' => 'nullable|string|max:255',
+            'openai_api_key' => 'nullable|string|max:255',
+        ]);
+
+        $existingConfig = $this->loadStoredAiConfig();
+
+        if (array_key_exists('gemini_api_key', $validated) && $validated['gemini_api_key'] !== null && trim($validated['gemini_api_key']) !== '') {
+            $existingConfig['gemini_api_key'] = trim($validated['gemini_api_key']);
+        }
+        if (array_key_exists('openai_api_key', $validated) && $validated['openai_api_key'] !== null && trim($validated['openai_api_key']) !== '') {
+            $existingConfig['openai_api_key'] = trim($validated['openai_api_key']);
+        }
+        $existingConfig['cooperative_mode'] = 'llama_analyze_cloud_execute';
+
+        // Bind Gemini owner to the Commander's login automatically when saving key
+        if ($user) {
+            $existingConfig['gemini_owner_user_id'] = (int) $user->id;
+            $existingConfig['gemini_owner_email'] = strtolower(trim((string) $user->email));
+            if (empty($existingConfig['gemini_access_policy'])) {
+                $existingConfig['gemini_access_policy'] = 'owner_only';
+            }
+        }
+
+        $this->persistAiConfig($existingConfig);
+
+        // Best-effort update of .env if writable
         try {
             $envPath = base_path('.env');
             if (File::exists($envPath) && File::isWritable($envPath)) {
@@ -100,14 +136,90 @@ class AiEngineController extends Controller
                 }
                 File::put($envPath, $envContent);
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {}
 
-        $aiGateway = app(AiGatewayService::class);
+        $freshGateway = app(AiGatewayService::class);
 
         return response()->json([
             'success' => true,
-            'message' => 'Chaves configuradas! Modo Cooperativo ativo: Llama Local para Ler/Analisar e Gemini/Chat para Executar Tarefas.',
-            'status' => $aiGateway->getProvidersStatus(),
+            'message' => 'Chaves salvas e vinculadas ao seu login de Comandante! Modo Cooperativo ativo.',
+            'status' => $freshGateway->getProvidersStatus($user),
+        ]);
+    }
+
+    /**
+     * Configure which AI types/models are enabled in the Empire OS and restrict Gemini access to the Commander's login.
+     */
+    public function configureAvailability(Request $request, AiGatewayService $aiGateway): JsonResponse
+    {
+        $user = $request->user();
+        if ($user && !$aiGateway->isOwnerUser($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Acesso negado: Somente o login principal do Comandante pode gerenciar a disponibilidade de IAs.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'enabled_providers' => 'required|array',
+            'enabled_providers.ollama' => 'required|boolean',
+            'enabled_providers.gemini' => 'required|boolean',
+            'enabled_providers.openai' => 'required|boolean',
+            'enabled_providers.hybrid' => 'required|boolean',
+            'enabled_capabilities' => 'nullable|array',
+            'enabled_capabilities.cooperative_pipeline' => 'nullable|boolean',
+            'enabled_capabilities.voice_and_attachments' => 'nullable|boolean',
+            'enabled_capabilities.live_web_search' => 'nullable|boolean',
+            'gemini_access_policy' => 'required|string|in:owner_only,selected_users,all_users',
+            'gemini_owner_email' => 'nullable|email',
+            'gemini_allowed_user_ids' => 'nullable|array',
+            'default_provider_for_others' => 'nullable|string|in:ollama,openai',
+        ]);
+
+        // Ensure at least one base provider (ollama, gemini, or openai) remains enabled
+        if (
+            empty($validated['enabled_providers']['ollama']) &&
+            empty($validated['enabled_providers']['gemini']) &&
+            empty($validated['enabled_providers']['openai'])
+        ) {
+            $validated['enabled_providers']['ollama'] = true;
+        }
+
+        $existingConfig = $this->loadStoredAiConfig();
+
+        $ownerUserId = $user ? (int) $user->id : (int) ($existingConfig['gemini_owner_user_id'] ?? 1);
+        $ownerEmail = strtolower(trim((string) ($validated['gemini_owner_email'] ?? ($user?->email ?: ($existingConfig['gemini_owner_email'] ?? env('ADMIN_EMAIL', 'admin@spirandeliempire.tech'))))));
+
+        $allowedIds = array_map('intval', $validated['gemini_allowed_user_ids'] ?? [$ownerUserId]);
+        if (!in_array($ownerUserId, $allowedIds, true)) {
+            $allowedIds[] = $ownerUserId;
+        }
+
+        $existingConfig['enabled_providers'] = [
+            'ollama' => (bool) $validated['enabled_providers']['ollama'],
+            'gemini' => (bool) $validated['enabled_providers']['gemini'],
+            'openai' => (bool) $validated['enabled_providers']['openai'],
+            'hybrid' => (bool) $validated['enabled_providers']['hybrid'],
+        ];
+        $existingConfig['enabled_capabilities'] = [
+            'cooperative_pipeline' => (bool) ($validated['enabled_capabilities']['cooperative_pipeline'] ?? true),
+            'voice_and_attachments' => (bool) ($validated['enabled_capabilities']['voice_and_attachments'] ?? true),
+            'live_web_search' => (bool) ($validated['enabled_capabilities']['live_web_search'] ?? true),
+        ];
+        $existingConfig['gemini_access_policy'] = $validated['gemini_access_policy'];
+        $existingConfig['gemini_owner_user_id'] = $ownerUserId;
+        $existingConfig['gemini_owner_email'] = $ownerEmail;
+        $existingConfig['gemini_allowed_user_ids'] = array_values(array_unique($allowedIds));
+        $existingConfig['default_provider_for_others'] = $validated['default_provider_for_others'] ?? 'ollama';
+
+        $this->persistAiConfig($existingConfig);
+
+        $freshGateway = app(AiGatewayService::class);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Configuração de disponibilidade de IAs e controle de acesso ao Gemini salva com sucesso!',
+            'status' => $freshGateway->getProvidersStatus($user),
         ]);
     }
 
@@ -120,13 +232,13 @@ class AiEngineController extends Controller
             'provider' => 'required|string|in:gemini,google,openai,ollama,llama',
         ]);
 
-        $result = $aiGateway->testProvider($request->input('provider'));
+        $result = $aiGateway->testProvider($request->input('provider'), $request->user());
 
         return response()->json($result);
     }
 
     /**
-     * Direct test completion across any provider with role & token measurement.
+     * Direct test completion across any provider with role, token measurement, and login access check.
      */
     public function complete(Request $request, AiGatewayService $aiGateway): JsonResponse
     {
@@ -136,12 +248,15 @@ class AiEngineController extends Controller
             'model' => 'nullable|string',
         ]);
 
+        $user = $request->user();
         $provider = $request->input('provider');
         if ($provider === 'cooperative') {
             $result = $aiGateway->analyzeWithLlamaThenExecute(
                 $request->input('prompt'),
                 $request->input('prompt'),
-                'Você é o motor cooperativo do SpirandeliEmpire OS. Use a análise prévia do Llama para executar a resposta final com precisão.'
+                'Você é o motor cooperativo do SpirandeliEmpire OS. Use a análise prévia do Llama para executar a resposta final com precisão.',
+                null,
+                $user
             );
             return response()->json($result);
         }
@@ -150,7 +265,10 @@ class AiEngineController extends Controller
             $request->input('prompt'),
             'Você é um assistente de validação do SpirandeliEmpire OS. Responda de forma concisa.',
             $provider,
-            $request->input('model')
+            $request->input('model'),
+            null,
+            [],
+            $user
         );
 
         return response()->json($result);
@@ -171,17 +289,17 @@ class AiEngineController extends Controller
         $estimatedTokens = $tokenManager->estimateTokens($text);
         $charLength = mb_strlen($text, 'UTF-8');
         $wordCount = count(preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY));
-        $status = $aiGateway->getProvidersStatus();
-        $geminiConfigured = (bool) ($status['providers']['google_gemini']['configured'] ?? false);
-        $openaiConfigured = (bool) ($status['providers']['openai']['configured'] ?? false);
+        $status = $aiGateway->getProvidersStatus($request->user());
+        $geminiAllowedAndConfigured = (bool) (($status['providers']['google_gemini']['configured'] ?? false) && ($status['user_access']['can_use_gemini'] ?? false));
+        $openaiAllowedAndConfigured = (bool) (($status['providers']['openai']['configured'] ?? false) && ($status['user_access']['can_use_openai'] ?? false));
 
         $delegation = $tokenManager->determineOptimalProvider(
             $estimatedTokens,
             $request->input('preferred_provider'),
             $text,
             $request->input('role'),
-            $geminiConfigured,
-            $openaiConfigured
+            $geminiAllowedAndConfigured,
+            $openaiAllowedAndConfigured
         );
 
         return response()->json([

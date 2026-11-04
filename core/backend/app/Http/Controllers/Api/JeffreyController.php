@@ -25,7 +25,8 @@ class JeffreyController extends Controller
         $result = $orchestrator->talk(
             $request->input('message'),
             $request->input('business_id'),
-            $request->input('provider')
+            $request->input('provider'),
+            $request->user()?->id
         );
 
         return response()->json($result);

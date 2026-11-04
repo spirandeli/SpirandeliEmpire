@@ -578,6 +578,18 @@ PROMPT;
                 if ($conversationId && empty($payloadData['conversation_id'])) {
                     $payloadData['conversation_id'] = $conversationId;
                 }
+                if ($userId && empty($payloadData['user_id'])) {
+                    $payloadData['user_id'] = $userId;
+                }
+                if (!isset($payloadData['allow_gemini'])) {
+                    try {
+                        $aiGateway = app(AiGatewayService::class);
+                        $u = $userId ? \App\Models\User::find($userId) : null;
+                        $payloadData['allow_gemini'] = $aiGateway->canUserAccessProvider($u, 'gemini');
+                    } catch (\Throwable $e) {
+                        $payloadData['allow_gemini'] = true;
+                    }
+                }
                 if (empty($payloadData['prompt'])) {
                     $payloadData['prompt'] = $arguments['prompt'] ?? $arguments['title'] ?? 'Executar tarefa solicitada';
                 }
