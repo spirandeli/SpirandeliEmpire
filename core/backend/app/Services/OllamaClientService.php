@@ -51,6 +51,22 @@ class OllamaClientService
                 ];
             }
 
+            if ($response->status() === 404 || str_contains($response->body(), 'not found')) {
+                $installed = $this->listModels();
+                if (!empty($installed)) {
+                    $firstModel = $installed[0]['name'] ?? null;
+                    if ($firstModel && $firstModel !== $targetModel) {
+                        Log::info("Modelo {$targetModel} não encontrado. Roteando automaticamente para modelo instalado: {$firstModel}");
+                        return $this->generate($prompt, $systemPrompt, $firstModel);
+                    }
+                }
+                return [
+                    'success' => false,
+                    'error' => "Nenhum modelo compatível no Ollama local. Baixe um modelo executando: docker compose exec -it ollama ollama pull qwen2.5:3b",
+                    'provider' => 'ollama_llama',
+                ];
+            }
+
             return [
                 'success' => false,
                 'error' => 'Ollama HTTP error: ' . $response->status(),

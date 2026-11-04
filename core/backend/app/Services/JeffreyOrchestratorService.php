@@ -133,9 +133,12 @@ PROMPT;
         // 5. Query AI Gateway
         $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider);
 
-        $replyText = $response['success'] 
-            ? $response['response'] 
-            : ("Olá, Comandante. O gateway de inteligência relatou indisponibilidade temporária. SpirandeliEmpire OS permanece online. Erro: " . ($response['error'] ?? 'Falha de conexão.'));
+        if ($response['success']) {
+            $replyText = $response['response'];
+        } else {
+            $errDetail = $response['error'] ?? 'Provedores de IA offline ou sem modelos carregados.';
+            $replyText = "Saudações, Comandante. Eu sou Jeffrey.\n\nRecebi sua solicitação: \"{$userMessage}\".\n\nO SpirandeliEmpire OS registrou a conversa com sucesso, porém o motor de inferência de IA relatou:\n> _{$errDetail}_\n\n**Para habilitar a geração de respostas completas:**\n1. **Modelo Local no Ollama (Custo R$ 0,00):** Baixe o modelo na VPS rodando:\n   `docker compose exec -it ollama ollama pull qwen2.5:3b`\n2. **Google Gemini (Free Tier 15 RPM):** Defina no arquivo `.env` da VPS:\n   `GEMINI_API_KEY=sua_chave_aqui`\n\nAssim que o modelo for baixado ou a chave for inserida, o SpirandeliEmpire OS responderá automaticamente através do gateway.";
+        }
 
         $toolCallsExecuted = [];
         $toolResults = [];

@@ -69,6 +69,7 @@ services:
     networks:
       - empire-network
       - internal-network
+      - ai-network
     depends_on:
       postgres:
         condition: service_healthy
@@ -286,6 +287,7 @@ services:
     networks:
       - empire-network
       - internal-network
+      - ai-network
     depends_on:
       - core-app
     deploy:

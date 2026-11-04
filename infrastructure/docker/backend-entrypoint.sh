@@ -9,3 +9,4 @@ if [ ! -f /var/www/backend/vendor/autoload.php ]; then
 fi
 
 exec "$@"
+

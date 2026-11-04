@@ -738,6 +738,16 @@
           chatMessages.value.push({ role: 'user', content: text, created_at: new Date().toISOString() })
           sendingMessage.value = true
 
+          if (!activeChatId.value) {
+            chatMessages.value.push({
+              role: 'assistant',
+              content: '⚠️ Falha de comunicação com o backend (sem conversa ativa). Certifique-se de executar "./scripts/update.sh" na VPS para instalar as dependências do composer e aplicar as migrations.',
+              provider: 'offline',
+            })
+            sendingMessage.value = false
+            return
+          }
+
           try {
             const res = await axios.post(`/api/v1/chat/conversations/${activeChatId.value}/messages`, {
               message: text,
@@ -747,9 +757,10 @@
               chatMessages.value.push(res.data.message)
             }
           } catch (err) {
+            const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Falha de comunicação.'
             chatMessages.value.push({
               role: 'assistant',
-              content: '[Jeffrey Modo Resiliente]: Erro ao contatar gateway. O sistema permanece ativo.',
+              content: `⚠️ [Jeffrey Alerta]: Falha ao processar mensagem: ${errMsg}\nExecute "./scripts/update.sh" na VPS para restabelecer a integridade do backend.`,
               provider: 'offline',
             })
           } finally {
@@ -794,7 +805,8 @@
               currentTab.value = 'businesses'
             }
           } catch (e) {
-            alert('Erro na criação: ' + (e.response?.data?.message || e.message))
+            const errText = typeof e.response?.data === 'string' ? 'Falha interna 500 no backend. Execute ./scripts/update.sh na VPS.' : (e.response?.data?.error || e.response?.data?.message || e.message)
+            alert('Erro na criação: ' + errText)
           } finally {
             factoryProvisioning.value = false
           }
