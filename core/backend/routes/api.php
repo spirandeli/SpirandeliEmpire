@@ -1,50 +1,90 @@
 <?php
 
+use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AiEngineController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\ApprovalController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\FinanceController;
 use App\Http\Controllers\Api\JeffreyController;
+use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\VpsManagerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
-    return response()->json(['status' => 'healthy', 'system' => 'SpirandeliEmpire OS', 'timestamp' => now()]);
+    return response()->json([
+        'status' => 'healthy',
+        'system' => 'SpirandeliEmpire OS',
+        'version' => '3.0.0',
+        'timestamp' => now()->toIso8601String(),
+    ]);
 });
 
 Route::prefix('v1')->group(function () {
-    // Dashboard Consolidated
+    // --- 1. Authentication ---
+    Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+    // --- 2. Dashboard Consolidated Telemetry ---
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-    // Business Management
+    // --- 3. Persistent Jeffrey Chat & Conversations ---
+    Route::get('/chat/conversations', [ChatController::class, 'listConversations']);
+    Route::post('/chat/conversations', [ChatController::class, 'createConversation']);
+    Route::get('/chat/conversations/{id}', [ChatController::class, 'getConversation']);
+    Route::patch('/chat/conversations/{id}', [ChatController::class, 'updateConversation']);
+    Route::delete('/chat/conversations/{id}', [ChatController::class, 'deleteConversation']);
+    Route::post('/chat/conversations/{id}/messages', [ChatController::class, 'sendMessage']);
+    Route::get('/chat/tools', [ChatController::class, 'listTools']);
+    Route::post('/chat/tools/execute', [ChatController::class, 'executeToolDirectly']);
+
+    // Legacy Jeffrey Endpoint (internal secret or direct talk)
+    Route::post('/jeffrey/chat', [JeffreyController::class, 'chat']);
+    Route::get('/jeffrey/memories', [JeffreyController::class, 'getMemories']);
+    Route::get('/jeffrey/decisions', [JeffreyController::class, 'getDecisions']);
+    Route::get('/jeffrey/approvals', [JeffreyController::class, 'getPendingApprovals']);
+
+    // --- 4. Projects & Workspaces ---
+    Route::get('/projects', [ProjectController::class, 'index']);
+    Route::post('/projects', [ProjectController::class, 'store']);
+    Route::get('/projects/{id}', [ProjectController::class, 'show']);
+    Route::get('/projects/{id}/files', [ProjectController::class, 'files']);
+    Route::post('/projects/{id}/read-file', [ProjectController::class, 'readFile']);
+
+    // --- 5. Business Management & Business Factory ---
     Route::get('/businesses', [BusinessController::class, 'index']);
     Route::post('/businesses', [BusinessController::class, 'store']);
     Route::get('/businesses/{id}', [BusinessController::class, 'show']);
     Route::patch('/businesses/{id}/status', [BusinessController::class, 'updateStatus']);
+    Route::delete('/businesses/{id}', [BusinessController::class, 'destroy']);
 
-    // Jeffrey AI
-    Route::middleware(['internal.secret'])->group(function () {
-        Route::post('/jeffrey/chat', [JeffreyController::class, 'chat']);
-        Route::get('/jeffrey/memories', [JeffreyController::class, 'getMemories']);
-        Route::get('/jeffrey/decisions', [JeffreyController::class, 'getDecisions']);
-        Route::get('/jeffrey/approvals', [JeffreyController::class, 'getPendingApprovals']);
-    });
+    // --- 6. Financial Management & Budget Ceiling ---
+    Route::get('/finance/summary', [FinanceController::class, 'summary']);
+    Route::get('/finance/records', [FinanceController::class, 'records']);
+    Route::post('/finance/expenses', [FinanceController::class, 'storeExpense']);
+    Route::post('/finance/revenues', [FinanceController::class, 'storeRevenue']);
+    Route::get('/analytics', [AnalyticsController::class, 'index']);
 
-    // Approvals Management
-    Route::get('/approvals', [ApprovalController::class, 'index']);
-    Route::post('/approvals/{id}/decide', [ApprovalController::class, 'decide']);
+    // --- 7. VPS Administration & Docker Real ---
+    Route::get('/vps/metrics', [VpsManagerController::class, 'metrics']);
+    Route::get('/vps/containers', [VpsManagerController::class, 'containers']);
+    Route::get('/vps/containers/{name}/logs', [VpsManagerController::class, 'containerLogs']);
 
-    // AI Engine (Google Gemini, OpenAI, Llama Local & Token Governance)
+    // --- 8. AI Engine & Specialized Agents ---
     Route::get('/ai-engine/status', [AiEngineController::class, 'status']);
     Route::post('/ai-engine/test-provider', [AiEngineController::class, 'testProvider']);
     Route::post('/ai-engine/complete', [AiEngineController::class, 'complete']);
     Route::post('/ai-engine/estimate-tokens', [AiEngineController::class, 'estimateTokens']);
+    Route::get('/agents', [AgentController::class, 'index']);
+    Route::post('/agents', [AgentController::class, 'store']);
+    Route::patch('/agents/{id}', [AgentController::class, 'update']);
 
-    // Analytics & Financials
-    Route::get('/analytics', [AnalyticsController::class, 'index']);
-
-    // VPS Admin
-    Route::get('/vps/metrics', [VpsManagerController::class, 'metrics']);
+    // --- 9. Approvals (Human-in-the-Loop) ---
+    Route::get('/approvals', [ApprovalController::class, 'index']);
+    Route::post('/approvals/{id}/decide', [ApprovalController::class, 'decide']);
 });
-

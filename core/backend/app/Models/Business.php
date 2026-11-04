@@ -41,5 +41,10 @@ class Business extends Model
     {
         return $this->hasMany(JeffreyMemory::class);
     }
+
+    public function conversations()
+    {
+        return $this->hasMany(Conversation::class);
+    }
 }
 

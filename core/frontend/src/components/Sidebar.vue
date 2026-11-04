@@ -77,6 +77,7 @@ const menu = [
   { name: 'Mestre Jeffrey (Chat & IA)', path: '/jeffrey', icon: '🧙‍♂️', badge: 'Active' },
   { name: 'Feudos Ativos (Businesses)', path: '/businesses', icon: '📜' },
   { name: 'Forja Mágica (Factory)', path: '/factory', icon: '⚒️' },
+  { name: 'Projetos & Workspace', path: '/projects', icon: '💼' },
   { name: 'Motor de Magia (AI Engine)', path: '/ai-engine', icon: '⚡' },
   { name: 'Quadro de Missões (Approvals)', path: '/approvals', icon: '📌' },
   { name: 'Cofre do Tesouro (Analytics)', path: '/analytics', icon: '🪙' },
