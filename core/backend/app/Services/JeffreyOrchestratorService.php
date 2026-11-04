@@ -87,10 +87,24 @@ class JeffreyOrchestratorService
         }
 
         // 3. System Prompt
-        $projectContext = $project ? "PROJETO SELECIONADO: {$project->name} ({$project->slug}) - Caminho: {$project->path} - Branch: {$project->git_branch}" : "Nenhum projeto específico selecionado no momento.";
-        $businessContext = $business ? "NEGÓCIO DIGITAL ATIVO: {$business->name} ({$business->category}) - Status: {$business->status} - Teto: R$ {$business->budget_limit_brl}" : "Nenhum negócio específico em foco.";
+        $projectContext = $project ? "PROJETO: {$project->name} ({$project->slug})" : "Sem projeto selecionado.";
+        $businessContext = $business ? "NEGÓCIO: {$business->name} ({$business->category}) - Teto: R$ {$business->budget_limit_brl}" : "Sem negócio específico em foco.";
 
-        $systemPrompt = <<<PROMPT
+        // Check if cloud providers are configured; if running purely on CPU local Ollama,
+        // use a compact prompt (~120 tokens) so CPU prompt-evaluation takes ~2s instead of >90s.
+        $cloudConfigured = !empty(env('GEMINI_API_KEY')) || !empty(env('OPENAI_API_KEY'));
+        $forceLocal = in_array($provider ?: env('AI_PROVIDER', 'hybrid'), ['ollama', 'llama'], true);
+        $useCompactLocalPrompt = !$cloudConfigured || $forceLocal;
+
+        if ($useCompactLocalPrompt) {
+            $systemPrompt = <<<PROMPT
+Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS.
+Orçamento mensal: R$ {$budgetStatus['current_spent_brl']} gastos de R$ {$budgetStatus['monthly_limit_brl']}.
+{$projectContext} | {$businessContext}
+Responda em português brasileiro com postura executiva, objetiva e direta (máximo 2 parágrafos curtos).
+PROMPT;
+        } else {
+            $systemPrompt = <<<PROMPT
 Você é Jeffrey, o agente executivo central e arquiteto de software do SpirandeliEmpire OS.
 Sua missão: Administrar o império, planejar novos negócios digitais, analisar código de projetos existentes, gerenciar tarefas e coordenar a VPS.
 
@@ -113,12 +127,14 @@ MEMÓRIA OPERACIONAL ATIVA:
 
 Responda sempre com postura executiva, clara, proativa, técnica e em português brasileiro.
 PROMPT;
+        }
 
-        // 4. Build message history (last 10 messages for token efficiency)
+        // 4. Build message history (keep short on local CPU to avoid timeout)
+        $historyLimit = $useCompactLocalPrompt ? 2 : 8;
         $previousMessages = Message::where('conversation_id', $conversation->id)
             ->where('id', '<', $userMsgRecord->id)
             ->orderBy('id', 'desc')
-            ->limit(8)
+            ->limit($historyLimit)
             ->get()
             ->reverse();
 

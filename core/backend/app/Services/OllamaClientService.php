@@ -65,13 +65,15 @@ class OllamaClientService
                 'model' => $targetModel,
                 'messages' => $messages,
                 'stream' => false,
+                'keep_alive' => '30m',
                 'options' => [
                     'num_ctx' => $numCtx,
+                    'num_predict' => (int) env('OLLAMA_MAX_TOKENS', 300),
                     'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.6),
                 ],
             ];
 
-            $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 90));
+            $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 180));
             $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/chat", $payload);
 
             // If /api/chat returned 500 (typically low RAM / context allocation failure on VPS),

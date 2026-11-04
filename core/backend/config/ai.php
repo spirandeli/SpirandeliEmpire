@@ -75,6 +75,6 @@ return [
     'ollama' => [
         'base_url' => env('OLLAMA_BASE_URL', 'http://ollama:11434'),
         'default_model' => env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'llama3.2:3b')),
-        'timeout_seconds' => (int) env('OLLAMA_TIMEOUT_SECONDS', 90),
+        'timeout_seconds' => (int) env('OLLAMA_TIMEOUT_SECONDS', 180),
     ],
 ];
