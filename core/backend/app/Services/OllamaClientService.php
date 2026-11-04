@@ -13,7 +13,34 @@ class OllamaClientService
     public function __construct()
     {
         $this->baseUrl = config('ai.ollama.base_url', env('OLLAMA_BASE_URL', 'http://ollama:11434'));
-        $this->defaultModel = config('ai.ollama.default_model', env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'llama3.2:3b')));
+        $this->defaultModel = config('ai.ollama.default_model', env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'qwen2.5:3b')));
+    }
+
+    /**
+     * Resolve which model to use: if the configured model is not installed, automatically pick an installed one.
+     */
+    protected function resolveAvailableModel(?string $requestedModel = null): string
+    {
+        $target = $requestedModel ?: $this->defaultModel;
+        $installed = $this->listModels();
+
+        if (empty($installed)) {
+            return $target;
+        }
+
+        $installedNames = array_values(array_filter(array_map(fn($m) => $m['name'] ?? null, $installed)));
+        if (in_array($target, $installedNames, true)) {
+            return $target;
+        }
+
+        // Prefer qwen2.5:3b or llama3.2:3b if present, otherwise first installed model
+        foreach (['qwen2.5:3b', 'llama3.2:3b', 'llama3.2:1b', 'qwen2.5:1.5b'] as $preferred) {
+            if (in_array($preferred, $installedNames, true)) {
+                return $preferred;
+            }
+        }
+
+        return $installedNames[0] ?? $target;
     }
 
     /**
@@ -21,37 +48,58 @@ class OllamaClientService
      */
     public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null): array
     {
-        $targetModel = $model ?: $this->defaultModel;
+        $targetModel = $this->resolveAvailableModel($model);
         $startTime = microtime(true);
 
         try {
-            // Use /api/chat with proper system/user roles (better instruction-following than /api/generate).
             $messages = [];
             if ($systemPrompt) {
                 $messages[] = ['role' => 'system', 'content' => $systemPrompt];
             }
             $messages[] = ['role' => 'user', 'content' => $prompt];
 
+            // Keep context window conservative (2048) on 8GB VPS so Ollama runner doesn't crash with HTTP 500 OOM
+            $numCtx = (int) env('OLLAMA_NUM_CTX', 2048);
+
             $payload = [
                 'model' => $targetModel,
                 'messages' => $messages,
                 'stream' => false,
                 'options' => [
-                    // Ollama defaults to a 2048-token context, which silently truncates Jeffrey's
-                    // system prompt (rules + tools + memories + history). Raise it explicitly.
-                    'num_ctx' => (int) env('JEFFREY_CONTEXT_WINDOW', 8192),
+                    'num_ctx' => $numCtx,
                     'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.6),
                 ],
             ];
 
             $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 90));
             $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/chat", $payload);
+
+            // If /api/chat returned 500 (typically low RAM / context allocation failure on VPS),
+            // retry with minimal context (1024) and compact system prompt via /api/generate
+            if ($response->status() >= 500) {
+                $errBody = $response->json('error') ?? $response->body();
+                Log::warning("Ollama /api/chat 500 ({$errBody}). Retrying with compact context (num_ctx=1024)...");
+
+                $compactSystem = "Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS. Responda em português brasileiro de forma clara, técnica e objetiva.";
+                $retryPayload = [
+                    'model' => $targetModel,
+                    'prompt' => $prompt,
+                    'system' => $compactSystem,
+                    'stream' => false,
+                    'options' => [
+                        'num_ctx' => 1024,
+                    ],
+                ];
+                $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/generate", $retryPayload);
+            }
+
             $latencyMs = round((microtime(true) - $startTime) * 1000);
 
             if ($response->successful()) {
+                $content = $response->json('message.content') ?? $response->json('response');
                 return [
                     'success' => true,
-                    'response' => $response->json('message.content'),
+                    'response' => $content,
                     'model' => $targetModel,
                     'provider' => 'ollama_llama',
                     'latency_ms' => $latencyMs,
@@ -60,25 +108,19 @@ class OllamaClientService
                 ];
             }
 
-            if ($response->status() === 404 || str_contains($response->body(), 'not found')) {
-                $installed = $this->listModels();
-                if (!empty($installed)) {
-                    $firstModel = $installed[0]['name'] ?? null;
-                    if ($firstModel && $firstModel !== $targetModel) {
-                        Log::info("Modelo {$targetModel} não encontrado. Roteando automaticamente para modelo instalado: {$firstModel}");
-                        return $this->generate($prompt, $systemPrompt, $firstModel);
-                    }
-                }
+            $ollamaError = $response->json('error') ?: trim(substr($response->body(), 0, 300));
+
+            if ($response->status() === 404 || str_contains(strtolower($ollamaError), 'not found')) {
                 return [
                     'success' => false,
-                    'error' => "Nenhum modelo compatível no Ollama local. Baixe um modelo executando: docker compose exec -it ollama ollama pull qwen2.5:3b",
+                    'error' => "Modelo '{$targetModel}' não encontrado no Ollama. Baixe executando: docker compose exec -it ollama ollama pull qwen2.5:3b",
                     'provider' => 'ollama_llama',
                 ];
             }
 
             return [
                 'success' => false,
-                'error' => 'Ollama HTTP error: ' . $response->status(),
+                'error' => "Ollama HTTP {$response->status()} ({$targetModel}): {$ollamaError}",
                 'provider' => 'ollama_llama',
             ];
         } catch (\Exception $e) {
