@@ -88,7 +88,7 @@ services:
     container_name: empire_worker
     restart: unless-stopped
     working_dir: /var/www/backend
-    command: php artisan queue:work redis --queue=default,high,low --tries=3 --timeout=120
+    command: sh -c "sleep 3 && php artisan queue:work redis --queue=default,high,low --tries=3 --timeout=120"
     environment:
       - APP_ENV=${APP_ENV:-production}
       - APP_KEY=${APP_KEY}
@@ -101,11 +101,13 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - QUEUE_CONNECTION=redis
     volumes:
       - ./core/backend:/var/www/backend
       - ./storage:/var/www/backend/storage
     networks:
       - internal-network
+      - ai-network
     depends_on:
       - core-app
     deploy:
@@ -229,12 +231,10 @@ services:
       - ./storage/businesses/tiktok-shop-afiliados/assets:/assets:ro
     environment:
       - COQUI_TOS_AGREED=1
+      - DEVICE=cpu
+      - DEEPSPEED=false
     networks:
       - ai-network
-    deploy:
-      resources:
-        limits:
-          memory: 3072M
 
   # --- TIKTOK SHOP: WORKFLOW ORCHESTRATOR (n8n) ---
   n8n:
