@@ -314,6 +314,14 @@ def main():
 
     while True:
         try:
+            # Update idle heartbeat if no task is running
+            _set_worker_state(r, {
+                "status": "idle",
+                "step": "Ocioso — Aguardando novas ordens ou tarefas assíncronas.",
+                "progress_percent": 0,
+                "updated_at": datetime.utcnow().isoformat()
+            })
+
             # Pop task from empire queue with timeout
             task_raw = r.brpop("empire:jeffrey:tasks", timeout=10)
             if task_raw:
@@ -338,6 +346,14 @@ def main():
             logger.exception(f"Erro inesperado no loop principal de tarefas: {e}")
             time.sleep(2)
 
+def _set_worker_state(r: redis.Redis, state: Dict[str, Any]) -> None:
+    """Publish live worker state to Redis for real-time UI progress tracking."""
+    try:
+        r.set("empire:jeffrey:worker_state", json.dumps(state), ex=180)
+    except Exception:
+        pass
+
+
 def _publish_task_result(r: redis.Redis, task_id: str, result: Dict[str, Any]) -> None:
     """Publish task result back to Redis so the Laravel backend can pick it up."""
     result_key = f"empire:jeffrey:results:{task_id}"
@@ -345,8 +361,34 @@ def _publish_task_result(r: redis.Redis, task_id: str, result: Dict[str, Any]) -
     r.publish("empire:jeffrey:results:channel", json.dumps({"task_id": task_id}))
 
 
-def _update_db_task_status(task_id: str, status: str, result: Dict[str, Any], error: Optional[str] = None) -> None:
-    """Update task record directly in PostgreSQL if task_id corresponds to a database record."""
+def _mark_db_task_in_progress(task_id: str) -> None:
+    """Mark task as in_progress in PostgreSQL when worker starts executing it."""
+    if not str(task_id).isdigit():
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "postgres"),
+            database=os.getenv("DB_DATABASE", "spirandeli_empire"),
+            user=os.getenv("DB_USERNAME", "empire_admin"),
+            password=os.getenv("DB_PASSWORD", ""),
+            connect_timeout=3
+        )
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE tasks
+                SET status = 'in_progress', started_at = NOW(), updated_at = NOW()
+                WHERE id = %s
+            """, (int(task_id),))
+            conn.commit()
+        conn.close()
+        logger.info(f"Task #{task_id} marked as [in_progress] in PostgreSQL.")
+    except Exception as e:
+        logger.warning(f"Could not mark task #{task_id} in_progress in PostgreSQL: {e}")
+
+
+def _update_db_task_status(task_id: str, status: str, result: Dict[str, Any], error: Optional[str] = None, conversation_id: Optional[Any] = None, agent_name: str = "Jeffrey") -> None:
+    """Update task record directly in PostgreSQL and optionally post finished reply to conversation."""
     if not str(task_id).isdigit():
         return
     try:
@@ -368,7 +410,30 @@ def _update_db_task_status(task_id: str, status: str, result: Dict[str, Any], er
                 UPDATE tasks 
                 SET status = %s, result = %s, error_message = %s, completed_at = NOW(), updated_at = NOW()
                 WHERE id = %s
+                RETURNING title
             """, (status, json.dumps(result), error, int(task_id)))
+            row = cur.fetchone()
+            task_title = row[0] if row else f"Tarefa #{task_id}"
+
+            if conversation_id and str(conversation_id).isdigit():
+                if status == "completed" and result.get("response"):
+                    msg_content = f"✅ **[Tarefa #{task_id} Concluída — {agent_name}]:** _{task_title}_\n\n{result.get('response')}"
+                else:
+                    msg_content = f"⚠️ **[Tarefa #{task_id} Finalizada com Alerta — {agent_name}]:** _{task_title}_\nMotivo: {error or 'Sem resposta do provedor.'}"
+
+                cur.execute("""
+                    INSERT INTO messages (conversation_id, role, content, provider, model, latency_ms, fallback_used, created_at, updated_at)
+                    VALUES (%s, 'assistant', %s, %s, %s, %s, %s, NOW(), NOW())
+                """, (
+                    int(conversation_id),
+                    msg_content,
+                    result.get("provider") or "worker",
+                    result.get("model") or "jeffrey-worker",
+                    int(result.get("latency_ms") or 0),
+                    bool(result.get("fallback_used", False))
+                ))
+                cur.execute("UPDATE conversations SET updated_at = NOW() WHERE id = %s", (int(conversation_id),))
+
             conn.commit()
         conn.close()
         logger.info(f"Task #{task_id} status updated to [{status}] in PostgreSQL.")
@@ -380,16 +445,35 @@ def process_task(task: Dict[str, Any]) -> None:
     """Process incoming empire task under strict security policies.
 
     Flow:
-      1. Validate action via Gatekeeper (budget + critical-action approval + command safety)
-      2. Build prompt from task payload
-      3. Query AI engine with smart provider routing
-      4. Publish result back to Redis for the Laravel API to consume
+      1. Mark task in_progress in DB & Redis live state
+      2. Validate action via Gatekeeper (budget + critical-action approval + command safety)
+      3. Build prompt from task payload
+      4. Query AI engine with smart provider routing
+      5. Publish result back to Redis and PostgreSQL (including conversation callback)
     """
-    task_id   = task.get("id", f"task_{int(time.time())}")
-    task_type = task.get("type", "unknown")
-    payload   = task.get("payload", {})
+    task_id    = task.get("id", f"task_{int(time.time())}")
+    task_type  = task.get("type", "unknown")
+    agent_name = task.get("agent_name", "Jeffrey")
+    payload    = task.get("payload", {})
+    conv_id    = payload.get("conversation_id")
+    task_title = payload.get("prompt", task_type)[:80]
 
-    logger.info(f"Processing task [{task_id}] type=[{task_type}]")
+    logger.info(f"Processing task [{task_id}] type=[{task_type}] agent=[{agent_name}]")
+    _mark_db_task_in_progress(task_id)
+
+    try:
+        r_live = get_redis_client()
+        _set_worker_state(r_live, {
+            "status": "working",
+            "task_id": task_id,
+            "title": task_title,
+            "agent_name": agent_name,
+            "step": "1/3 Validando segurança e orçamento no Gatekeeper...",
+            "progress_percent": 25,
+            "started_at": datetime.utcnow().isoformat()
+        })
+    except Exception:
+        r_live = None
 
     # --- 1. Gatekeeper: validate action before executing anything ---
     gatekeeper = Gatekeeper(monthly_budget_limit=MONTHLY_BUDGET_LIMIT)
@@ -404,6 +488,7 @@ def process_task(task: Dict[str, Any]) -> None:
                 "status": "blocked",
                 "reason": f"Gatekeeper: comando proibido detectado — {e}",
             })
+            _update_db_task_status(task_id, "failed", {"status": "blocked"}, str(e), conv_id, agent_name)
         except Exception:
             pass
         return
@@ -417,6 +502,7 @@ def process_task(task: Dict[str, Any]) -> None:
                 "status": "pending_approval",
                 "reason": reason,
             })
+            _update_db_task_status(task_id, "failed", {"status": "pending_approval"}, reason, conv_id, agent_name)
         except Exception:
             pass
         return
@@ -428,13 +514,36 @@ def process_task(task: Dict[str, Any]) -> None:
 
     if not prompt:
         logger.warning(f"Task [{task_id}] has no prompt. Skipping.")
+        _update_db_task_status(task_id, "failed", {}, "Tarefa sem prompt definido.", conv_id, agent_name)
         return
 
     # --- 3. Execute AI inference ---
+    if r_live:
+        _set_worker_state(r_live, {
+            "status": "working",
+            "task_id": task_id,
+            "title": task_title,
+            "agent_name": agent_name,
+            "step": f"2/3 Executando pesquisa e geração no motor de IA ({provider or 'híbrido'})...",
+            "progress_percent": 65,
+            "started_at": datetime.utcnow().isoformat()
+        })
+
     logger.info(f"Task [{task_id}] approved by Gatekeeper. Querying AI engine (provider={provider or 'auto'})...")
     ai_result = query_ai_engine(prompt, system_prompt, provider)
 
     # --- 4. Publish result ---
+    if r_live:
+        _set_worker_state(r_live, {
+            "status": "working",
+            "task_id": task_id,
+            "title": task_title,
+            "agent_name": agent_name,
+            "step": "3/3 Finalizando e salvando entrega no banco de dados...",
+            "progress_percent": 95,
+            "started_at": datetime.utcnow().isoformat()
+        })
+
     result_payload = {
         "task_id":   task_id,
         "task_type": task_type,
@@ -452,7 +561,13 @@ def process_task(task: Dict[str, Any]) -> None:
     try:
         r_client = get_redis_client()
         _publish_task_result(r_client, task_id, result_payload)
-        _update_db_task_status(task_id, result_payload["status"], result_payload, result_payload["error"])
+        _update_db_task_status(task_id, result_payload["status"], result_payload, result_payload["error"], conv_id, agent_name)
+        _set_worker_state(r_client, {
+            "status": "idle",
+            "step": f"Última entrega (#{task_id}) concluída com sucesso.",
+            "progress_percent": 100,
+            "updated_at": datetime.utcnow().isoformat()
+        })
         logger.info(
             f"Task [{task_id}] completed. Provider={ai_result.get('provider')} "
             f"| Tokens~{ai_result.get('estimated_tokens', 0)} | Latency={ai_result.get('latency_ms', 0)}ms"

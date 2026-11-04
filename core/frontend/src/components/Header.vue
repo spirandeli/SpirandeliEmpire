@@ -5,7 +5,6 @@
       <div class="pixel-wood-inset px-3.5 py-1.5 flex flex-wrap items-center gap-3 text-xs sm:text-[13px]">
         <!-- Server Info -->
         <div class="flex items-center gap-2">
-          <!-- Pixel Server Rack Icon -->
           <span class="inline-flex flex-col gap-0.5 bg-[#1e3a5f] border border-[#0b192c] px-1 py-0.5 rounded-[2px] shadow-inner">
             <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
             <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
@@ -25,7 +24,7 @@
       </div>
     </div>
 
-    <!-- Right: 3 RPG Square Control Buttons (Settings, Telemetry Chart, Power) -->
+    <!-- Right: 4 RPG Square Control Buttons -->
     <div class="flex items-center gap-2">
       <router-link
         to="/vps"
@@ -40,7 +39,6 @@
         class="pixel-btn-wood w-11 h-11 flex items-center justify-center"
         title="Métricas & Financeiro"
       >
-        <!-- Pixel Bar Chart Icon -->
         <span class="flex items-end gap-0.5 h-5">
           <span class="w-1.5 h-2.5 bg-[#fcd34d] border border-[#1e0d04]"></span>
           <span class="w-1.5 h-3.5 bg-[#fbbf24] border border-[#1e0d04]"></span>
@@ -49,9 +47,17 @@
       </router-link>
 
       <button
-        @click="reloadApp"
+        @click="promptChangePassword"
+        class="pixel-btn-wood w-11 h-11 flex items-center justify-center text-lg"
+        title="Alterar Senha do Comandante"
+      >
+        🔑
+      </button>
+
+      <button
+        @click="$emit('logout')"
         class="pixel-btn-red w-11 h-11 flex items-center justify-center text-lg font-black"
-        title="Recarregar Sistema"
+        title="Trancar Painel / Sair (Logout)"
       >
         ⏻
       </button>
@@ -60,7 +66,29 @@
 </template>
 
 <script setup>
-const reloadApp = () => {
-  window.location.reload()
+import axios from 'axios'
+
+defineEmits(['logout'])
+
+const promptChangePassword = async () => {
+  const currentPassword = prompt('Digite sua senha atual de Comandante:')
+  if (!currentPassword) return
+  const newPassword = prompt('Digite a nova senha forte (mínimo 6 caracteres):')
+  if (!newPassword || newPassword.length < 6) {
+    return alert('A nova senha deve ter no mínimo 6 caracteres.')
+  }
+  try {
+    const res = await axios.post('/api/v1/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    if (res.data?.token) {
+      localStorage.setItem('empire_auth_token', res.data.token)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
+      alert(res.data.message || 'Senha atualizada com sucesso!')
+    }
+  } catch (e) {
+    alert(e.response?.data?.error || e.response?.data?.message || 'Erro ao alterar senha.')
+  }
 }
 </script>

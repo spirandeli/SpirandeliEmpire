@@ -236,8 +236,105 @@
     <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/25 z-0"></div>
 
     <!-- =================================================================== -->
-    <!-- LEFT COLUMN: PROFILE BOX + RPG SIDEBAR + BOTTOM JEFFREY STATUS      -->
+    <!-- RPG FORTRESS LOGIN GATE (PROTECTS ENTIRE SITE FROM EXPOSURE)        -->
     <!-- =================================================================== -->
+    <div
+      v-if="!isAuthenticated"
+      class="relative z-30 flex-1 flex items-center justify-center p-4 bg-black/45 backdrop-blur-[2px] -m-3.5"
+    >
+      <div class="w-full max-w-md pixel-wood rpg-rivets p-4 shadow-2xl">
+        <!-- Header Banner -->
+        <div class="pixel-wood-inset p-3.5 mb-3 flex items-center gap-3">
+          <div class="w-14 h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#f59e0b] overflow-hidden flex items-center justify-center shadow-md">
+            <img src="/assets/sprites/avatar.png" alt="Comandante" class="w-full h-full object-cover" />
+          </div>
+          <div>
+            <span class="rpg-ribbon mb-1">
+              {{ authSetupRequired ? '🛡️ 1º ACESSO: CRIAR SENHA' : '🔒 PORTÃO SOBERANO' }}
+            </span>
+            <h1 class="font-extrabold text-sm sm:text-base text-[#fff7e6] uppercase rpg-text-outline-sm">
+              SPIRANDELIEMPIRE OS
+            </h1>
+            <p class="text-[11px] text-[#d9bc8c]">
+              {{ authSetupRequired ? 'Defina seu e-mail e senha para trancar o império' : 'Acesso restrito ao Comandante Soberano' }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Parchment Login Form -->
+        <form @submit.prevent="submitLogin" class="rpg-parchment-inner p-4 space-y-3 text-xs font-bold text-[#2b1507]">
+          <div
+            v-if="authSetupRequired"
+            class="p-2.5 rounded bg-[#fef3c7] border-2 border-[#d97706] text-[11px] text-[#78350f] leading-snug"
+          >
+            ⚔️ <strong>Primeiro Acesso Detectado:</strong> Cadastre seu e-mail e senha abaixo. A partir deste momento o site ficará 100% blindado com esta senha.
+          </div>
+
+          <div
+            v-if="loginError"
+            class="p-2.5 rounded bg-red-100 border-2 border-red-600 text-[11px] text-red-900 leading-snug"
+          >
+            ⚠️ {{ loginError }}
+          </div>
+
+          <div v-if="authSetupRequired">
+            <label class="block mb-1 uppercase text-[10.5px] text-[#4a2810]">Título / Nome do Comandante</label>
+            <input
+              v-model="loginForm.name"
+              type="text"
+              placeholder="Comandante Spirandeli"
+              class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded px-3 py-2 text-[#1e0d04] focus:border-[#d97706] outline-none"
+            />
+          </div>
+
+          <div>
+            <label class="block mb-1 uppercase text-[10.5px] text-[#4a2810]">E-mail de Comando *</label>
+            <input
+              v-model="loginForm.email"
+              type="email"
+              required
+              autocomplete="username"
+              placeholder="admin@spirandeliempire.tech"
+              class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded px-3 py-2 text-[#1e0d04] focus:border-[#d97706] outline-none"
+            />
+          </div>
+
+          <div>
+            <label class="block mb-1 uppercase text-[10.5px] text-[#4a2810]">Senha Secreta *</label>
+            <input
+              v-model="loginForm.password"
+              type="password"
+              required
+              autocomplete="current-password"
+              placeholder="••••••••••••"
+              class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded px-3 py-2 text-[#1e0d04] focus:border-[#d97706] outline-none"
+            />
+          </div>
+
+          <div class="pt-2">
+            <button
+              type="submit"
+              :disabled="loggingIn"
+              class="pixel-btn-gold w-full py-2.5 px-4 text-xs uppercase flex items-center justify-center gap-2"
+            >
+              <span v-if="loggingIn">Verificando selo real...</span>
+              <span v-else>{{ authSetupRequired ? '🔐 Salvar Senha & Entrar no Império →' : '🗝️ Destrancar Command Center →' }}</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="mt-2.5 text-center text-[10px] text-[#d9bc8c] flex items-center justify-between px-1">
+          <span>🛡️ Criptografia HMAC-SHA256 Ativa</span>
+          <span>Teto: R$ 200/mês</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- AUTHENTICATED COMMAND CENTER                                        -->
+    <!-- =================================================================== -->
+    <template v-else>
+    <!-- LEFT COLUMN: PROFILE BOX + RPG SIDEBAR + BOTTOM JEFFREY STATUS -->
     <aside class="relative z-20 w-60 sm:w-64 shrink-0 flex flex-col justify-between h-full">
       <div class="space-y-2.5">
         <!-- 1. Commander Profile Box (Top-Left) -->
@@ -298,13 +395,37 @@
       </div>
 
       <!-- 3. Bottom-Left Jeffrey Online Status Widget -->
-      <div class="pixel-wood rpg-rivets px-3.5 py-2.5 mt-2">
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-[#22c55e] border border-[#052e16] shadow-[0_0_8px_#4ade80] shrink-0"></span>
-          <span class="font-bold text-[13px] text-[#fff5e0] rpg-text-outline-sm">Jeffrey Online</span>
+      <div
+        @click="currentTab = 'jeffrey'; showActivityPanel = true"
+        class="pixel-wood rpg-rivets px-3.5 py-2.5 mt-2 cursor-pointer hover:brightness-110 transition"
+        title="Clique para abrir o Monitor de Trabalhos e Progresso do Jeffrey"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span
+              class="w-3 h-3 rounded-full shrink-0"
+              :class="jeffreyActivity.is_working
+                ? 'bg-[#fbbf24] border border-[#451a03] shadow-[0_0_8px_#f59e0b] animate-ping'
+                : 'bg-[#22c55e] border border-[#052e16] shadow-[0_0_8px_#4ade80]'"
+            ></span>
+            <span class="font-bold text-[12.5px] text-[#fff5e0] rpg-text-outline-sm truncate">
+              {{ jeffreyActivity.is_working ? 'Jeffrey Trabalhando' : 'Jeffrey Online (Ocioso)' }}
+            </span>
+          </div>
+          <span
+            v-if="(jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) > 0"
+            class="px-1.5 py-0.5 text-[10px] font-black rounded bg-[#f59e0b] text-[#1e0d04]"
+          >
+            {{ (jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) }}
+          </span>
         </div>
-        <div class="text-[12px] text-[#d9bc8c] mt-0.5 pl-5 font-medium">
-          Limite: <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">R$ {{ budgetSummary.monthly_limit_brl || 200 }}/mês</span>
+        <div class="text-[11px] text-[#d9bc8c] mt-1 truncate font-medium">
+          <span v-if="jeffreyActivity.is_working" class="text-[#fde68a]">
+            ⚙️ {{ jeffreyActivity.worker_state?.step || 'Processando na fila...' }}
+          </span>
+          <span v-else>
+            Concluídas: <strong class="text-[#4ade80]">{{ jeffreyActivity.counts?.completed || 0 }}</strong> • Teto: <strong class="text-[#fbbf24]">R$ {{ budgetSummary.monthly_limit_brl || 200 }}</strong>
+          </span>
         </div>
       </div>
     </aside>
@@ -337,7 +458,7 @@
           </div>
         </div>
 
-        <!-- Right: 3 RPG Square Control Buttons -->
+        <!-- Right: 4 RPG Square Control Buttons -->
         <div class="flex items-center gap-2">
           <button
             @click="currentTab = 'vps'"
@@ -358,9 +479,16 @@
             </span>
           </button>
           <button
-            @click="fetchDashboard"
+            @click="promptChangePassword"
+            class="pixel-btn-wood w-11 h-11 flex items-center justify-center text-lg"
+            title="Alterar Senha do Comandante"
+          >
+            🔑
+          </button>
+          <button
+            @click="logoutCommander"
             class="pixel-btn-red w-11 h-11 flex items-center justify-center text-lg font-black"
-            title="Atualizar Telemetria do Sistema"
+            title="Trancar Painel / Sair (Logout)"
           >
             ⏻
           </button>
@@ -549,11 +677,11 @@
         </section>
 
         <!-- =================================================================== -->
-        <!-- TAB 2: JEFFREY AI & CONVERSATION                                    -->
+        <!-- TAB 2: JEFFREY AI & CONVERSATION + LIVE PROGRESS MONITOR            -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'jeffrey'" class="h-[calc(100vh-7.5rem)] flex gap-3.5 max-w-[1400px]">
-          <!-- Conversations Sidebar -->
-          <div class="w-64 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden hidden md:flex">
+        <section v-if="currentTab === 'jeffrey'" class="h-[calc(100vh-7.5rem)] flex gap-3 max-w-[1400px]">
+          <!-- 1. Conversations Sidebar -->
+          <div class="w-56 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden hidden lg:flex shrink-0">
             <button
               @click="createConversation"
               class="pixel-btn-gold w-full py-2 px-3 text-xs flex items-center justify-center gap-1.5 mb-2.5"
@@ -565,7 +693,7 @@
                 v-for="c in conversations"
                 :key="c.id"
                 @click="selectConversation(c.id)"
-                class="p-2.5 rounded cursor-pointer transition flex items-center justify-between border"
+                class="p-2 rounded cursor-pointer transition flex items-center justify-between border"
                 :class="activeChatId === c.id ? 'bg-[#5c3419] text-[#fef08a] border-[#f59e0b]' : 'text-[#e2c699] border-transparent hover:bg-[#3d210f]'"
               >
                 <div class="truncate pr-1">
@@ -578,25 +706,95 @@
             </div>
           </div>
 
-          <!-- Chat Stream Area -->
-          <div class="flex-1 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden">
-            <div class="pixel-wood-inset p-3 mb-2.5 flex items-center justify-between">
-              <div class="flex items-center space-x-2.5">
-                <div class="w-9 h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-lg flex items-center justify-center">🧙‍♂️</div>
-                <div>
-                  <div class="font-extrabold text-xs text-[#fff6e0]">{{ activeConversation?.title || 'Jeffrey AI & Agentes' }}</div>
-                  <div class="text-[10px] text-[#d9bc8c]">Orquestrador Soberano do Império</div>
+          <!-- 2. Center Chat Stream Area -->
+          <div class="flex-1 min-w-0 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden">
+            <!-- Header Bar with Live Status Badge & Action Controls -->
+            <div class="pixel-wood-inset p-2.5 mb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center space-x-2.5 min-w-0">
+                <div class="w-9 h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-lg flex items-center justify-center shrink-0">🧙‍♂️</div>
+                <div class="min-w-0">
+                  <div class="font-extrabold text-xs text-[#fff6e0] flex items-center gap-2 flex-wrap">
+                    <span class="truncate">{{ activeConversation?.title || 'Jeffrey AI & Agentes' }}</span>
+                    <span
+                      v-if="jeffreyActivity.is_working"
+                      class="text-[10px] px-2 py-0.5 rounded bg-[#78350f] text-[#fef08a] border border-[#f59e0b] flex items-center gap-1.5 animate-pulse"
+                    >
+                      <span class="w-2 h-2 rounded-full bg-[#fbbf24]"></span>
+                      ⚙️ TRABALHANDO ({{ (jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) }} ativa)
+                    </span>
+                    <span
+                      v-else
+                      class="text-[10px] px-2 py-0.5 rounded bg-[#14532d] text-[#86efac] border border-[#22c55e] flex items-center gap-1"
+                    >
+                      <span class="w-1.5 h-1.5 rounded-full bg-[#4ade80]"></span>
+                      OCIOSO (Aguardando Ordens)
+                    </span>
+                  </div>
+                  <div class="text-[10px] text-[#d9bc8c] truncate">
+                    Orquestrador Soberano do Império • Progresso auditado em tempo real
+                  </div>
                 </div>
               </div>
 
-              <select v-model="selectedAiProvider" class="bg-[#241207] text-[#fbbf24] text-xs font-bold rounded px-2.5 py-1.5 border border-[#784725]">
-                <option value="hybrid">⚡ Híbrido (Gemini → OpenAI → Llama)</option>
-                <option value="gemini">✨ Google Gemini Flash</option>
-                <option value="openai">🤖 OpenAI GPT-4o-mini</option>
-                <option value="ollama">🦙 Llama Local (Ollama R$ 0)</option>
-              </select>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <select v-model="selectedAiProvider" class="bg-[#241207] text-[#fbbf24] text-[11px] font-bold rounded px-2 py-1.5 border border-[#784725]">
+                  <option value="hybrid">⚡ Híbrido (Gemini → OpenAI → Llama)</option>
+                  <option value="gemini">✨ Google Gemini Flash</option>
+                  <option value="openai">🤖 OpenAI GPT-4o-mini</option>
+                  <option value="ollama">🦙 Llama Local (Ollama R$ 0)</option>
+                </select>
+
+                <button
+                  @click="promptNewBackgroundTask"
+                  class="pixel-btn-gold px-2.5 py-1.5 text-[11px] flex items-center gap-1"
+                  title="Enfileirar uma tarefa real em background para o Jeffrey"
+                >
+                  <span>⚡</span> + Tarefa Real
+                </button>
+
+                <button
+                  @click="showActivityPanel = !showActivityPanel"
+                  class="pixel-btn-wood px-2.5 py-1.5 text-[11px] flex items-center gap-1"
+                  :class="showActivityPanel ? 'border-[#f59e0b] text-[#fde68a]' : ''"
+                  title="Mostrar/Ocultar Monitor de Progresso do Jeffrey"
+                >
+                  <span>📋</span>
+                  <span>Progresso ({{ jeffreyActivity.counts?.total || 0 }})</span>
+                </button>
+              </div>
             </div>
 
+            <!-- LIVE WORKER PROGRESS BANNER (Shows whenever Jeffrey is actively working or has pending queue) -->
+            <div
+              v-if="jeffreyActivity.is_working"
+              class="mb-2.5 p-2.5 rounded bg-[#2b1507] border-2 border-[#f59e0b] text-xs text-[#fff6e0] shadow-md"
+            >
+              <div class="flex items-center justify-between gap-2 mb-1.5">
+                <div class="font-extrabold text-[#fbbf24] flex items-center gap-2 truncate">
+                  <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#fbbf24] animate-ping"></span>
+                  <span>
+                    Trabalhando agora:
+                    <strong class="text-white">#{{ jeffreyActivity.worker_state?.task_id || '?' }}</strong>
+                    — {{ jeffreyActivity.worker_state?.title || 'Executando pesquisa/tarefa...' }}
+                  </span>
+                </div>
+                <span class="text-[10px] mono px-1.5 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#8c5828] shrink-0">
+                  {{ jeffreyActivity.worker_state?.agent_name || 'Jeffrey' }}
+                </span>
+              </div>
+              <div class="text-[11px] text-[#e2c699] mb-1.5 flex justify-between">
+                <span>{{ jeffreyActivity.worker_state?.step || 'Processando no worker assíncrono...' }}</span>
+                <span class="font-bold text-[#fbbf24]">{{ jeffreyActivity.worker_state?.progress_percent || 50 }}%</span>
+              </div>
+              <div class="pixel-bar-bg w-full h-3">
+                <div
+                  class="pixel-bar-energy h-full transition-all duration-500"
+                  :style="{ width: (jeffreyActivity.worker_state?.progress_percent || 50) + '%' }"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Chat Messages Box -->
             <div ref="chatBox" class="flex-1 overflow-y-auto rpg-parchment-inner p-4 space-y-4">
               <div
                 v-for="m in chatMessages"
@@ -616,7 +814,7 @@
                 >
                   <div>{{ m.content }}</div>
                   <div v-if="m.tool_calls && m.tool_calls.length > 0" class="mt-2.5 p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] mono text-[10px]">
-                    <div class="text-[#fbbf24] font-bold mb-1">⚙️ Ferramenta: {{ m.tool_calls[0].name }}</div>
+                    <div class="text-[#fbbf24] font-bold mb-1">⚙️ Ferramenta Executada: {{ m.tool_calls[0].name }}</div>
                     <pre class="overflow-x-auto">{{ JSON.stringify(m.tool_calls[0].arguments, null, 2) }}</pre>
                   </div>
                 </div>
@@ -628,12 +826,13 @@
               </div>
             </div>
 
+            <!-- Input Form -->
             <div class="pt-2.5">
               <form @submit.prevent="submitMessage" class="flex gap-2">
                 <input
                   v-model="userMsgInput"
                   type="text"
-                  placeholder="Ordene ao Jeffrey criar roteiros, inspecionar negócios ou consultar métricas..."
+                  placeholder="Ordene ao Jeffrey criar roteiros, pesquisar, inspecionar negócios ou consultar métricas..."
                   :disabled="sendingMessage"
                   class="flex-1 pixel-wood-inset px-4 py-2.5 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b]"
                 />
@@ -645,6 +844,236 @@
                   Enviar ➔
                 </button>
               </form>
+            </div>
+          </div>
+
+          <!-- 3. Right Sidebar: LIVE JEFFREY ACTIVITY, TASKS & PROGRESS MONITOR -->
+          <div
+            v-if="showActivityPanel"
+            class="w-80 xl:w-96 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden shrink-0"
+          >
+            <!-- Panel Header -->
+            <div class="pixel-wood-inset p-2.5 mb-2 flex items-center justify-between">
+              <div>
+                <div class="font-extrabold text-xs text-[#fef08a] flex items-center gap-1.5">
+                  <span>📡</span>
+                  <span>Monitor do Jeffrey (Ao Vivo)</span>
+                </div>
+                <div class="text-[10px] text-[#d9bc8c]">
+                  Atualiza a cada 4s • Fila Redis: {{ jeffreyActivity.queue_length || 0 }}
+                </div>
+              </div>
+              <button
+                @click="fetchJeffreyActivity"
+                class="pixel-btn-wood px-2 py-1 text-[10px]"
+                title="Atualizar agora"
+              >
+                ↻ Atualizar
+              </button>
+            </div>
+
+            <!-- Status Summary Mini Counters (4 slots) -->
+            <div class="grid grid-cols-4 gap-1.5 mb-2 text-center">
+              <div class="pixel-wood-inset p-1.5">
+                <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Na Fila</div>
+                <div class="text-sm font-black text-[#fbbf24]">{{ jeffreyActivity.counts?.pending || 0 }}</div>
+              </div>
+              <div class="pixel-wood-inset p-1.5">
+                <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Fazendo</div>
+                <div class="text-sm font-black text-[#38bdf8]">{{ jeffreyActivity.counts?.in_progress || 0 }}</div>
+              </div>
+              <div class="pixel-wood-inset p-1.5">
+                <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Prontas</div>
+                <div class="text-sm font-black text-[#4ade80]">{{ jeffreyActivity.counts?.completed || 0 }}</div>
+              </div>
+              <div class="pixel-wood-inset p-1.5">
+                <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Falhas</div>
+                <div class="text-sm font-black text-[#f87171]">{{ jeffreyActivity.counts?.failed || 0 }}</div>
+              </div>
+            </div>
+
+            <!-- Sub-Tabs Switcher: Trabalhos vs Log de Ações -->
+            <div class="flex gap-1.5 mb-2">
+              <button
+                @click="activitySubTab = 'tasks'"
+                class="flex-1 py-1.5 px-2 rounded text-[11px] font-extrabold border transition"
+                :class="activitySubTab === 'tasks'
+                  ? 'bg-[#63391b] text-[#fef08a] border-[#f59e0b]'
+                  : 'bg-[#2b1507] text-[#c49a6c] border-[#1a0b03] hover:text-white'"
+              >
+                📋 Trabalhos & Fila ({{ jeffreyActivity.recent_tasks?.length || 0 }})
+              </button>
+              <button
+                @click="activitySubTab = 'decisions'"
+                class="flex-1 py-1.5 px-2 rounded text-[11px] font-extrabold border transition"
+                :class="activitySubTab === 'decisions'
+                  ? 'bg-[#63391b] text-[#fef08a] border-[#f59e0b]'
+                  : 'bg-[#2b1507] text-[#c49a6c] border-[#1a0b03] hover:text-white'"
+              >
+                🔍 Log de Ações ({{ jeffreyActivity.recent_decisions?.length || 0 }})
+              </button>
+            </div>
+
+            <!-- SUB-TAB 1: TASKS & PROGRESS LIST -->
+            <div v-if="activitySubTab === 'tasks'" class="flex-1 overflow-y-auto pixel-wood-inset p-2 space-y-2 text-xs">
+              <!-- Current Worker Status Card -->
+              <div class="p-2.5 rounded border-2" :class="jeffreyActivity.is_working ? 'bg-[#3b200e] border-[#f59e0b]' : 'bg-[#241207] border-[#4a2810]'">
+                <div class="flex items-center justify-between text-[11px] font-bold">
+                  <span class="text-[#fef08a]">Estado Real do Worker:</span>
+                  <span
+                    class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase"
+                    :class="jeffreyActivity.is_working ? 'bg-[#f59e0b] text-[#1e0d04]' : 'bg-[#14532d] text-[#86efac]'"
+                  >
+                    {{ jeffreyActivity.is_working ? 'EM EXECUÇÃO' : 'OCIOSO / LIVRE' }}
+                  </span>
+                </div>
+                <div class="text-[11px] text-[#e2c699] mt-1 leading-snug">
+                  {{ jeffreyActivity.worker_state?.step || 'Nenhuma tarefa rodando em background no momento.' }}
+                </div>
+              </div>
+
+              <!-- Empty State -->
+              <div
+                v-if="!jeffreyActivity.recent_tasks || jeffreyActivity.recent_tasks.length === 0"
+                class="rpg-parchment-inner p-4 text-center space-y-2"
+              >
+                <div class="text-base">📭</div>
+                <div class="font-extrabold text-[#2b1507] text-xs">Nenhuma tarefa registrada</div>
+                <p class="text-[11px] text-[#4a2810]">
+                  Quando o Jeffrey disser no chat que não há tarefas aqui, ele estava apenas conversando. Clique abaixo para disparar uma pesquisa ou trabalho real em segundo plano!
+                </p>
+                <button @click="promptNewBackgroundTask" class="pixel-btn-gold px-3 py-1.5 text-[11px] w-full">
+                  + Criar Tarefa Real para o Jeffrey
+                </button>
+              </div>
+
+              <!-- Task Cards -->
+              <div
+                v-for="t in jeffreyActivity.recent_tasks"
+                :key="t.id"
+                class="rpg-parchment-inner p-2.5 space-y-1.5 border-2 border-[#3a1e0b]"
+              >
+                <div class="flex items-start justify-between gap-1.5">
+                  <div class="font-extrabold text-[11.5px] text-[#1e0d04] leading-snug">
+                    <span class="mono text-[#78350f]">#{{ t.id }}</span> {{ t.title }}
+                  </div>
+                  <span
+                    class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 border"
+                    :class="{
+                      'bg-[#0284c7] text-white border-[#0369a1] animate-pulse': t.status === 'in_progress',
+                      'bg-[#d97706] text-[#1e0d04] border-[#78350f]': t.status === 'pending',
+                      'bg-[#15803d] text-white border-[#052e16]': t.status === 'completed',
+                      'bg-[#b91c1c] text-white border-[#450a0a]': t.status === 'failed',
+                      'bg-[#57534e] text-white border-[#292524]': t.status === 'cancelled'
+                    }"
+                  >
+                    {{ formatTaskStatus(t.status) }}
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between text-[10px] text-[#4a2810] font-semibold">
+                  <span>🤖 {{ t.agent_name || 'Jeffrey' }} ({{ t.type }})</span>
+                  <span>{{ formatTimeShort(t.completed_at || t.started_at || t.created_at) }}</span>
+                </div>
+
+                <!-- Progress bar for in_progress or pending -->
+                <div v-if="t.status === 'in_progress' || t.status === 'pending'" class="pt-1">
+                  <div class="pixel-bar-bg w-full h-2.5">
+                    <div
+                      class="pixel-bar-energy h-full transition-all"
+                      :style="{ width: t.status === 'in_progress' ? '65%' : '20%' }"
+                    ></div>
+                  </div>
+                  <div class="text-[9.5px] text-[#5c3419] font-bold mt-0.5">
+                    {{ t.status === 'in_progress' ? '⚙️ Processando no motor de IA...' : '⏳ Aguardando vez na fila do worker...' }}
+                  </div>
+                </div>
+
+                <!-- Error preview if failed -->
+                <div v-if="t.error_message" class="p-1.5 rounded bg-red-100 border border-red-400 text-[10px] text-red-900 font-semibold">
+                  ⚠️ {{ t.error_message }}
+                </div>
+
+                <!-- Expandable Result / Actions -->
+                <div class="pt-1 flex flex-wrap items-center justify-between gap-1 border-t border-[#c4924d]">
+                  <button
+                    v-if="t.result?.response"
+                    @click="expandedTaskId = (expandedTaskId === t.id ? null : t.id)"
+                    class="text-[10.5px] font-extrabold text-[#78350f] hover:underline"
+                  >
+                    {{ expandedTaskId === t.id ? '▲ Ocultar Resultado' : '👁️ Ver Entrega Completa' }}
+                  </button>
+                  <span v-else class="text-[10px] text-[#5c3419] italic">
+                    {{ t.status === 'completed' ? 'Concluído' : 'Sem resultado ainda' }}
+                  </span>
+
+                  <div class="flex items-center gap-1">
+                    <button
+                      v-if="t.result?.response"
+                      @click="sendTaskResultToChat(t)"
+                      class="px-2 py-0.5 rounded bg-[#5c3419] text-[#fef08a] text-[9.5px] font-bold hover:brightness-110"
+                      title="Inserir resultado na conversa atual"
+                    >
+                      📥 No Chat
+                    </button>
+                    <button
+                      v-if="t.status === 'failed' || t.status === 'cancelled' || t.status === 'pending'"
+                      @click="retryTask(t.id)"
+                      class="px-2 py-0.5 rounded bg-[#d97706] text-[#1e0d04] text-[9.5px] font-bold hover:brightness-110"
+                      title="Reenfileirar e processar novamente"
+                    >
+                      🔄 Rodar
+                    </button>
+                    <button
+                      v-if="t.status === 'pending' || t.status === 'in_progress'"
+                      @click="cancelTask(t.id)"
+                      class="px-1.5 py-0.5 rounded bg-[#991b1b] text-white text-[9.5px] font-bold"
+                      title="Cancelar tarefa"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Expanded Full Output -->
+                <div
+                  v-if="expandedTaskId === t.id && t.result?.response"
+                  class="mt-1.5 p-2 rounded bg-[#fbf0d9] border border-[#8c5828] text-[11px] text-[#1e0d04] whitespace-pre-wrap max-h-60 overflow-y-auto font-medium"
+                >
+                  {{ t.result.response }}
+                </div>
+              </div>
+            </div>
+
+            <!-- SUB-TAB 2: REAL DECISIONS & TOOL EXECUTION AUDIT LOG -->
+            <div v-else class="flex-1 overflow-y-auto pixel-wood-inset p-2 space-y-2 text-xs">
+              <div
+                v-if="!jeffreyActivity.recent_decisions || jeffreyActivity.recent_decisions.length === 0"
+                class="rpg-parchment-inner p-4 text-center text-[#3a1f0d]"
+              >
+                Nenhuma decisão ou ferramenta executada ainda.
+              </div>
+
+              <div
+                v-for="d in jeffreyActivity.recent_decisions"
+                :key="d.id"
+                class="rpg-parchment-inner p-2.5 space-y-1 border border-[#3a1e0b]"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-[11px] text-[#1e0d04]">⚡ {{ d.agent_name }}</span>
+                  <span class="text-[9px] mono px-1.5 py-0.5 rounded bg-[#3b200e] text-[#fbbf24]">
+                    {{ d.action_type }}
+                  </span>
+                </div>
+                <div class="text-[10.5px] text-[#3a1f0d] font-medium">{{ d.justification }}</div>
+                <div v-if="d.input_payload?.tool_calls?.length" class="text-[9.5px] mono bg-[#2b1507] text-[#fde68a] p-1.5 rounded">
+                  🔧 Tool: {{ d.input_payload.tool_calls[0].name }}
+                </div>
+                <div class="flex justify-between text-[9.5px] text-[#5c3419] font-semibold pt-0.5">
+                  <span>Motor: {{ d.input_payload?.provider || 'system' }} ({{ d.input_payload?.latency_ms || 0 }}ms)</span>
+                  <span>{{ formatTimeShort(d.created_at) }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -923,6 +1352,7 @@
         </section>
       </main>
     </div>
+    </template>
   </div>
 
   <script>
@@ -930,6 +1360,131 @@
 
     createApp({
       setup() {
+        // --- AUTHENTICATION GATE ---
+        const isAuthenticated = ref(false)
+        const authSetupRequired = ref(false)
+        const loggingIn = ref(false)
+        const loginError = ref('')
+        const loginForm = ref({
+          name: 'Comandante Spirandeli',
+          email: '',
+          password: '',
+        })
+        const currentUser = ref(null)
+
+        const applyAuthToken = (token) => {
+          if (token) {
+            localStorage.setItem('empire_auth_token', token)
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          } else {
+            localStorage.removeItem('empire_auth_token')
+            delete axios.defaults.headers.common['Authorization']
+          }
+        }
+
+        // Automatically lock screen if any API returns 401
+        axios.interceptors.response.use(
+          (res) => res,
+          (err) => {
+            if (err.response && err.response.status === 401 && !err.config?.url?.includes('/auth/login')) {
+              applyAuthToken(null)
+              isAuthenticated.value = false
+            }
+            return Promise.reject(err)
+          }
+        )
+
+        const checkAuthSession = async () => {
+          try {
+            const stRes = await axios.get('/api/v1/auth/status')
+            if (stRes.data) {
+              authSetupRequired.value = !!stRes.data.setup_required
+              if (!loginForm.value.email && stRes.data.default_email) {
+                loginForm.value.email = stRes.data.default_email
+              }
+            }
+          } catch (_) {}
+
+          const savedToken = localStorage.getItem('empire_auth_token')
+          if (!savedToken) {
+            isAuthenticated.value = false
+            return
+          }
+
+          applyAuthToken(savedToken)
+          try {
+            const meRes = await axios.get('/api/v1/auth/me')
+            if (meRes.data?.user) {
+              currentUser.value = meRes.data.user
+              isAuthenticated.value = true
+              loadAllAuthorizedData()
+            } else {
+              applyAuthToken(null)
+              isAuthenticated.value = false
+            }
+          } catch (_) {
+            applyAuthToken(null)
+            isAuthenticated.value = false
+          }
+        }
+
+        const submitLogin = async () => {
+          loginError.value = ''
+          loggingIn.value = true
+          try {
+            const res = await axios.post('/api/v1/auth/login', {
+              name: loginForm.value.name,
+              email: loginForm.value.email,
+              password: loginForm.value.password,
+            })
+            if (res.data?.token) {
+              applyAuthToken(res.data.token)
+              currentUser.value = res.data.user
+              authSetupRequired.value = false
+              isAuthenticated.value = true
+              loginForm.value.password = ''
+              loadAllAuthorizedData()
+            }
+          } catch (err) {
+            loginError.value =
+              err.response?.data?.error ||
+              err.response?.data?.message ||
+              'Credenciais inválidas. Verifique seu e-mail e senha.'
+          } finally {
+            loggingIn.value = false
+          }
+        }
+
+        const logoutCommander = async () => {
+          try {
+            await axios.post('/api/v1/auth/logout')
+          } catch (_) {}
+          applyAuthToken(null)
+          isAuthenticated.value = false
+          currentUser.value = null
+        }
+
+        const promptChangePassword = async () => {
+          const currentPassword = prompt('Digite sua senha atual de Comandante:')
+          if (!currentPassword) return
+          const newPassword = prompt('Digite a nova senha forte (mínimo 6 caracteres):')
+          if (!newPassword || newPassword.length < 6) {
+            return alert('A nova senha deve ter no mínimo 6 caracteres.')
+          }
+          try {
+            const res = await axios.post('/api/v1/auth/change-password', {
+              current_password: currentPassword,
+              new_password: newPassword,
+            })
+            if (res.data?.token) {
+              applyAuthToken(res.data.token)
+              alert(res.data.message || 'Senha atualizada com sucesso!')
+            }
+          } catch (e) {
+            alert(e.response?.data?.error || e.response?.data?.message || 'Erro ao alterar senha.')
+          }
+        }
+
         const currentTab = ref('dashboard')
 
         const menu = [
@@ -1030,7 +1585,7 @@
           }
         }
 
-        // --- CHAT DATA ---
+        // --- CHAT & LIVE JEFFREY ACTIVITY MONITOR DATA ---
         const conversations = ref([])
         const activeChatId = ref(null)
         const activeConversation = ref(null)
@@ -1038,6 +1593,119 @@
         const userMsgInput = ref('')
         const selectedAiProvider = ref('hybrid')
         const sendingMessage = ref(false)
+
+        const showActivityPanel = ref(true)
+        const activitySubTab = ref('tasks')
+        const expandedTaskId = ref(null)
+        const jeffreyActivity = ref({
+          is_working: false,
+          queue_length: 0,
+          worker_state: { status: 'idle', step: 'Ocioso — Aguardando novas ordens.', progress_percent: 0 },
+          counts: { total: 0, pending: 0, in_progress: 0, completed: 0, failed: 0, cancelled: 0 },
+          active_tasks: [],
+          recent_tasks: [],
+          recent_decisions: [],
+        })
+        let lastCompletedCount = 0
+
+        const fetchJeffreyActivity = async () => {
+          try {
+            const res = await axios.get('/api/v1/jeffrey/activity')
+            if (res.data?.success) {
+              const prevCompleted = lastCompletedCount
+              const newCompleted = res.data.counts?.completed || 0
+              jeffreyActivity.value = res.data
+              lastCompletedCount = newCompleted
+
+              // If a background task just finished, refresh active conversation messages so the callback reply shows up immediately
+              if (newCompleted > prevCompleted && activeChatId.value && !sendingMessage.value) {
+                selectConversation(activeChatId.value)
+              }
+            }
+          } catch (e) {
+            console.error('Erro telemetria Jeffrey:', e)
+          }
+        }
+
+        const formatTaskStatus = (st) => {
+          const map = {
+            pending: '⏳ NA FILA',
+            in_progress: '⚙️ FAZENDO',
+            completed: '✅ CONCLUÍDO',
+            failed: '❌ FALHOU',
+            cancelled: '🚫 CANCELADO',
+          }
+          return map[st] || st
+        }
+
+        const formatTimeShort = (iso) => {
+          if (!iso) return ''
+          try {
+            const d = new Date(iso)
+            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          } catch (_) {
+            return ''
+          }
+        }
+
+        const promptNewBackgroundTask = async () => {
+          const title = prompt('Qual trabalho ou pesquisa o Jeffrey deve executar em segundo plano?\n(Ex: Pesquisar 5 ideias de roteiros bíblicos virais para o RISADA.exe)')
+          if (!title || !title.trim()) return
+          try {
+            const res = await axios.post('/api/v1/tasks', {
+              title: title.trim().slice(0, 120),
+              type: 'research_and_execution',
+              agent_name: 'Research Agent',
+              payload: {
+                prompt: title.trim(),
+                provider: selectedAiProvider.value,
+                conversation_id: activeChatId.value,
+              },
+            })
+            if (res.data?.task) {
+              showActivityPanel.value = true
+              activitySubTab.value = 'tasks'
+              await fetchJeffreyActivity()
+              if (activeChatId.value) {
+                chatMessages.value.push({
+                  role: 'assistant',
+                  content: `⚙️ **[Tarefa #${res.data.task.id} Enfileirada no Worker]:** _${res.data.task.title}_\n\nAcompanhe o progresso na barra lateral **Monitor do Jeffrey**. Assim que finalizar, o resultado completo será entregue aqui no chat!`,
+                  provider: 'jeffrey-worker',
+                })
+              }
+            }
+          } catch (e) {
+            alert('Erro ao criar tarefa: ' + (e.response?.data?.message || e.message))
+          }
+        }
+
+        const retryTask = async (taskId) => {
+          try {
+            await axios.post(`/api/v1/tasks/${taskId}/retry`)
+            await fetchJeffreyActivity()
+          } catch (e) {
+            alert('Erro ao reenfileirar tarefa: ' + (e.response?.data?.message || e.message))
+          }
+        }
+
+        const cancelTask = async (taskId) => {
+          try {
+            await axios.post(`/api/v1/tasks/${taskId}/cancel`)
+            await fetchJeffreyActivity()
+          } catch (e) {
+            alert('Erro ao cancelar tarefa: ' + (e.response?.data?.message || e.message))
+          }
+        }
+
+        const sendTaskResultToChat = (task) => {
+          if (!task?.result?.response) return
+          chatMessages.value.push({
+            role: 'assistant',
+            content: `📋 **[Resultado da Tarefa #${task.id} — ${task.title}]:**\n\n${task.result.response}`,
+            provider: task.result.provider || 'worker',
+            latency_ms: task.result.latency_ms || 0,
+          })
+        }
 
         const fetchConversations = async () => {
           try {
@@ -1123,6 +1791,7 @@
             })
             if (res.data?.message) {
               chatMessages.value.push(res.data.message)
+              fetchJeffreyActivity()
             }
           } catch (err) {
             const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Falha de comunicação.'
@@ -1272,14 +1941,33 @@
           }
         }
 
-        onMounted(() => {
+        const loadAllAuthorizedData = () => {
           fetchDashboard()
           fetchConversations()
+          fetchJeffreyActivity()
           fetchFinancial()
           fetchVps()
+        }
+
+        onMounted(() => {
+          checkAuthSession()
+          setInterval(() => {
+            if (isAuthenticated.value && (currentTab.value === 'jeffrey' || jeffreyActivity.value.is_working)) {
+              fetchJeffreyActivity()
+            }
+          }, 4000)
         })
 
         return {
+          isAuthenticated,
+          authSetupRequired,
+          loggingIn,
+          loginError,
+          loginForm,
+          currentUser,
+          submitLogin,
+          logoutCommander,
+          promptChangePassword,
           currentTab,
           menu,
           strategicCards,
@@ -1298,6 +1986,17 @@
           userMsgInput,
           selectedAiProvider,
           sendingMessage,
+          showActivityPanel,
+          activitySubTab,
+          expandedTaskId,
+          jeffreyActivity,
+          fetchJeffreyActivity,
+          formatTaskStatus,
+          formatTimeShort,
+          promptNewBackgroundTask,
+          retryTask,
+          cancelTask,
+          sendTaskResultToChat,
           selectConversation,
           createConversation,
           deleteConversation,

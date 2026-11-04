@@ -8,6 +8,7 @@ use App\Models\JeffreyMemory;
 use App\Models\Message;
 use App\Models\Project;
 use App\Models\Business;
+use App\Models\Task;
 use Illuminate\Support\Facades\Log;
 
 class JeffreyOrchestratorService
@@ -86,12 +87,24 @@ class JeffreyOrchestratorService
             $toolsManifest .= "- {$t['name']}: {$t['description']} (Parâmetros: {$paramsStr})\n";
         }
 
-        // 3. System Prompt
+        // 3. System Prompt & Live Tasks Context
         $projectContext = $project ? "PROJETO: {$project->name} ({$project->slug})" : "Sem projeto selecionado.";
         $businessContext = $business ? "NEGÓCIO: {$business->name} ({$business->category}) - Teto: R$ {$business->budget_limit_brl}" : "Sem negócio específico em foco.";
 
+        $recentTasks = Task::latest()->limit(3)->get();
+        $tasksContext = 'Nenhuma tarefa em background registrada no momento.';
+        if ($recentTasks->isNotEmpty()) {
+            $taskLines = [];
+            foreach ($recentTasks as $rt) {
+                $resText = is_array($rt->result) ? ($rt->result['response'] ?? '') : '';
+                $resShort = $resText ? ' -> Resultado: ' . mb_substr($resText, 0, 180) . '...' : '';
+                $taskLines[] = "#{$rt->id} [{$rt->status}] {$rt->title} ({$rt->agent_name}){$resShort}";
+            }
+            $tasksContext = implode(" | ", $taskLines);
+        }
+
         // Check if cloud providers are configured; if running purely on CPU local Ollama,
-        // use a compact prompt (~120 tokens) so CPU prompt-evaluation takes ~2s instead of >90s.
+        // use a compact prompt (~160 tokens) so CPU prompt-evaluation takes ~2s instead of >90s.
         $cloudConfigured = !empty(env('GEMINI_API_KEY')) || !empty(env('OPENAI_API_KEY'));
         $forceLocal = in_array($provider ?: env('AI_PROVIDER', 'hybrid'), ['ollama', 'llama'], true);
         $useCompactLocalPrompt = !$cloudConfigured || $forceLocal;
@@ -99,9 +112,10 @@ class JeffreyOrchestratorService
         if ($useCompactLocalPrompt) {
             $systemPrompt = <<<PROMPT
 Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS.
-Orçamento mensal: R$ {$budgetStatus['current_spent_brl']} gastos de R$ {$budgetStatus['monthly_limit_brl']}.
-{$projectContext} | {$businessContext}
-Responda em português brasileiro com postura executiva, objetiva e direta (máximo 2 parágrafos curtos).
+Orçamento: R$ {$budgetStatus['current_spent_brl']}/R$ {$budgetStatus['monthly_limit_brl']}. {$projectContext} | {$businessContext}
+Tarefas reais no sistema: {$tasksContext}
+REGRA: Entregue a resposta ou pesquisa diretamente agora. Se precisar delegar uma tarefa longa em background, adicione no final: [TOOL_CALL: create_task, {"title": "Resumo da tarefa", "type": "research", "agent_name": "Research Agent"}]
+Responda em português brasileiro de forma executiva, objetiva e direta.
 PROMPT;
         } else {
             $systemPrompt = <<<PROMPT
@@ -113,12 +127,14 @@ DIRETRIZES FUNDAMENTAIS:
 2. Status atual do orçamento: R$ {$budgetStatus['current_spent_brl']} gastos de R$ {$budgetStatus['monthly_limit_brl']}.
 3. Priorize soluções seguras, eficientes e de custo zero.
 4. Jamais invente versículos ou dados históricos falsos para o RISADA.exe.
-5. Se precisar executar uma ação real de consulta ou modificação em projetos, negócios, containers ou métricas, utilize uma chamada de ferramenta com a sintaxe exata:
+5. Jamais diga que está pesquisando ou encaminhando à equipe sem disparar uma ferramenta real. Se precisar executar uma ação real ou criar uma tarefa em segundo plano, utilize a sintaxe exata:
 [TOOL_CALL: nome_da_ferramenta, {"parametro": "valor"}]
 
 CONTEXTO ATUAL:
 {$projectContext}
 {$businessContext}
+TAREFAS ATIVAS/RECENTES:
+{$tasksContext}
 
 MEMÓRIA OPERACIONAL ATIVA:
 {$formattedMemories}
@@ -165,13 +181,48 @@ PROMPT;
             $argsRaw = trim($matches[2]);
             $toolArgs = json_decode($argsRaw, true) ?: [];
 
-            $toolResult = $this->tools->executeTool($toolName, $toolArgs, $userId);
+            $toolResult = $this->tools->executeTool($toolName, $toolArgs, $userId, $conversation->id);
             $toolCallsExecuted[] = ['name' => $toolName, 'arguments' => $toolArgs];
             $toolResults[] = ['name' => $toolName, 'result' => $toolResult];
 
             // Append execution summary
             $formattedResult = json_encode($toolResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $replyText .= "\n\n---\n**Execução de Ferramenta Real [{$toolName}]:**\n```json\n{$formattedResult}\n```";
+        } elseif (
+            preg_match('/(estou\s+(fazendo a pesquisa|pesquisando|encaminhando|trabalhando|analisando|coletando|buscando|iniciando)|vou\s+(pesquisar|encaminhar|iniciar|coletar|preparar))/iu', $replyText)
+        ) {
+            // Auto-enqueue a real background task if the model promised background work without emitting [TOOL_CALL]
+            $activeConvTask = Task::whereIn('status', ['pending', 'in_progress'])
+                ->where('created_at', '>=', now()->subMinutes(15))
+                ->first();
+
+            if (!$activeConvTask) {
+                // Determine the real topic from user's message or previous user message
+                $taskPrompt = $userMessage;
+                if (mb_strlen($userMessage) < 35 && $previousMessages->isNotEmpty()) {
+                    $lastUserMsg = $previousMessages->where('role', 'user')->last();
+                    if ($lastUserMsg) {
+                        $taskPrompt = $lastUserMsg->content . ' — ' . $userMessage;
+                    }
+                }
+                $taskTitle = mb_substr($taskPrompt, 0, 90);
+                $toolArgs = [
+                    'title' => $taskTitle,
+                    'type' => 'research_and_execution',
+                    'agent_name' => 'Research Agent',
+                    'business_id' => $businessId,
+                    'payload' => [
+                        'prompt' => "Execute de forma completa, detalhada e prática a seguinte solicitação do Comandante e entregue o resultado final pronto:\n\n" . $taskPrompt,
+                        'conversation_id' => $conversation->id,
+                    ],
+                ];
+                $toolResult = $this->tools->executeTool('create_task', $toolArgs, $userId, $conversation->id);
+                $toolCallsExecuted[] = ['name' => 'create_task', 'arguments' => $toolArgs];
+                $toolResults[] = ['name' => 'create_task', 'result' => $toolResult];
+
+                $createdTaskId = $toolResult['task']->id ?? '?';
+                $replyText .= "\n\n---\n⚙️ **Tarefa Real Iniciada [#$createdTaskId]:** _{$taskTitle}_\nAcompanhe o progresso em tempo real no painel **Trabalhos & Progresso do Jeffrey** ao lado. Assim que o worker finalizar, o resultado completo será postado nesta conversa.";
+            }
         }
 
         // 7. Persist Assistant Message

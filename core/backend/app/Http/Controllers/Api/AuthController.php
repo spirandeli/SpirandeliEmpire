@@ -8,58 +8,71 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     /**
-     * User Login / Token Issuance.
-     * If database is fresh and matches initial admin config, auto-seeds the admin account.
+     * Check whether initial Commander account setup is required.
+     */
+    public function status(): JsonResponse
+    {
+        $userCount = User::count();
+
+        return response()->json([
+            'success' => true,
+            'setup_required' => $userCount === 0,
+            'default_email' => strtolower(trim(env('ADMIN_EMAIL', 'admin@spirandeliempire.tech'))),
+        ]);
+    }
+
+    /**
+     * User Login or First-Time Commander Setup.
      */
     public function login(Request $request): JsonResponse
     {
         $request->validate([
             'email' => 'required|email',
-            'password' => 'required|string',
+            'password' => 'required|string|min:4',
+            'name' => 'nullable|string|max:120',
         ]);
 
         $email = trim(strtolower($request->input('email')));
         $password = $request->input('password');
+        $name = trim($request->input('name', 'Comandante Spirandeli')) ?: 'Comandante Spirandeli';
 
         $user = User::where('email', $email)->first();
 
-        // Bootstrapping: Auto-provision initial administrator if users table is empty
-        if (!$user && User::count() === 0) {
-            $adminEmail = trim(strtolower(env('ADMIN_EMAIL', 'admin@spirandeliempire.tech')));
-            $adminInitialPass = env('ADMIN_INITIAL_PASSWORD', 'ChangeMeOnFirstLogin!2026');
-
-            if ($email === $adminEmail && $password === $adminInitialPass) {
-                $user = User::create([
-                    'name' => 'Comandante Soberano',
-                    'email' => $adminEmail,
-                    'password' => Hash::make($adminInitialPass),
-                    'role' => 'administrator',
-                ]);
-            }
-        }
-
-        if (!$user || !Hash::check($password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['As credenciais fornecidas não conferem com os registros do SpirandeliEmpire OS.'],
+        // First-time bootstrapping: if no user exists yet in DB, register this Commander account and lock the system
+        if (User::count() === 0) {
+            $user = User::create([
+                'name' => $name,
+                'email' => $email,
+                'password' => Hash::make($password),
+                'role' => 'administrator',
             ]);
         }
 
-        // Issue Sanctum token
-        $token = $user->createToken('empire-os-session')->plainTextToken;
+        if (!$user || !Hash::check($password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Credenciais inválidas. Verifique seu e-mail e senha de Comandante.',
+            ], 401);
+        }
 
-        AuditLog::create([
-            'user_id' => $user->id,
-            'action' => 'user_login',
-            'resource_type' => 'user',
-            'resource_id' => (string) $user->id,
-            'ip_address' => $request->ip(),
-            'details' => ['email' => $user->email],
-        ]);
+        $token = self::issueSignedToken($user);
+
+        try {
+            AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'user_login',
+                'resource_type' => 'user',
+                'resource_id' => (string) $user->id,
+                'ip_address' => $request->ip(),
+                'details' => ['email' => $user->email],
+            ]);
+        } catch (\Exception $e) {
+            // Ignore audit error if table is busy
+        }
 
         return response()->json([
             'success' => true,
@@ -74,36 +87,31 @@ class AuthController extends Controller
     }
 
     /**
-     * Register new user (only administrators or bootstrapping).
+     * Change Commander password while authenticated.
      */
-    public function register(Request $request): JsonResponse
+    public function changePassword(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
-            'role' => 'nullable|string|in:administrator,operator,analyst',
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:6',
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => strtolower($request->email),
-            'password' => Hash::make($request->password),
-            'role' => $request->role ?? 'administrator',
-        ]);
+        $user = $request->user();
+        if (!$user || !Hash::check($request->input('current_password'), $user->password)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'A senha atual informada está incorreta.',
+            ], 422);
+        }
 
-        $token = $user->createToken('empire-os-session')->plainTextToken;
+        $user->password = Hash::make($request->input('new_password'));
+        $user->save();
 
         return response()->json([
             'success' => true,
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-            ],
-        ], 201);
+            'message' => 'Senha do Comandante atualizada com sucesso!',
+            'token' => self::issueSignedToken($user),
+        ]);
     }
 
     /**
@@ -114,10 +122,11 @@ class AuthController extends Controller
         $user = $request->user();
 
         if (!$user) {
-            return response()->json(['error' => 'Não autenticado'], 401);
+            return response()->json(['error' => 'Não autenticado', 'unauthenticated' => true], 401);
         }
 
         return response()->json([
+            'success' => true,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -133,17 +142,80 @@ class AuthController extends Controller
     }
 
     /**
-     * User Logout / Revoke Token.
+     * User Logout.
      */
     public function logout(Request $request): JsonResponse
     {
-        if ($request->user()) {
-            $request->user()->currentAccessToken()->delete();
-        }
-
         return response()->json([
             'success' => true,
-            'message' => 'Sessão encerrada com sucesso.',
+            'message' => 'Sessão encerrada e painel trancado com sucesso.',
         ]);
+    }
+
+    /**
+     * Issue stateless HMAC-SHA256 signed bearer token (no extra table required).
+     */
+    public static function issueSignedToken(User $user): string
+    {
+        $payload = [
+            'uid' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'iat' => time(),
+            'exp' => time() + (86400 * 30), // 30 days
+            'phash' => substr( md5((string) $user->password), 0, 10 ),
+        ];
+
+        $payloadB64 = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+        $secret = self::getSigningSecret();
+        $sig = hash_hmac('sha256', $payloadB64, $secret);
+
+        return $payloadB64 . '.' . $sig;
+    }
+
+    /**
+     * Verify stateless HMAC-SHA256 signed bearer token and return the User.
+     */
+    public static function verifySignedToken(?string $token): ?User
+    {
+        if (!$token || !str_contains($token, '.')) {
+            return null;
+        }
+
+        [$payloadB64, $sig] = explode('.', $token, 2);
+        $secret = self::getSigningSecret();
+        $expectedSig = hash_hmac('sha256', $payloadB64, $secret);
+
+        if (!hash_equals($expectedSig, $sig)) {
+            return null;
+        }
+
+        $json = base64_decode(strtr($payloadB64, '-_', '+/'));
+        $data = json_decode($json ?: '', true);
+        if (!is_array($data) || empty($data['uid']) || empty($data['exp'])) {
+            return null;
+        }
+
+        if (time() > (int) $data['exp']) {
+            return null;
+        }
+
+        $user = User::find((int) $data['uid']);
+        if (!$user) {
+            return null;
+        }
+
+        // Invalidate token automatically if user changed their password
+        $expectedPhash = substr(md5((string) $user->password), 0, 10);
+        if (!empty($data['phash']) && !hash_equals($expectedPhash, (string) $data['phash'])) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    protected static function getSigningSecret(): string
+    {
+        return (string) (config('app.key') ?: env('APP_KEY') ?: 'spirandeli-empire-sovereign-key-2026');
     }
 }

@@ -37,6 +37,8 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
       - APP_KEY=${APP_KEY}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@spirandeliempire.tech}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-ChangeMeOnFirstLogin!2026}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - DB_CONNECTION=pgsql
       - DB_HOST=postgres

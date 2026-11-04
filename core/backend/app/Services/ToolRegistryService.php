@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\Task;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class ToolRegistryService
 {
@@ -142,13 +143,19 @@ class ToolRegistryService
                 ],
                 'category' => 'A',
             ],
+            [
+                'name' => 'list_tasks',
+                'description' => 'Lista as tarefas recentes e em andamento do Jeffrey e agentes especializados.',
+                'parameters' => [],
+                'category' => 'A',
+            ],
         ];
     }
 
     /**
      * Execute a tool safely with permissions validation.
      */
-    public function executeTool(string $toolName, array $arguments, ?int $userId = null): array
+    public function executeTool(string $toolName, array $arguments, ?int $userId = null, ?int $conversationId = null): array
     {
         Log::info("Tool execution requested: [{$toolName}]", ['args' => $arguments]);
 
@@ -336,18 +343,45 @@ class ToolRegistryService
                 ];
 
             case 'create_task':
+                $payloadData = $arguments['payload'] ?? [];
+                if ($conversationId && empty($payloadData['conversation_id'])) {
+                    $payloadData['conversation_id'] = $conversationId;
+                }
+                if (empty($payloadData['prompt'])) {
+                    $payloadData['prompt'] = $arguments['prompt'] ?? $arguments['title'] ?? 'Executar tarefa solicitada';
+                }
+
                 $task = Task::create([
                     'title' => $arguments['title'] ?? 'Nova Tarefa',
-                    'type' => $arguments['type'] ?? 'general',
+                    'type' => $arguments['type'] ?? 'research',
                     'agent_name' => $arguments['agent_name'] ?? 'Jeffrey',
                     'business_id' => $arguments['business_id'] ?? null,
-                    'payload' => $arguments['payload'] ?? [],
+                    'payload' => $payloadData,
                     'status' => 'pending',
                 ]);
+
+                try {
+                    $queuePayload = json_encode([
+                        'id' => (string) $task->id,
+                        'type' => $task->type,
+                        'agent_name' => $task->agent_name,
+                        'business_id' => $task->business_id,
+                        'payload' => array_merge($payloadData, [
+                            'task_id' => $task->id,
+                            'conversation_id' => $conversationId,
+                            'prompt' => $payloadData['prompt'],
+                        ]),
+                        'created_at' => now()->toIso8601String(),
+                    ]);
+                    Redis::lpush('empire:jeffrey:tasks', $queuePayload);
+                } catch (\Exception $e) {
+                    Log::warning("Redis queue push deferred for task #{$task->id}: " . $e->getMessage());
+                }
+
                 return [
                     'success' => true,
                     'task' => $task,
-                    'message' => "Tarefa #{$task->id} registrada com sucesso na fila do Império.",
+                    'message' => "Tarefa #{$task->id} enfileirada no worker assíncrono do Império.",
                 ];
 
             case 'get_task_status':
@@ -356,6 +390,13 @@ class ToolRegistryService
                 return [
                     'success' => true,
                     'task' => $task,
+                ];
+
+            case 'list_tasks':
+                $tasks = Task::latest()->limit(10)->get(['id', 'title', 'type', 'agent_name', 'status', 'result', 'error_message', 'started_at', 'completed_at', 'created_at']);
+                return [
+                    'success' => true,
+                    'tasks' => $tasks->toArray(),
                 ];
 
             default:
