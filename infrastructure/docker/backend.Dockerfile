@@ -37,6 +37,13 @@ RUN apk add --no-cache --virtual .build-deps autoconf g++ make \
 
 # Get Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Pre-cache Composer vendor
+COPY core/backend/composer.json core/backend/composer.lock* /var/www/vendor-base/
+WORKDIR /var/www/vendor-base
+RUN composer install --no-dev --no-scripts --no-interaction --ignore-platform-reqs \
+    && composer dump-autoload --optimize --no-scripts
 
 # Set working directory
 WORKDIR /var/www/backend

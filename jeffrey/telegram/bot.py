@@ -32,7 +32,7 @@ logger = logging.getLogger("JeffreyTelegramBot")
 # ---------------------------------------------------------------------------
 # Configuration via environment variables
 # ---------------------------------------------------------------------------
-TELEGRAM_BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
 # IDs de Telegram autorizados (separe por vírgula no .env)
 # Ex: TELEGRAM_ALLOWED_IDS=123456789,987654321
@@ -293,7 +293,10 @@ async def post_init(app: Application) -> None:
 
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN não definido. Configure no .env.")
+        logger.warning("TELEGRAM_BOT_TOKEN is not configured in .env. Jeffrey Telegram Bot is idling in standby mode.")
+        import time
+        while True:
+            time.sleep(3600)
 
     logger.info("Starting Jeffrey Telegram Bot...")
     if ALLOWED_IDS:
