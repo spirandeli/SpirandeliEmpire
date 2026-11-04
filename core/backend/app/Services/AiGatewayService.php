@@ -99,21 +99,32 @@ class AiGatewayService
         ?string $systemPrompt = null,
         ?string $preferredProvider = null,
         ?string $model = null,
-        ?string $taskRole = null
+        ?string $taskRole = null,
+        array $inlineMedia = []
     ): array {
         // 1. Estimate tokens prior to dispatch
         $fullText = $prompt . ($systemPrompt ? ' ' . $systemPrompt : '');
         $estimatedInputTokens = $this->tokenManager->estimateTokens($fullText);
 
-        // 2. Role & Token-based task delegation analysis
-        $delegation = $this->tokenManager->determineOptimalProvider(
-            $estimatedInputTokens,
-            $preferredProvider,
-            $prompt,
-            $taskRole,
-            $this->gemini->isConfigured(),
-            $this->openai->isConfigured()
-        );
+        // 2. Role & Token-based task delegation analysis (if multimodal media is attached, prefer Gemini)
+        if (!empty($inlineMedia) && $this->gemini->isConfigured()) {
+            $delegation = [
+                'provider' => 'gemini',
+                'tier' => 'multimodal',
+                'role' => 'execute_task',
+                'reason' => 'Anexo multimodal (imagem/áudio/documento) detectado — processado pelo Google Gemini 3.8 Flash.',
+                'forced_delegation' => true,
+            ];
+        } else {
+            $delegation = $this->tokenManager->determineOptimalProvider(
+                $estimatedInputTokens,
+                $preferredProvider,
+                $prompt,
+                $taskRole,
+                $this->gemini->isConfigured(),
+                $this->openai->isConfigured()
+            );
+        }
         $strategy = $delegation['provider'];
 
         // If user explicitly asked for a provider, $delegation['forced_delegation'] indicates if safe limits overrode it
@@ -121,7 +132,7 @@ class AiGatewayService
             ? $preferredProvider
             : $strategy;
 
-        $result = $this->executeStrategy($effectiveStrategy, $prompt, $systemPrompt, $model);
+        $result = $this->executeStrategy($effectiveStrategy, $prompt, $systemPrompt, $model, $inlineMedia);
 
         // 3. Post-execution token tracking & metadata enrichment
         $outputTokens = isset($result['tokens']['candidates']) 
@@ -152,13 +163,13 @@ class AiGatewayService
         return $result;
     }
 
-    protected function executeStrategy(string $strategy, string $prompt, ?string $systemPrompt, ?string $model): array
+    protected function executeStrategy(string $strategy, string $prompt, ?string $systemPrompt, ?string $model, array $inlineMedia = []): array
     {
         // Direct Provider: Gemini
         if ($strategy === 'gemini') {
-            $res = $this->gemini->generate($prompt, $systemPrompt, $model);
+            $res = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia);
             if ($res['success']) {
-                $res['provider_name'] = 'Google Gemini (Free/Paid Tier)';
+                $res['provider_name'] = 'Google Gemini 3.8 Flash';
                 return $res;
             }
             return $this->fallbackToLocal($prompt, $systemPrompt, 'Google Gemini falhou: ' . ($res['error'] ?? 'desconhecido'));
@@ -199,9 +210,9 @@ class AiGatewayService
 
         // 1. Google Gemini (free credits & massive context)
         if ($this->gemini->isConfigured()) {
-            $geminiRes = $this->gemini->generate($prompt, $systemPrompt);
+            $geminiRes = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia);
             if ($geminiRes['success']) {
-                $geminiRes['provider_name'] = 'Google Gemini (Free Tier / Cloud)';
+                $geminiRes['provider_name'] = 'Google Gemini 3.8 Flash';
                 $geminiRes['routing'] = 'primary_free_tier';
                 return $geminiRes;
             }

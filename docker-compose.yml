@@ -49,6 +49,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CACHE_STORE=file
+      - SESSION_DRIVER=file
       - AI_PROVIDER=${AI_PROVIDER:-hybrid}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}

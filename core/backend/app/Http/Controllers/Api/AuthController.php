@@ -9,9 +9,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -21,13 +21,17 @@ class AuthController extends Controller
     public static function formatUserProfile(User $user): array
     {
         $profileData = [];
-        if (Schema::hasColumn('users', 'profile_data') && is_array($user->profile_data)) {
-            $profileData = $user->profile_data;
-        } else {
-            $mem = JeffreyMemory::where('key', "user_profile_{$user->id}")->first();
-            if ($mem && is_array($mem->metadata)) {
-                $profileData = $mem->metadata;
+        try {
+            if (Schema::hasColumn('users', 'profile_data') && is_array($user->profile_data)) {
+                $profileData = $user->profile_data;
+            } else {
+                $mem = JeffreyMemory::where('key', "user_profile_{$user->id}")->first();
+                if ($mem && is_array($mem->metadata)) {
+                    $profileData = $mem->metadata;
+                }
             }
+        } catch (\Throwable $e) {
+            // Ignore schema/table lookup errors and fall back to defaults
         }
 
         return [
@@ -53,29 +57,74 @@ class AuthController extends Controller
      */
     protected static function saveUserProfileData(User $user, array $profileData): void
     {
-        if (Schema::hasColumn('users', 'profile_data')) {
-            $user->profile_data = $profileData;
-            $user->save();
+        try {
+            if (Schema::hasColumn('users', 'profile_data')) {
+                $user->profile_data = $profileData;
+                $user->save();
+            }
+        } catch (\Throwable $e) {
+            // Column may not be migrated yet; JeffreyMemory below still persists the profile
         }
 
-        $summary = sprintf(
-            "Perfil Ativo [%s - %s]: Negócio Foco=%s | Meta Diária=%s | Diretrizes Pessoais=%s",
-            $user->name,
-            $profileData['title'] ?? 'Comandante',
-            $profileData['focus_business_slug'] ?? 'tiktok-shop-afiliados',
-            $profileData['daily_goal'] ?? '',
-            $profileData['custom_instructions'] ?? ''
-        );
+        try {
+            $summary = sprintf(
+                "Perfil Ativo [%s - %s]: Negócio Foco=%s | Meta Diária=%s | Diretrizes Pessoais=%s",
+                $user->name,
+                $profileData['title'] ?? 'Comandante',
+                $profileData['focus_business_slug'] ?? 'tiktok-shop-afiliados',
+                $profileData['daily_goal'] ?? '',
+                $profileData['custom_instructions'] ?? ''
+            );
 
-        JeffreyMemory::updateOrCreate(
-            ['key' => "user_profile_{$user->id}"],
-            [
-                'category' => 'preference',
-                'content' => $summary,
-                'metadata' => $profileData,
-                'is_active' => true,
-            ]
-        );
+            JeffreyMemory::updateOrCreate(
+                ['key' => "user_profile_{$user->id}"],
+                [
+                    'category' => 'preference',
+                    'content' => $summary,
+                    'metadata' => $profileData,
+                    'is_active' => true,
+                ]
+            );
+        } catch (\Throwable $e) {
+            // Never fail login/register if memory table has an issue
+        }
+    }
+
+    /**
+     * Fault-tolerant Redis rate limiter (never throws 500 if cache/DB table is absent).
+     */
+    protected static function isRateLimited(string $key, int $maxAttempts = 8): int
+    {
+        try {
+            $redisKey = "empire:ratelimit:{$key}";
+            $attempts = (int) Redis::get($redisKey);
+            if ($attempts >= $maxAttempts) {
+                $ttl = (int) Redis::ttl($redisKey);
+                return $ttl > 0 ? $ttl : 60;
+            }
+        } catch (\Throwable $e) {
+            // Fail open if Redis is temporarily unreachable
+        }
+
+        return 0;
+    }
+
+    protected static function hitRateLimit(string $key, int $decaySeconds = 60): void
+    {
+        try {
+            $redisKey = "empire:ratelimit:{$key}";
+            $count = Redis::incr($redisKey);
+            if ((int) $count === 1) {
+                Redis::expire($redisKey, $decaySeconds);
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    protected static function clearRateLimit(string $key): void
+    {
+        try {
+            Redis::del("empire:ratelimit:{$key}");
+        } catch (\Throwable $e) {}
     }
 
     /**
@@ -83,14 +132,24 @@ class AuthController extends Controller
      */
     public function status(): JsonResponse
     {
-        $userCount = User::count();
+        try {
+            $userCount = User::count();
+            $firstUser = $userCount > 0 ? User::orderBy('id', 'asc')->first() : null;
 
-        return response()->json([
-            'success' => true,
-            'setup_required' => $userCount === 0,
-            'users_count' => $userCount,
-            'default_email' => strtolower(trim(env('ADMIN_EMAIL', 'admin@spirandeliempire.tech'))),
-        ]);
+            return response()->json([
+                'success' => true,
+                'setup_required' => $userCount === 0,
+                'users_count' => $userCount,
+                'default_email' => $firstUser?->email ?: strtolower(trim(env('ADMIN_EMAIL', 'admin@spirandeliempire.tech'))),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => true,
+                'setup_required' => true,
+                'users_count' => 0,
+                'default_email' => strtolower(trim(env('ADMIN_EMAIL', 'admin@spirandeliempire.tech'))),
+            ]);
+        }
     }
 
     /**
@@ -100,88 +159,101 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
-        $rateKey = 'auth_register:' . $request->ip();
-        if (RateLimiter::tooManyAttempts($rateKey, 6)) {
-            $seconds = RateLimiter::availableIn($rateKey);
-            return response()->json([
-                'success' => false,
-                'error' => "Muitas tentativas. Aguarde {$seconds} segundos antes de tentar novamente.",
-            ], 429);
-        }
+        try {
+            $rateKey = 'auth_register:' . $request->ip();
+            $waitSeconds = self::isRateLimited($rateKey, 8);
+            if ($waitSeconds > 0) {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Muitas tentativas. Aguarde {$waitSeconds} segundos antes de tentar novamente.",
+                ], 429);
+            }
 
-        $request->validate([
-            'name' => 'required|string|max:120',
-            'email' => 'required|email|max:180',
-            'password' => 'required|string|min:6',
-            'commander_password' => 'nullable|string',
-            'title' => 'nullable|string|max:100',
-            'focus_business_slug' => 'nullable|string|max:100',
-            'daily_goal' => 'nullable|string|max:255',
-            'custom_instructions' => 'nullable|string|max:1000',
-            'profile' => 'nullable|array',
-        ]);
+            $request->validate([
+                'name' => 'required|string|max:120',
+                'email' => 'required|email|max:180',
+                'password' => 'required|string|min:6',
+                'commander_password' => 'nullable|string',
+                'title' => 'nullable|string|max:100',
+                'focus_business_slug' => 'nullable|string|max:100',
+                'daily_goal' => 'nullable|string|max:255',
+                'custom_instructions' => 'nullable|string|max:1000',
+                'profile' => 'nullable|array',
+            ]);
 
-        // Prevent unauthenticated takeover if at least one user already exists
-        if (User::count() > 0) {
-            $authenticatedUser = self::verifySignedToken($request->bearerToken());
-            $commanderPassword = (string) $request->input('commander_password', '');
-            $authorizedByPassword = false;
+            // Prevent unauthenticated takeover if at least one user already exists
+            if (User::count() > 0) {
+                $authenticatedUser = self::verifySignedToken($request->bearerToken());
+                $commanderPassword = (string) $request->input('commander_password', '');
+                $authorizedByPassword = false;
 
-            if (!$authenticatedUser && $commanderPassword !== '') {
-                $existingAdmins = User::all();
-                foreach ($existingAdmins as $adm) {
-                    if (Hash::check($commanderPassword, $adm->password)) {
-                        $authorizedByPassword = true;
-                        break;
+                if (!$authenticatedUser && $commanderPassword !== '') {
+                    $existingAdmins = User::all();
+                    foreach ($existingAdmins as $adm) {
+                        if (Hash::check($commanderPassword, $adm->password)) {
+                            $authorizedByPassword = true;
+                            break;
+                        }
                     }
+                }
+
+                if (!$authenticatedUser && !$authorizedByPassword) {
+                    self::hitRateLimit($rateKey, 60);
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Acesso bloqueado: Para cadastrar um novo perfil na tela de login, informe a Senha Mestra do Comandante atual (ou cadastre por dentro do painel já autenticado).',
+                    ], 403);
                 }
             }
 
-            if (!$authenticatedUser && !$authorizedByPassword) {
-                RateLimiter::hit($rateKey, 60);
+            $email = trim(strtolower($request->input('email')));
+            if (User::where('email', $email)->exists()) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Acesso bloqueado: Para cadastrar um novo perfil na tela de login, informe a Senha Mestra do Comandante atual (ou cadastre por dentro do painel já autenticado).',
-                ], 403);
+                    'error' => 'Já existe um perfil cadastrado com este e-mail.',
+                ], 422);
             }
-        }
 
-        $email = trim(strtolower($request->input('email')));
-        if (User::where('email', $email)->exists()) {
+            $user = User::create([
+                'name' => trim($request->input('name')),
+                'email' => $email,
+                'password' => Hash::make($request->input('password')),
+                'role' => 'administrator',
+            ]);
+
+            $profileInput = is_array($request->input('profile')) ? $request->input('profile') : [];
+            self::saveUserProfileData($user, array_merge([
+                'title' => $request->input('title', $request->input('profile.title', 'Comandante Soberano')),
+                'bio' => $request->input('bio', $request->input('profile.bio', 'Gestor de Negócios Digitais')),
+                'telegram_id' => $request->input('telegram_id', $request->input('profile.telegram_id', '')),
+                'preferred_provider' => $request->input('preferred_provider', $request->input('profile.preferred_provider', 'hybrid')),
+                'focus_business_slug' => $request->input('focus_business_slug', $request->input('profile.focus_business_slug', 'tiktok-shop-afiliados')),
+                'daily_goal' => $request->input('daily_goal', $request->input('profile.daily_goal', '9 vídeos TikTok Shop + 1 roteiro Dark')),
+                'custom_instructions' => $request->input('custom_instructions', $request->input('profile.custom_instructions', 'Foque em execução prática, produtos virais e alta conversão.')),
+                'level' => 3,
+            ], $profileInput));
+
+            self::clearRateLimit($rateKey);
+            $token = self::issueSignedToken($user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Perfil cadastrado com sucesso!',
+                'token' => $token,
+                'user' => self::formatUserProfile($user->fresh() ?: $user),
+            ], 201);
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Já existe um perfil cadastrado com este e-mail.',
+                'error' => collect($e->errors())->flatten()->first() ?: 'Dados inválidos no cadastro.',
+                'errors' => $e->errors(),
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Erro ao processar cadastro: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $user = User::create([
-            'name' => trim($request->input('name')),
-            'email' => $email,
-            'password' => Hash::make($request->input('password')),
-            'role' => 'administrator',
-        ]);
-
-        $profileInput = is_array($request->input('profile')) ? $request->input('profile') : [];
-        self::saveUserProfileData($user, array_merge([
-            'title' => $request->input('title', $request->input('profile.title', 'Comandante Soberano')),
-            'bio' => $request->input('bio', $request->input('profile.bio', 'Gestor de Negócios Digitais')),
-            'telegram_id' => $request->input('telegram_id', $request->input('profile.telegram_id', '')),
-            'preferred_provider' => $request->input('preferred_provider', $request->input('profile.preferred_provider', 'hybrid')),
-            'focus_business_slug' => $request->input('focus_business_slug', $request->input('profile.focus_business_slug', 'tiktok-shop-afiliados')),
-            'daily_goal' => $request->input('daily_goal', $request->input('profile.daily_goal', '9 vídeos TikTok Shop + 1 roteiro Dark')),
-            'custom_instructions' => $request->input('custom_instructions', $request->input('profile.custom_instructions', 'Foque em execução prática, produtos virais e alta conversão.')),
-            'level' => 3,
-        ], $profileInput));
-
-        RateLimiter::clear($rateKey);
-        $token = self::issueSignedToken($user);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Perfil cadastrado com sucesso!',
-            'token' => $token,
-            'user' => self::formatUserProfile($user->fresh()),
-        ], 201);
     }
 
     /**
@@ -189,90 +261,111 @@ class AuthController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
-        $rateKey = 'auth_login:' . $request->ip();
-        if (RateLimiter::tooManyAttempts($rateKey, 6)) {
-            $seconds = RateLimiter::availableIn($rateKey);
-            return response()->json([
-                'success' => false,
-                'error' => "Proteção Anti-Brute-Force ativada: Muitas tentativas incorretas. Aguarde {$seconds} segundos.",
-            ], 429);
-        }
-
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|string|min:4',
-            'name' => 'nullable|string|max:120',
-        ]);
-
-        $email = trim(strtolower($request->input('email')));
-        $password = $request->input('password');
-        $name = trim($request->input('name', 'Comandante Spirandeli')) ?: 'Comandante Spirandeli';
-
-        $user = User::where('email', $email)->first();
-
-        // First-time bootstrapping: if no user exists yet in DB, register this Commander account and lock the system
-        if (User::count() === 0) {
-            if (strlen($password) < 6) {
+        try {
+            $rateKey = 'auth_login:' . $request->ip();
+            $waitSeconds = self::isRateLimited($rateKey, 8);
+            if ($waitSeconds > 0) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'A senha inicial deve ter no mínimo 6 caracteres.',
-                ], 422);
+                    'error' => "Proteção Anti-Brute-Force ativada: Muitas tentativas incorretas. Aguarde {$waitSeconds} segundos.",
+                ], 429);
             }
-            $user = User::create([
-                'name' => $name,
-                'email' => $email,
-                'password' => Hash::make($password),
-                'role' => 'administrator',
-            ]);
-            self::saveUserProfileData($user, [
-                'title' => $request->input('title', 'Comandante Soberano'),
-                'focus_business_slug' => $request->input('focus_business_slug', 'tiktok-shop-afiliados'),
-                'daily_goal' => $request->input('daily_goal', '3 vídeos virais TikTok Shop'),
-                'custom_instructions' => $request->input('custom_instructions', ''),
-                'preferred_provider' => 'hybrid',
-            ]);
-        }
 
-        if (!$user || !Hash::check($password, $user->password)) {
-            RateLimiter::hit($rateKey, 60);
+            $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|string|min:4',
+                'name' => 'nullable|string|max:120',
+            ]);
+
+            $email = trim(strtolower($request->input('email')));
+            $password = (string) $request->input('password');
+            $name = trim((string) $request->input('name', 'Comandante Spirandeli')) ?: 'Comandante Spirandeli';
+
+            $user = User::where('email', $email)->first();
+
+            // First-time bootstrapping: if no user exists yet in DB, register this Commander account and lock the system
+            if (User::count() === 0) {
+                if (strlen($password) < 6) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'A senha inicial deve ter no mínimo 6 caracteres.',
+                    ], 422);
+                }
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'password' => Hash::make($password),
+                    'role' => 'administrator',
+                ]);
+                self::saveUserProfileData($user, [
+                    'title' => $request->input('title', 'Comandante Soberano'),
+                    'focus_business_slug' => $request->input('focus_business_slug', 'tiktok-shop-afiliados'),
+                    'daily_goal' => $request->input('daily_goal', '9 vídeos TikTok Shop + 1 roteiro Dark'),
+                    'custom_instructions' => $request->input('custom_instructions', ''),
+                    'preferred_provider' => 'hybrid',
+                ]);
+            }
+
+            // Fallback: if there is only 1 user in the DB and the password matches that single Commander account, allow login even if email varied
+            if (!$user && User::count() === 1) {
+                $singleCommander = User::first();
+                if ($singleCommander && Hash::check($password, $singleCommander->password)) {
+                    $user = $singleCommander;
+                }
+            }
+
+            if (!$user || !Hash::check($password, $user->password)) {
+                self::hitRateLimit($rateKey, 60);
+                try {
+                    AuditLog::create([
+                        'user_id' => $user?->id,
+                        'action' => 'failed_login_attempt',
+                        'resource_type' => 'security',
+                        'resource_id' => $email,
+                        'ip_address' => $request->ip(),
+                        'details' => ['email' => $email],
+                    ]);
+                } catch (\Throwable $e) {}
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Credenciais inválidas. Verifique seu e-mail e senha de Comandante.',
+                ], 401);
+            }
+
+            self::clearRateLimit($rateKey);
+            $token = self::issueSignedToken($user);
+
             try {
                 AuditLog::create([
-                    'user_id' => $user?->id,
-                    'action' => 'failed_login_attempt',
-                    'resource_type' => 'security',
-                    'resource_id' => $email,
+                    'user_id' => $user->id,
+                    'action' => 'user_login',
+                    'resource_type' => 'user',
+                    'resource_id' => (string) $user->id,
                     'ip_address' => $request->ip(),
-                    'details' => ['email' => $email],
+                    'details' => ['email' => $user->email],
                 ]);
-            } catch (\Exception $e) {}
+            } catch (\Throwable $e) {
+                // Ignore audit error if table is busy or absent
+            }
 
             return response()->json([
-                'success' => false,
-                'error' => 'Credenciais inválidas. Verifique seu e-mail e senha de Comandante.',
-            ], 401);
-        }
-
-        RateLimiter::clear($rateKey);
-        $token = self::issueSignedToken($user);
-
-        try {
-            AuditLog::create([
-                'user_id' => $user->id,
-                'action' => 'user_login',
-                'resource_type' => 'user',
-                'resource_id' => (string) $user->id,
-                'ip_address' => $request->ip(),
-                'details' => ['email' => $user->email],
+                'success' => true,
+                'token' => $token,
+                'user' => self::formatUserProfile($user),
             ]);
-        } catch (\Exception $e) {
-            // Ignore audit error if table is busy
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => collect($e->errors())->flatten()->first() ?: 'Informe um e-mail válido e senha.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Erro ao autenticar: ' . $e->getMessage(),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'token' => $token,
-            'user' => self::formatUserProfile($user),
-        ]);
     }
 
     /**
@@ -314,7 +407,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Informações do perfil salvas e sincronizadas com o Jeffrey!',
-            'user' => self::formatUserProfile($user->fresh()),
+            'user' => self::formatUserProfile($user->fresh() ?: $user),
             'token' => self::issueSignedToken($user),
         ]);
     }
@@ -391,7 +484,7 @@ class AuthController extends Controller
             [, $sig] = explode('.', $token, 2);
             try {
                 Redis::setex("empire:auth:revoked:{$sig}", 86400 * 30, '1');
-            } catch (\Exception $e) {}
+            } catch (\Throwable $e) {}
         }
 
         return response()->json([
@@ -443,7 +536,7 @@ class AuthController extends Controller
             if (Redis::get("empire:auth:revoked:{$sig}")) {
                 return null;
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {}
 
         $json = base64_decode(strtr($payloadB64, '-_', '+/'));
         $data = json_decode($json ?: '', true);

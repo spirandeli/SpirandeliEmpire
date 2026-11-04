@@ -1,5 +1,10 @@
 <template>
-  <div class="h-[calc(100vh-7.5rem)] flex gap-3 max-w-[1400px]">
+  <div
+    class="h-[calc(100vh-7.5rem)] flex gap-3 max-w-[1400px]"
+    @dragover.prevent="isDraggingOver = true"
+    @dragleave.prevent="isDraggingOver = false"
+    @drop.prevent="handleDropFiles"
+  >
     <!-- 1. LEFT SIDEBAR: Persistent Conversations History -->
     <div class="w-56 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden hidden lg:flex shrink-0">
       <button
@@ -39,8 +44,18 @@
       </div>
     </div>
 
-    <!-- 2. CENTER AREA: Chat Messages Stream & Live Worker Banner -->
-    <div class="flex-1 min-w-0 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden">
+    <!-- 2. CENTER AREA: Chat Messages Stream, Attachments, Voice & Rich Editor -->
+    <div class="flex-1 min-w-0 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden relative">
+      <!-- Drag & Drop Overlay -->
+      <div
+        v-if="isDraggingOver"
+        class="absolute inset-2 z-40 rounded-xl bg-black/80 border-4 border-dashed border-[#f59e0b] flex flex-col items-center justify-center text-[#fef08a] pointer-events-none"
+      >
+        <span class="text-4xl mb-2">📎</span>
+        <span class="font-extrabold text-sm uppercase">Solte arquivos, imagens ou áudios aqui para enviar ao Jeffrey</span>
+      </div>
+
+      <!-- Top Header Bar -->
       <div class="pixel-wood-inset p-2.5 mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center space-x-2.5 min-w-0">
           <div class="w-9 h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-lg flex items-center justify-center shrink-0">
@@ -72,7 +87,7 @@
               </span>
             </div>
             <div class="text-[10px] text-[#d9bc8c] truncate">
-              Orquestrador Soberano do Império • Progresso auditado em tempo real
+              Suporte a Cópia de Texto, Anexos (Imagens/Docs/Planilhas) e Mensagens de Voz
             </div>
           </div>
         </div>
@@ -82,8 +97,8 @@
             v-model="chosenProvider"
             class="bg-[#241207] text-[#fbbf24] text-[11px] font-bold rounded px-2 py-1.5 border border-[#784725]"
           >
-            <option value="hybrid">⚡ Híbrido (Gemini → OpenAI → Llama)</option>
-            <option value="gemini">✨ Google Gemini Flash</option>
+            <option value="hybrid">⚡ Cooperativo (Llama Analisa → Gemini 3.8 Executa)</option>
+            <option value="gemini">✨ Google Gemini 3.8 Flash</option>
             <option value="openai">🤖 OpenAI GPT-4o-mini</option>
             <option value="ollama">🦙 Llama Local (Ollama R$ 0)</option>
           </select>
@@ -135,73 +150,313 @@
         </div>
       </div>
 
-      <!-- Messages Stream -->
-      <div ref="chatContainer" class="flex-1 overflow-y-auto rpg-parchment-inner p-4 space-y-4">
+      <!-- Messages Stream (Selectable & Copyable) -->
+      <div ref="chatContainer" class="flex-1 overflow-y-auto rpg-parchment-inner p-4 space-y-4 select-text">
         <div
-          v-for="msg in messages"
-          :key="msg.id || msg.created_at"
+          v-for="(msg, msgIdx) in messages"
+          :key="msg.id || msgIdx"
           class="flex flex-col"
           :class="msg.role === 'user' ? 'items-end' : 'items-start'"
         >
-          <div class="text-[10px] font-bold text-[#5c3419] mb-1 flex items-center gap-2">
-            <span>{{ msg.role === 'user' ? 'Comandante' : 'Jeffrey AI' }}</span>
+          <!-- Message Header + Action Buttons (Copy / Speak / Quote) -->
+          <div class="text-[10px] font-bold text-[#5c3419] mb-1 flex items-center gap-2 flex-wrap">
+            <span>{{ msg.role === 'user' ? '👑 Comandante' : '🧙‍♂️ Jeffrey AI' }}</span>
             <span
               v-if="msg.provider && msg.provider !== 'system'"
               class="text-[9px] px-1.5 py-0.5 rounded bg-[#3b200e] text-[#fbbf24]"
             >
-              {{ msg.provider }} <span v-if="msg.latency_ms">({{ msg.latency_ms }}ms)</span>
+              {{ msg.provider }} <span v-if="msg.model">({{ msg.model }})</span> <span v-if="msg.latency_ms">• {{ msg.latency_ms }}ms</span>
             </span>
+
+            <!-- Copy Message Button -->
+            <button
+              type="button"
+              @click="copyText(msg.content, `msg_${msg.id || msgIdx}`)"
+              class="px-2 py-0.5 rounded border text-[9.5px] font-extrabold transition flex items-center gap-1"
+              :class="copiedId === `msg_${msg.id || msgIdx}`
+                ? 'bg-emerald-700 text-white border-emerald-900'
+                : 'bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] border-[#8c5828]'"
+              title="Copiar texto desta mensagem"
+            >
+              <span>{{ copiedId === `msg_${msg.id || msgIdx}` ? '✓ Copiado!' : '📋 Copiar' }}</span>
+            </button>
+
+            <!-- Speak / Listen Button (TTS) -->
+            <button
+              v-if="msg.role !== 'user' && msg.content"
+              type="button"
+              @click="toggleSpeakMessage(msg.content, `tts_${msg.id || msgIdx}`)"
+              class="px-2 py-0.5 rounded border border-[#8c5828] bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] text-[9.5px] font-extrabold transition"
+              title="Ouvir resposta em voz alta"
+            >
+              {{ speakingId === `tts_${msg.id || msgIdx}` ? '⏹️ Parar Voz' : '🔊 Ouvir' }}
+            </button>
           </div>
 
+          <!-- Message Content Bubble -->
           <div
-            class="max-w-2xl p-3.5 rounded-lg text-xs leading-relaxed border-2"
+            class="max-w-3xl p-3.5 rounded-lg text-xs leading-relaxed border-2 select-text"
             :class="msg.role === 'user'
-              ? 'bg-[#5c3419] text-[#fff6e0] border-[#1e0d04] font-medium'
+              ? 'bg-[#5c3419] text-[#fff6e0] border-[#1e0d04] font-medium whitespace-pre-wrap'
               : 'bg-[#fbf0d9] text-[#231104] border-[#8c5828] whitespace-pre-wrap font-medium'"
           >
-            <div>{{ msg.content }}</div>
+            <!-- Attached Files / Images / Voice Audio inside Message -->
+            <div
+              v-if="msg.attachments && msg.attachments.length > 0"
+              class="mb-2.5 space-y-2"
+            >
+              <div
+                v-for="(att, aIdx) in msg.attachments"
+                :key="aIdx"
+                class="p-2 rounded border"
+                :class="msg.role === 'user' ? 'bg-[#3b200e] border-[#8c5828]' : 'bg-[#f3e1be] border-[#b88746]'"
+              >
+                <!-- Image Attachment Preview -->
+                <div v-if="att.is_image || (att.mime_type && att.mime_type.startsWith('image/'))" class="space-y-1">
+                  <a :href="att.url || att.preview_url" target="_blank" rel="noopener">
+                    <img
+                      :src="att.url || att.preview_url"
+                      :alt="att.name"
+                      class="max-h-60 rounded border border-[#1e0d04] object-contain"
+                    />
+                  </a>
+                  <div class="text-[10px] opacity-80 flex items-center justify-between">
+                    <span>🖼️ {{ att.name }}</span>
+                    <a v-if="att.url" :href="att.url" download class="underline">Baixar</a>
+                  </div>
+                </div>
 
+                <!-- Voice / Audio Attachment Player -->
+                <div v-else-if="att.is_voice || (att.mime_type && att.mime_type.startsWith('audio/'))" class="space-y-1">
+                  <div class="text-[10px] font-bold flex items-center gap-1.5">
+                    <span>🎙️ Mensagem de Voz ({{ att.name }})</span>
+                  </div>
+                  <audio
+                    :src="att.url || att.preview_url"
+                    controls
+                    class="h-8 w-64 max-w-full"
+                  ></audio>
+                </div>
+
+                <!-- Document / Code / Spreadsheet Attachment -->
+                <div v-else class="flex items-center justify-between gap-3 text-[11px]">
+                  <span class="truncate font-bold">📄 {{ att.name }} ({{ formatBytes(att.size) }})</span>
+                  <a
+                    v-if="att.url"
+                    :href="att.url"
+                    target="_blank"
+                    download
+                    class="px-2 py-0.5 rounded bg-[#f59e0b] text-[#1e0d04] text-[10px] font-extrabold shrink-0"
+                  >
+                    Baixar ⬇
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Text Content -->
+            <div class="select-text break-words">{{ msg.content }}</div>
+
+            <!-- Tool Execution Output -->
             <div
               v-if="msg.tool_calls && msg.tool_calls.length > 0"
-              class="mt-2.5 p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] font-mono text-[10px]"
+              class="mt-2.5 p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] font-mono text-[10px] select-text"
             >
-              <div class="text-[#fbbf24] font-bold mb-1">⚙️ Ferramenta Executada: {{ msg.tool_calls[0].name }}</div>
-              <pre class="overflow-x-auto">{{ JSON.stringify(msg.tool_calls[0].arguments, null, 2) }}</pre>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[#fbbf24] font-bold">⚙️ Ferramenta Executada: {{ msg.tool_calls[0].name }}</span>
+                <button
+                  type="button"
+                  @click="copyText(JSON.stringify(msg.tool_calls[0].arguments, null, 2), `tool_${msg.id || msgIdx}`)"
+                  class="text-[9px] px-1.5 py-0.5 rounded bg-[#451a03] text-[#fef08a] hover:brightness-110"
+                >
+                  {{ copiedId === `tool_${msg.id || msgIdx}` ? '✓ Copiado' : '📋 Copiar JSON' }}
+                </button>
+              </div>
+              <pre class="overflow-x-auto select-text">{{ JSON.stringify(msg.tool_calls[0].arguments, null, 2) }}</pre>
             </div>
           </div>
         </div>
 
         <div v-if="loading" class="flex items-center space-x-2 text-[#5c3419] text-xs font-bold">
           <span class="w-2.5 h-2.5 rounded-full bg-[#d97706] animate-ping"></span>
-          <span>Jeffrey consultando modelos de IA e executando ferramentas...</span>
+          <span>Jeffrey processando mensagem, anexos e ferramentas...</span>
         </div>
       </div>
 
-      <!-- Input Bar -->
-      <div class="pt-2.5">
-        <form @submit.prevent="sendMessage" class="flex gap-2">
-          <input
-            v-model="inputMessage"
-            type="text"
-            placeholder="Ordene ao Jeffrey criar roteiros, pesquisar, inspecionar negócios ou consultar métricas..."
-            :disabled="loading"
-            class="flex-1 pixel-wood-inset px-4 py-2.5 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b]"
-          />
-          <button
-            type="submit"
-            :disabled="loading || !inputMessage.trim()"
-            class="pixel-btn-gold px-5 py-2.5 text-xs"
+      <!-- ===================================================================== -->
+      <!-- RICH COMPOSER: ATTACHMENTS PREVIEW + VOICE RECORDER + MULTILINE EDITOR -->
+      <!-- ===================================================================== -->
+      <div class="pt-2.5 space-y-2">
+        <!-- 1. Pending Attachments Preview Bar -->
+        <div
+          v-if="pendingAttachments.length > 0"
+          class="p-2 rounded bg-[#241207] border border-[#f59e0b] flex items-center gap-2 overflow-x-auto"
+        >
+          <div
+            v-for="(att, idx) in pendingAttachments"
+            :key="idx"
+            class="flex items-center gap-2 bg-[#3b200e] border border-[#8c5828] rounded px-2.5 py-1.5 text-xs text-[#fff6e0] shrink-0"
           >
-            Enviar ➔
+            <img
+              v-if="att.is_image && att.preview_url"
+              :src="att.preview_url"
+              class="w-8 h-8 rounded object-cover border border-[#f59e0b]"
+            />
+            <span v-else-if="att.is_voice" class="text-base">🎙️</span>
+            <span v-else class="text-base">📄</span>
+
+            <div class="max-w-[160px]">
+              <div class="truncate text-[11px] font-bold">{{ att.name }}</div>
+              <div class="text-[9px] text-[#d9bc8c]">{{ formatBytes(att.size) }}</div>
+            </div>
+
+            <audio
+              v-if="att.is_voice && att.preview_url"
+              :src="att.preview_url"
+              controls
+              class="h-6 w-36"
+            ></audio>
+
+            <button
+              type="button"
+              @click="removePendingAttachment(idx)"
+              class="text-red-400 hover:text-red-200 font-black px-1"
+              title="Remover anexo"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Active Voice Recording Banner -->
+        <div
+          v-if="isRecordingVoice"
+          class="p-2.5 rounded bg-[#450a0a] border-2 border-red-500 text-xs text-white flex items-center justify-between gap-3 animate-pulse"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-3 h-3 rounded-full bg-red-500 animate-ping shrink-0"></span>
+            <span class="font-extrabold">
+              🎙️ Gravando Voz ({{ formatRecordingDuration(recordingSeconds) }})
+            </span>
+            <span v-if="liveSpeechTranscript" class="text-amber-200 truncate italic">
+              "{{ liveSpeechTranscript }}"
+            </span>
+            <span v-else class="text-red-200 text-[11px]">
+              Fale agora... (o áudio e a transcrição serão enviados ao Jeffrey)
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              @click="stopVoiceRecording(false)"
+              class="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px]"
+            >
+              ⏹️ Parar & Revisar
+            </button>
+            <button
+              type="button"
+              @click="stopVoiceRecording(true)"
+              class="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px]"
+            >
+              🚀 Parar & Enviar Agora
+            </button>
+            <button
+              type="button"
+              @click="cancelVoiceRecording"
+              class="px-2 py-1 rounded bg-red-800 hover:bg-red-700 text-white font-bold text-[11px]"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Quick Prompt Chips + Hidden File Input -->
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <button
+              v-for="chip in quickChips"
+              :key="chip.label"
+              type="button"
+              @click="applyQuickChip(chip.prompt)"
+              class="px-2 py-1 rounded bg-[#2b1507] hover:bg-[#452612] text-[#fde68a] border border-[#6b3f20] text-[10px] font-bold shrink-0 transition"
+            >
+              {{ chip.label }}
+            </button>
+          </div>
+          <span class="text-[10px] text-[#d9bc8c] hidden sm:inline">
+            💡 <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Enter</kbd> envia • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Shift+Enter</kbd> quebra linha • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Ctrl+V</kbd> cola print/arquivo
+          </span>
+        </div>
+
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          accept="image/*,audio/*,.pdf,.txt,.md,.csv,.json,.py,.php,.js,.ts,.html,.xml,.log"
+          class="hidden"
+          @change="handleFileSelect"
+        />
+
+        <!-- 4. Main Multiline Editor + Attachment + Voice + Send Buttons -->
+        <div class="flex items-end gap-2">
+          <!-- Attach File / Image Button -->
+          <button
+            type="button"
+            @click="triggerFilePicker"
+            :disabled="loading"
+            class="pixel-btn-wood h-11 px-3 flex items-center justify-center gap-1 text-xs shrink-0"
+            title="Anexar imagens, prints, roteiros, PDFs, CSVs ou áudios"
+          >
+            <span class="text-base">📎</span>
+            <span class="hidden sm:inline font-bold">Anexar</span>
           </button>
-        </form>
+
+          <!-- Voice Message / Microphone Button -->
+          <button
+            type="button"
+            @click="toggleVoiceRecording"
+            :disabled="loading"
+            class="h-11 px-3 rounded flex items-center justify-center gap-1 text-xs font-extrabold border-2 transition shrink-0"
+            :class="isRecordingVoice
+              ? 'bg-red-600 text-white border-red-300 animate-pulse'
+              : 'pixel-btn-wood'"
+            title="Gravar mensagem de voz e transcrever fala em português"
+          >
+            <span class="text-base">🎙️</span>
+            <span class="hidden sm:inline font-bold">{{ isRecordingVoice ? 'Gravando...' : 'Voz' }}</span>
+          </button>
+
+          <!-- Multiline Textarea -->
+          <textarea
+            ref="composerTextarea"
+            v-model="inputMessage"
+            rows="2"
+            placeholder="Digite ou fale com o Jeffrey... (Cole prints com Ctrl+V, arraste arquivos ou grave áudio no 🎙️)"
+            :disabled="loading"
+            @keydown="handleEditorKeydown"
+            @paste="handleEditorPaste"
+            class="flex-1 pixel-wood-inset px-3.5 py-2 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b] resize-y min-h-[44px] max-h-36 select-text leading-relaxed"
+          ></textarea>
+
+          <!-- Send Button -->
+          <button
+            type="button"
+            @click="sendMessage"
+            :disabled="loading || (!inputMessage.trim() && pendingAttachments.length === 0)"
+            class="pixel-btn-gold h-11 px-5 text-xs font-extrabold shrink-0 flex items-center gap-1.5"
+          >
+            <span>Enviar</span>
+            <span>➔</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- 3. RIGHT SIDEBAR: LIVE JEFFREY ACTIVITY, TASKS & PROGRESS MONITOR -->
     <div
       v-if="showActivityPanel"
-      class="w-80 xl:w-96 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden shrink-0"
+      class="w-80 xl:w-96 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden shrink-0 select-text"
     >
       <div class="pixel-wood-inset p-2.5 mb-2 flex items-center justify-between">
         <div>
@@ -309,7 +564,7 @@
         <div
           v-for="t in jeffreyActivity.recent_tasks"
           :key="t.id"
-          class="rpg-parchment-inner p-2.5 space-y-1.5 border-2 border-[#3a1e0b]"
+          class="rpg-parchment-inner p-2.5 space-y-1.5 border-2 border-[#3a1e0b] select-text"
         >
           <div class="flex items-start justify-between gap-1.5">
             <div class="font-extrabold text-[11.5px] text-[#1e0d04] leading-snug">
@@ -377,6 +632,13 @@
             <div class="flex items-center gap-1">
               <button
                 v-if="t.result?.response"
+                @click="copyText(t.result.response, `task_${t.id}`)"
+                class="px-2 py-0.5 rounded bg-[#3b200e] text-[#fbbf24] text-[9.5px] font-bold hover:brightness-110"
+              >
+                {{ copiedId === `task_${t.id}` ? '✓ Copiado' : '📋 Copiar' }}
+              </button>
+              <button
+                v-if="t.result?.response"
                 @click="sendTaskResultToChat(t)"
                 class="px-2 py-0.5 rounded bg-[#5c3419] text-[#fef08a] text-[9.5px] font-bold hover:brightness-110"
               >
@@ -401,7 +663,7 @@
 
           <div
             v-if="expandedTaskId === t.id && t.result?.response"
-            class="mt-1.5 p-2 rounded bg-[#fbf0d9] border border-[#8c5828] text-[11px] text-[#1e0d04] whitespace-pre-wrap max-h-60 overflow-y-auto font-medium"
+            class="mt-1.5 p-2 rounded bg-[#fbf0d9] border border-[#8c5828] text-[11px] text-[#1e0d04] whitespace-pre-wrap max-h-60 overflow-y-auto font-medium select-text"
           >
             {{ t.result.response }}
           </div>
@@ -413,7 +675,7 @@
         <div
           v-for="d in jeffreyActivity.recent_decisions"
           :key="d.id"
-          class="rpg-parchment-inner p-2.5 space-y-1 border border-[#3a1e0b]"
+          class="rpg-parchment-inner p-2.5 space-y-1 border border-[#3a1e0b] select-text"
         >
           <div class="flex items-center justify-between">
             <span class="font-extrabold text-[11px] text-[#1e0d04]">⚡ {{ d.agent_name }}</span>
@@ -451,12 +713,11 @@
               v-model="newTaskForm.agent_name"
               class="w-full bg-[#241207] text-[#fef08a] text-xs font-bold rounded px-2.5 py-2 border border-[#784725]"
             >
+              <option value="TikTok Shop Strategist">🔥 TikTok Shop Strategist (Produtos Virais, Hooks & Conversão)</option>
               <option value="Research Agent">🔎 Research Agent (Pesquisa Web, TikTok Shop, Bíblia & Tendências)</option>
               <option value="Content Creator">✍️ Content Creator (Roteiros Shorts, Vídeos Longos & Livros KDP)</option>
               <option value="Business Analyst">📊 Business Analyst (Viabilidade, Nichos & Monetização)</option>
               <option value="Jeffrey">🧙‍♂️ Jeffrey (Orquestrador & Arquiteto Geral)</option>
-              <option value="DevOps Engineer">🛠️ DevOps Engineer (Infraestrutura VPS & Containers)</option>
-              <option value="Finance Agent">💰 Finance Agent (Auditoria & Guardião de Orçamento)</option>
             </select>
           </div>
 
@@ -521,6 +782,322 @@ const creatingChat = ref(false)
 const inputMessage = ref('')
 const chosenProvider = ref('hybrid')
 const chatContainer = ref(null)
+const composerTextarea = ref(null)
+const fileInputRef = ref(null)
+
+// Copy & TTS State
+const copiedId = ref(null)
+const speakingId = ref(null)
+
+// Attachments & Drag-and-drop State
+const isDraggingOver = ref(false)
+const pendingAttachments = ref([])
+
+// Voice Recording & Speech Recognition State
+const isRecordingVoice = ref(false)
+const recordingSeconds = ref(0)
+const liveSpeechTranscript = ref('')
+let mediaRecorder = null
+let recordedAudioChunks = []
+let recordingTimer = null
+let speechRecognition = null
+let autoSendOnStop = false
+
+const quickChips = [
+  {
+    label: '🔥 10 Virais TikTok Shop',
+    prompt: 'Pesquise e identifique 10 produtos viralizados na TikTok Shop Brasil hoje com comissão >= 15% e crie 3 ganchos (hooks) de 3 segundos para cada um.',
+  },
+  {
+    label: '🎬 Roteiro 30s Alta Conversão',
+    prompt: 'Crie um roteiro completo de 30 segundos para TikTok Shop com gancho de impacto nos 3 primeiros segundos, demonstração de dor/solução e chamada para o carrinho laranja.',
+  },
+  {
+    label: '📊 Status dos Meus Negócios',
+    prompt: 'Liste todos os meus negócios ativos, suas contas vinculadas e parâmetros de automação atuais.',
+  },
+]
+
+const applyQuickChip = (promptText) => {
+  inputMessage.value = promptText
+  nextTick(() => {
+    composerTextarea.value?.focus()
+  })
+}
+
+const copyText = async (text, id) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedId.value = id
+    setTimeout(() => {
+      if (copiedId.value === id) copiedId.value = null
+    }, 2200)
+  } catch (_) {
+    // Fallback for non-HTTPS or older browsers
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    copiedId.value = id
+    setTimeout(() => {
+      if (copiedId.value === id) copiedId.value = null
+    }, 2200)
+  }
+}
+
+const toggleSpeakMessage = (text, id) => {
+  if (!('speechSynthesis' in window)) {
+    return alert('Seu navegador não suporta síntese de voz.')
+  }
+  if (speakingId.value === id) {
+    window.speechSynthesis.cancel()
+    speakingId.value = null
+    return
+  }
+  window.speechSynthesis.cancel()
+  const cleanText = text.replace(/[#*_`~>\[\]]/g, '')
+  const utter = new SpeechSynthesisUtterance(cleanText)
+  utter.lang = 'pt-BR'
+  utter.rate = 1.05
+  utter.onend = () => {
+    if (speakingId.value === id) speakingId.value = null
+  }
+  speakingId.value = id
+  window.speechSynthesis.speak(utter)
+}
+
+const formatBytes = (bytes) => {
+  const b = Number(bytes || 0)
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`
+}
+
+const formatRecordingDuration = (sec) => {
+  const m = String(Math.floor(sec / 60)).padStart(2, '0')
+  const s = String(sec % 60).padStart(2, '0')
+  return `${m}:${s}`
+}
+
+const triggerFilePicker = () => {
+  fileInputRef.value?.click()
+}
+
+const processFileObject = (file, isVoice = false) => {
+  return new Promise((resolve) => {
+    const mime = file.type || (isVoice ? 'audio/webm' : 'application/octet-stream')
+    const isImage = mime.startsWith('image/')
+    const isAudio = isVoice || mime.startsWith('audio/')
+    const isTextLike = /(text\/|json|xml|csv|javascript|markdown|\.md$|\.txt$|\.csv$|\.py$|\.php$|\.js$|\.ts$|\.html$|\.log$)/i.test(
+      mime + ' ' + file.name
+    )
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result || ''
+      if (isTextLike) {
+        const textReader = new FileReader()
+        textReader.onload = (tev) => {
+          resolve({
+            name: file.name,
+            mime_type: mime,
+            size: file.size,
+            is_image: isImage,
+            is_voice: isAudio,
+            preview_url: isImage || isAudio ? URL.createObjectURL(file) : '',
+            data_base64: dataUrl,
+            text_content: String(tev.target?.result || '').slice(0, 24000),
+          })
+        }
+        textReader.readAsText(file)
+      } else {
+        resolve({
+          name: file.name,
+          mime_type: mime,
+          size: file.size,
+          is_image: isImage,
+          is_voice: isAudio,
+          preview_url: isImage || isAudio ? URL.createObjectURL(file) : '',
+          data_base64: dataUrl,
+          text_content: '',
+        })
+      }
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+const handleFileSelect = async (e) => {
+  const files = Array.from(e.target?.files || [])
+  for (const f of files.slice(0, 6)) {
+    const att = await processFileObject(f)
+    pendingAttachments.value.push(att)
+  }
+  if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+const handleDropFiles = async (e) => {
+  isDraggingOver.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  for (const f of files.slice(0, 6)) {
+    const att = await processFileObject(f)
+    pendingAttachments.value.push(att)
+  }
+}
+
+const handleEditorPaste = async (e) => {
+  const items = Array.from(e.clipboardData?.items || [])
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile()
+      if (file) {
+        const att = await processFileObject(file)
+        pendingAttachments.value.push(att)
+      }
+    }
+  }
+}
+
+const removePendingAttachment = (idx) => {
+  pendingAttachments.value.splice(idx, 1)
+}
+
+const handleEditorKeydown = (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendMessage()
+  }
+}
+
+// --- VOICE RECORDING (MediaRecorder + Web Speech API Live Transcription) ---
+const toggleVoiceRecording = async () => {
+  if (isRecordingVoice.value) {
+    stopVoiceRecording(false)
+    return
+  }
+
+  liveSpeechTranscript.value = ''
+  recordedAudioChunks = []
+  recordingSeconds.value = 0
+  autoSendOnStop = false
+
+  // 1. Start Web Speech API (pt-BR) if available in browser for instant transcription
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+  if (SpeechRec) {
+    try {
+      speechRecognition = new SpeechRec()
+      speechRecognition.lang = 'pt-BR'
+      speechRecognition.continuous = true
+      speechRecognition.interimResults = true
+      speechRecognition.onresult = (event) => {
+        let transcript = ''
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript + ' '
+        }
+        liveSpeechTranscript.value = transcript.trim()
+      }
+      speechRecognition.start()
+    } catch (_) {}
+  }
+
+  // 2. Start MediaRecorder for real voice audio file attachment
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : '')
+
+      mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      mediaRecorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) {
+          recordedAudioChunks.push(ev.data)
+        }
+      }
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        if (recordedAudioChunks.length > 0) {
+          const blob = new Blob(recordedAudioChunks, { type: mediaRecorder.mimeType || 'audio/webm' })
+          const ext = (mediaRecorder.mimeType || '').includes('ogg') ? 'ogg' : 'webm'
+          const voiceFile = new File([blob], `voz_${Date.now()}.${ext}`, { type: blob.type || 'audio/webm' })
+          const att = await processFileObject(voiceFile, true)
+          pendingAttachments.value.push(att)
+        }
+        if (liveSpeechTranscript.value) {
+          inputMessage.value = (inputMessage.value ? inputMessage.value + ' ' : '') + liveSpeechTranscript.value
+          liveSpeechTranscript.value = ''
+        }
+        if (autoSendOnStop) {
+          autoSendOnStop = false
+          await sendMessage()
+        }
+      }
+
+      mediaRecorder.start(250)
+      isRecordingVoice.value = true
+      recordingTimer = setInterval(() => {
+        recordingSeconds.value += 1
+      }, 1000)
+    } catch (err) {
+      alert('Não foi possível acessar o microfone. Verifique a permissão de áudio no navegador.')
+    }
+  } else if (speechRecognition) {
+    isRecordingVoice.value = true
+    recordingTimer = setInterval(() => {
+      recordingSeconds.value += 1
+    }, 1000)
+  } else {
+    alert('Seu navegador não suporta gravação de áudio.')
+  }
+}
+
+const stopVoiceRecording = (sendImmediately = false) => {
+  autoSendOnStop = sendImmediately
+  if (recordingTimer) {
+    clearInterval(recordingTimer)
+    recordingTimer = null
+  }
+  if (speechRecognition) {
+    try {
+      speechRecognition.stop()
+    } catch (_) {}
+    speechRecognition = null
+  }
+  isRecordingVoice.value = false
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
+  } else if (liveSpeechTranscript.value) {
+    inputMessage.value = (inputMessage.value ? inputMessage.value + ' ' : '') + liveSpeechTranscript.value
+    liveSpeechTranscript.value = ''
+    if (sendImmediately) sendMessage()
+  }
+}
+
+const cancelVoiceRecording = () => {
+  autoSendOnStop = false
+  recordedAudioChunks = []
+  liveSpeechTranscript.value = ''
+  if (recordingTimer) {
+    clearInterval(recordingTimer)
+    recordingTimer = null
+  }
+  if (speechRecognition) {
+    try {
+      speechRecognition.stop()
+    } catch (_) {}
+    speechRecognition = null
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.onstop = () => {}
+    mediaRecorder.stop()
+  }
+  isRecordingVoice.value = false
+}
 
 const showActivityPanel = ref(true)
 const activitySubTab = ref('tasks')
@@ -585,7 +1162,7 @@ const formatTimeShort = (iso) => {
 const showNewTaskModal = ref(false)
 const submittingTask = ref(false)
 const newTaskForm = ref({
-  agent_name: 'Research Agent',
+  agent_name: 'TikTok Shop Strategist',
   type: 'research_and_execution',
   prompt: '',
 })
@@ -730,18 +1307,26 @@ const deleteConversation = async (id) => {
 }
 
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || loading.value) return
+  const text = inputMessage.value.trim()
+  const attachmentsToSend = [...pendingAttachments.value]
+
+  if ((!text && attachmentsToSend.length === 0) || loading.value) return
 
   if (!activeConversationId.value) {
     await createNewConversation()
   }
 
-  const text = inputMessage.value
   inputMessage.value = ''
+  pendingAttachments.value = []
+
+  const displayText = text || (attachmentsToSend.some(a => a.is_voice)
+    ? '🎙️ [Mensagem de Voz enviada]'
+    : `📎 [${attachmentsToSend.length} anexo(s) enviado(s)]`)
 
   messages.value.push({
     role: 'user',
-    content: text,
+    content: displayText,
+    attachments: attachmentsToSend,
     created_at: new Date().toISOString(),
   })
   scrollToBottom()
@@ -751,13 +1336,22 @@ const sendMessage = async () => {
     const res = await axios.post(`/api/v1/chat/conversations/${activeConversationId.value}/messages`, {
       message: text,
       provider: chosenProvider.value,
+      attachments: attachmentsToSend.map((a) => ({
+        name: a.name,
+        mime_type: a.mime_type,
+        size: a.size,
+        is_voice: a.is_voice,
+        is_image: a.is_image,
+        data_base64: a.data_base64,
+        text_content: a.text_content,
+      })),
     })
 
     if (res.data?.message) {
       messages.value.push(res.data.message)
       const conv = conversations.value.find(c => c.id === activeConversationId.value)
       if (conv && conv.title === 'Nova Conversa') {
-        conv.title = text.slice(0, 30) + '...'
+        conv.title = displayText.slice(0, 30) + '...'
       }
       fetchJeffreyActivity()
       scrollToBottom()
@@ -783,5 +1377,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  cancelVoiceRecording()
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+  }
 })
 </script>

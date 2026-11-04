@@ -64,9 +64,9 @@ class GeminiClientService
     }
 
     /**
-     * Generate completion via Google Gemini REST API.
+     * Generate completion via Google Gemini REST API (supports multimodal inlineData for images, audio, and PDFs).
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null): array
+    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, array $inlineMedia = []): array
     {
         if (!$this->isConfigured()) {
             return [
@@ -80,13 +80,25 @@ class GeminiClientService
         $startTime = microtime(true);
 
         try {
+            $userParts = [
+                ['text' => $prompt]
+            ];
+            foreach ($inlineMedia as $media) {
+                if (!empty($media['mime_type']) && !empty($media['data'])) {
+                    $userParts[] = [
+                        'inline_data' => [
+                            'mime_type' => $media['mime_type'],
+                            'data' => $media['data'],
+                        ],
+                    ];
+                }
+            }
+
             $payload = [
                 'contents' => [
                     [
                         'role' => 'user',
-                        'parts' => [
-                            ['text' => $prompt]
-                        ]
+                        'parts' => $userParts,
                     ]
                 ],
                 'generationConfig' => [

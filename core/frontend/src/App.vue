@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative flex h-screen w-screen overflow-hidden select-none p-2.5 sm:p-3.5 gap-3 sm:gap-4 bg-[#1a2e12] bg-cover bg-center"
+    class="relative flex h-screen w-screen overflow-hidden p-2.5 sm:p-3.5 gap-3 sm:gap-4 bg-[#1a2e12] bg-cover bg-center"
     style="background-image: url('/assets/rpg-village-bg.jpg');"
   >
     <!-- Subtle warm vignette so UI panels pop clearly over the village -->

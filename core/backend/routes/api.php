@@ -30,6 +30,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/auth/status', [AuthController::class, 'status']);
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::get('/chat/attachments/{filename}', [ChatController::class, 'serveAttachment']);
 
     // --- Protected Commander Routes ---
     Route::middleware(EmpireAuthMiddleware::class)->group(function () {

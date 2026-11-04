@@ -9,6 +9,8 @@ use App\Services\ToolRegistryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\File;
+use Symfony\Component\HttpFoundation\Response;
 
 class ChatController extends Controller
 {
@@ -50,7 +52,7 @@ class ChatController extends Controller
         Message::create([
             'conversation_id' => $conversation->id,
             'role' => 'assistant',
-            'content' => "Saudações, Comandante. Eu sou Jeffrey, orquestrador central do SpirandeliEmpire OS.\n\nLinha de comando ativa e persistente. Em que projeto, negócio ou tarefa estratégica trabalharemos agora?",
+            'content' => "Saudações, Comandante. Eu sou Jeffrey, orquestrador central do SpirandeliEmpire OS.\n\nLinha de comando ativa com suporte a **anexos (imagens, documentos, roteiros, planilhas)** e **mensagens de voz**. Em que projeto, negócio ou tarefa estratégica trabalharemos agora?",
             'provider' => 'system',
             'model' => 'jeffrey-core',
         ]);
@@ -111,7 +113,7 @@ class ChatController extends Controller
     }
 
     /**
-     * Send message into conversation and receive Jeffrey's real response with tool calling.
+     * Send message (with optional file/image attachments and voice recordings) into conversation.
      */
     public function sendMessage(
         Request $request,
@@ -121,11 +123,74 @@ class ChatController extends Controller
         $conversation = Conversation::findOrFail($id);
 
         $request->validate([
-            'message' => 'required|string',
-            'provider' => 'nullable|string|in:hybrid,gemini,openai,ollama,llama',
+            'message' => 'nullable|string',
+            'provider' => 'nullable|string|in:hybrid,gemini,openai,ollama,llama,cooperative',
+            'attachments' => 'nullable|array|max:8',
         ]);
 
-        $userMessage = $request->input('message');
+        $rawAttachments = $request->input('attachments', []);
+        $userMessage = trim((string) $request->input('message', ''));
+
+        if ($userMessage === '' && empty($rawAttachments)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Envie uma mensagem de texto, áudio ou anexo.',
+            ], 422);
+        }
+
+        // Persist attachments to storage/businesses/chat-attachments
+        $attachDir = storage_path('businesses/chat-attachments');
+        if (!File::isDirectory($attachDir)) {
+            @File::makeDirectory($attachDir, 0775, true);
+        }
+
+        $processedAttachments = [];
+        foreach ($rawAttachments as $att) {
+            if (!is_array($att)) continue;
+            $origName = preg_replace('/[^a-zA-Z0-9._\-]/', '_', (string) ($att['name'] ?? 'anexo.bin'));
+            $mime = (string) ($att['mime_type'] ?? 'application/octet-stream');
+            $b64 = (string) ($att['data_base64'] ?? '');
+            $textContent = (string) ($att['text_content'] ?? '');
+            $isVoice = !empty($att['is_voice']) || str_starts_with($mime, 'audio/');
+            $isImage = str_starts_with($mime, 'image/');
+
+            // Strip data URL prefix if present (e.g. "data:image/png;base64,...")
+            if (str_contains($b64, ',')) {
+                [, $b64] = explode(',', $b64, 2);
+            }
+
+            $storedFilename = time() . '_' . substr(md5($origName . microtime()), 0, 8) . '_' . $origName;
+            $storedPath = $attachDir . DIRECTORY_SEPARATOR . $storedFilename;
+            $decodedBytes = $b64 ? base64_decode($b64, true) : false;
+
+            if ($decodedBytes !== false && strlen($decodedBytes) <= 15 * 1024 * 1024) {
+                @File::put($storedPath, $decodedBytes);
+                // If it's a readable text/code/CSV/MD/JSON file and text_content wasn't passed, extract up to 24KB
+                if ($textContent === '' && preg_match('/(text\/|json|xml|csv|javascript|markdown|\.md$|\.txt$|\.csv$|\.py$|\.php$|\.js$|\.ts$|\.html$)/i', $mime . ' ' . $origName)) {
+                    $textContent = mb_substr($decodedBytes, 0, 24000, 'UTF-8');
+                }
+            }
+
+            $processedAttachments[] = [
+                'name' => $origName,
+                'filename' => $storedFilename,
+                'url' => "/api/v1/chat/attachments/{$storedFilename}",
+                'mime_type' => $mime,
+                'size' => (int) ($att['size'] ?? ($decodedBytes ? strlen($decodedBytes) : 0)),
+                'is_voice' => $isVoice,
+                'is_image' => $isImage,
+                'text_content' => $textContent,
+                'data_base64' => ($isImage || $isVoice || $mime === 'application/pdf') ? $b64 : '',
+            ];
+        }
+
+        if ($userMessage === '') {
+            $hasVoice = collect($processedAttachments)->contains('is_voice', true);
+            $userMessage = $hasVoice
+                ? '🎙️ [Mensagem de Voz enviada pelo Comandante — ouça/transcreva o áudio em anexo e execute a solicitação]'
+                : '📎 [Arquivo(s) enviado(s) pelo Comandante — analise o(s) anexo(s) e responda]';
+        }
+
         $provider = $request->input('provider');
         $userId = $request->user()?->id;
 
@@ -133,14 +198,42 @@ class ChatController extends Controller
             $conversation,
             $userMessage,
             $provider,
-            $userId
+            $userId,
+            $processedAttachments
         );
 
-        $conversation->touch(); // Update conversation timestamp
+        $conversation->touch();
 
         return response()->json([
             'success' => true,
             'message' => $assistantMessage,
+        ]);
+    }
+
+    /**
+     * Serve a chat attachment file safely.
+     */
+    public function serveAttachment(string $filename): Response
+    {
+        $safeFilename = basename(preg_replace('/[^a-zA-Z0-9._\-]/', '', $filename));
+        $filePath = storage_path('businesses/chat-attachments/' . $safeFilename);
+
+        if (!$safeFilename || !File::exists($filePath) || File::isDirectory($filePath)) {
+            return response()->json(['error' => 'Anexo não encontrado.'], 404);
+        }
+
+        $mime = File::mimeType($filePath) ?: 'application/octet-stream';
+        if (str_ends_with($safeFilename, '.webm')) {
+            $mime = 'audio/webm';
+        } elseif (str_ends_with($safeFilename, '.ogg')) {
+            $mime = 'audio/ogg';
+        } elseif (str_ends_with($safeFilename, '.mp3')) {
+            $mime = 'audio/mpeg';
+        }
+
+        return response()->file($filePath, [
+            'Content-Type' => $mime,
+            'Cache-Control' => 'private, max-age=86400',
         ]);
     }
 

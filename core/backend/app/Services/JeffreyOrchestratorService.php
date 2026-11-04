@@ -27,19 +27,31 @@ class JeffreyOrchestratorService
     }
 
     /**
-     * Process message in persistent conversation thread with contextual awareness and tool calling capability.
+     * Process message in persistent conversation thread with contextual awareness, multimodal attachments, and tool calling.
      */
     public function talkInConversation(
         Conversation $conversation,
         string $userMessage,
         ?string $provider = null,
-        ?int $userId = null
+        ?int $userId = null,
+        array $attachments = []
     ): Message {
+        // Prepare lightweight metadata to store on the user message record
+        $storedAttachmentsMeta = array_map(fn($a) => [
+            'name' => $a['name'] ?? 'anexo',
+            'url' => $a['url'] ?? '',
+            'mime_type' => $a['mime_type'] ?? 'application/octet-stream',
+            'size' => $a['size'] ?? 0,
+            'is_voice' => !empty($a['is_voice']),
+            'is_image' => !empty($a['is_image']),
+        ], $attachments);
+
         // 1. Persist user message
         $userMsgRecord = Message::create([
             'conversation_id' => $conversation->id,
             'role' => 'user',
             'content' => $userMessage,
+            'tokens' => !empty($storedAttachmentsMeta) ? ['attachments' => $storedAttachmentsMeta] : null,
         ]);
 
         // Auto-title conversation if it is the default title
@@ -197,12 +209,35 @@ PROMPT;
             $conversationHistory .= "{$sender}: {$pm->content}\n\n";
         }
 
-        $fullPrompt = $conversationHistory . "Comandante: " . $userMessage . "\n\nJeffrey:";
+        $fullPrompt = $conversationHistory . "Comandante: " . $userMessage;
+
+        // Enrich prompt with any attached text/code/CSV/MD files and collect multimodal inline_data (images, voice audio, PDFs)
+        $inlineMedia = [];
+        $attachedTextsForLlama = [];
+        foreach ($attachments as $att) {
+            if (!empty($att['text_content'])) {
+                $attName = $att['name'] ?? 'arquivo';
+                $attachedTextsForLlama[] = "=== ARQUIVO ANEXADO: {$attName} ===\n" . $att['text_content'];
+                $fullPrompt .= "\n\n[CONTEÚDO DO ANEXO {$attName}]:\n" . $att['text_content'];
+            }
+            if (!empty($att['data_base64']) && !empty($att['mime_type'])) {
+                $inlineMedia[] = [
+                    'mime_type' => $att['mime_type'],
+                    'data' => $att['data_base64'],
+                ];
+            }
+        }
+        $fullPrompt .= "\n\nJeffrey:";
 
         // 5. Query AI Gateway with Role Division (Llama = Read/Analyze, Gemini/OpenAI = Execute Tasks)
         $taskRole = $this->aiGateway->getTokenManager()->classifyTaskRole($userMessage);
-        if ($cloudConfigured && !$forceLocal && preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage)) {
-            $rawContextForLlama = "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
+        if (!empty($inlineMedia)) {
+            // Multimodal (Voice message, Image screenshot, or PDF) -> Gemini 3.8 Flash
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia);
+        } elseif ($cloudConfigured && !$forceLocal && (!empty($attachedTextsForLlama) || preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage))) {
+            $rawContextForLlama = !empty($attachedTextsForLlama)
+                ? implode("\n\n", $attachedTextsForLlama)
+                : "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
             $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider);
         } else {
             $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole);

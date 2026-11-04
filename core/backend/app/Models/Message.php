@@ -29,6 +29,18 @@ class Message extends Model
         'fallback_used' => 'boolean',
     ];
 
+    protected $appends = [
+        'attachments',
+    ];
+
+    public function getAttachmentsAttribute(): array
+    {
+        if (is_array($this->tokens) && isset($this->tokens['attachments']) && is_array($this->tokens['attachments'])) {
+            return $this->tokens['attachments'];
+        }
+        return [];
+    }
+
     public function conversation()
     {
         return $this->belongsTo(Conversation::class);
