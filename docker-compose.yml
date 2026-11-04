@@ -203,6 +203,33 @@ services:
         limits:
           memory: 4608M
 
+  # --- JEFFREY TELEGRAM BOT ---
+  jeffrey-telegram:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/ai-worker.Dockerfile
+    container_name: empire_jeffrey_telegram
+    restart: unless-stopped
+    working_dir: /app
+    command: python -u /app/jeffrey/telegram/bot.py
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ALLOWED_IDS=${TELEGRAM_ALLOWED_IDS:-}
+      - TELEGRAM_AI_PROVIDER=${TELEGRAM_AI_PROVIDER:-hybrid}
+      - TELEGRAM_API_TIMEOUT=${TELEGRAM_API_TIMEOUT:-60}
+      - JEFFREY_API_URL=http://core-app/api/v1/jeffrey/chat
+    volumes:
+      - ./:/app
+    networks:
+      - empire-network
+      - internal-network
+    depends_on:
+      - core-app
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
   # --- MONITORING (UPTIME KUMA) ---
   monitoring:
     image: louislam/uptime-kuma:1-alpine
