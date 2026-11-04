@@ -48,8 +48,13 @@ RUN echo "memory_limit = 256M" > /usr/local/etc/php/conf.d/memory-limit.ini \
     && echo "opcache.enable = 1" > /usr/local/etc/php/conf.d/opcache.ini \
     && echo "opcache.enable_cli = 1" >> /usr/local/etc/php/conf.d/opcache.ini
 
+# Entrypoint script to guarantee vendor exists
+COPY infrastructure/docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
+RUN chmod +x /usr/local/bin/backend-entrypoint.sh
+
 # Expose PHP-FPM port
 EXPOSE 9000
 
+ENTRYPOINT ["backend-entrypoint.sh"]
 CMD ["php-fpm"]
 

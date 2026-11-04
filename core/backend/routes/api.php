@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FinanceController;
 use App\Http\Controllers\Api\JeffreyController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\VpsManagerController;
 use Illuminate\Support\Facades\Route;
 
@@ -87,4 +88,11 @@ Route::prefix('v1')->group(function () {
     // --- 9. Approvals (Human-in-the-Loop) ---
     Route::get('/approvals', [ApprovalController::class, 'index']);
     Route::post('/approvals/{id}/decide', [ApprovalController::class, 'decide']);
+
+    // --- 10. Tasks & Asynchronous Execution ---
+    Route::get('/tasks', [TaskController::class, 'index']);
+    Route::post('/tasks', [TaskController::class, 'store']);
+    Route::get('/tasks/{id}', [TaskController::class, 'show']);
+    Route::post('/tasks/{id}/cancel', [TaskController::class, 'cancel']);
+    Route::post('/tasks/{id}/retry', [TaskController::class, 'retry']);
 });

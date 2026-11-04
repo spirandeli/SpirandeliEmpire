@@ -126,6 +126,7 @@ done
 echo -e "\n${GREEN}==> Database and Redis are healthy!${NC}"
 
 echo -e "${GREEN}[6/8] Initializing Backend Migrations & Database Seeds...${NC}"
+docker compose exec -T core-app composer install --no-dev --optimize-autoloader --no-interaction || true
 docker compose exec -T core-app php artisan key:generate --force || true
 docker compose exec -T core-app php artisan migrate --force || true
 docker compose exec -T core-app php artisan db:seed --force || true

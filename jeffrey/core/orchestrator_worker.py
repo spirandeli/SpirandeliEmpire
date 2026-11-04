@@ -345,6 +345,37 @@ def _publish_task_result(r: redis.Redis, task_id: str, result: Dict[str, Any]) -
     r.publish("empire:jeffrey:results:channel", json.dumps({"task_id": task_id}))
 
 
+def _update_db_task_status(task_id: str, status: str, result: Dict[str, Any], error: Optional[str] = None) -> None:
+    """Update task record directly in PostgreSQL if task_id corresponds to a database record."""
+    if not str(task_id).isdigit():
+        return
+    try:
+        import psycopg2
+        db_host = os.getenv("DB_HOST", "postgres")
+        db_name = os.getenv("DB_DATABASE", "spirandeli_empire")
+        db_user = os.getenv("DB_USERNAME", "empire_admin")
+        db_pass = os.getenv("DB_PASSWORD", "")
+
+        conn = psycopg2.connect(
+            host=db_host,
+            database=db_name,
+            user=db_user,
+            password=db_pass,
+            connect_timeout=3
+        )
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE tasks 
+                SET status = %s, result = %s, error_message = %s, completed_at = NOW(), updated_at = NOW()
+                WHERE id = %s
+            """, (status, json.dumps(result), error, int(task_id)))
+            conn.commit()
+        conn.close()
+        logger.info(f"Task #{task_id} status updated to [{status}] in PostgreSQL.")
+    except Exception as e:
+        logger.warning(f"Could not update task #{task_id} in PostgreSQL: {e}")
+
+
 def process_task(task: Dict[str, Any]) -> None:
     """Process incoming empire task under strict security policies.
 
@@ -421,6 +452,7 @@ def process_task(task: Dict[str, Any]) -> None:
     try:
         r_client = get_redis_client()
         _publish_task_result(r_client, task_id, result_payload)
+        _update_db_task_status(task_id, result_payload["status"], result_payload, result_payload["error"])
         logger.info(
             f"Task [{task_id}] completed. Provider={ai_result.get('provider')} "
             f"| Tokens~{ai_result.get('estimated_tokens', 0)} | Latency={ai_result.get('latency_ms', 0)}ms"
