@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 2. Initial Four Strategic Businesses
+        // 2. Initial Strategic Businesses (4 originais + 4 afiliados + 1 automação TikTok)
         $initialBusinesses = [
             [
                 'name' => 'RISADA.exe',
@@ -67,6 +67,48 @@ class DatabaseSeeder extends Seeder
                 'storage_path' => 'businesses/printable-factory',
                 'budget_limit_brl' => 30.00,
             ],
+
+            // ── Negócios de Afiliado ──────────────────────────────────────────
+            [
+                'name' => 'TikTok Shop Afiliados',
+                'slug' => 'tiktok-shop-afiliados',
+                'category' => 'Affiliate Marketing',
+                'description' => 'Pipeline 100% automatizado com IA local para criação de vídeos faceless 9:16 para TikTok Shop Affiliates. Roteiro por Ollama (Llama 3 8B), narração por XTTS v2 com clonagem de voz, renderização vertical via MoviePy + FFmpeg. Orquestrado pelo n8n (cron 3x/dia, máx. 9 vídeos/dia). Comissões de 5–20% por venda.',
+                'status' => 'provisioning',
+                'template_used' => 'affiliate-tiktok-shop',
+                'storage_path' => 'businesses/tiktok-shop-afiliados',
+                'budget_limit_brl' => 30.00,
+            ],
+            [
+                'name' => 'Shopee Afiliados',
+                'slug' => 'shopee-afiliados',
+                'category' => 'Affiliate Marketing',
+                'description' => 'Programa de afiliados Shopee: curadoria de produtos com alto potencial de conversão, geração de links rastreáveis, publicação em redes sociais, grupos de WhatsApp e Telegram para maximizar comissões.',
+                'status' => 'provisioning',
+                'template_used' => 'affiliate-shopee',
+                'storage_path' => 'businesses/shopee-afiliados',
+                'budget_limit_brl' => 20.00,
+            ],
+            [
+                'name' => 'Amazon Afiliados',
+                'slug' => 'amazon-afiliados',
+                'category' => 'Affiliate Marketing',
+                'description' => 'Programa Amazon Associados: criação de conteúdo de review, comparativos e listas de produtos com links de afiliado, integrado ao canal YouTube e blog para geração de renda passiva via comissões.',
+                'status' => 'provisioning',
+                'template_used' => 'affiliate-amazon',
+                'storage_path' => 'businesses/amazon-afiliados',
+                'budget_limit_brl' => 20.00,
+            ],
+            [
+                'name' => 'AliExpress Afiliados',
+                'slug' => 'aliexpress-afiliados',
+                'category' => 'Affiliate Marketing',
+                'description' => 'Programa de afiliados AliExpress (via Admitad ou portal oficial): curadoria de produtos importados, criação de conteúdo de unboxing e reviews, divulgação via redes sociais e newsletters para geração de comissões.',
+                'status' => 'provisioning',
+                'template_used' => 'affiliate-aliexpress',
+                'storage_path' => 'businesses/aliexpress-afiliados',
+                'budget_limit_brl' => 20.00,
+            ],
         ];
 
         foreach ($initialBusinesses as $bizData) {
@@ -94,6 +136,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'safety',
                 'key' => 'human_approval',
                 'content' => 'Ações críticas, despesas financeiras, publicação de conteúdos e deleção de dados exigem aprovação humana prévia.',
+            ],
+            [
+                'category' => 'guideline',
+                'key' => 'tiktok_shop_guardrails',
+                'content' => 'TikTok Shop Afiliados: máximo 9 vídeos/dia (anti-shadowban). Todo vídeo publicado deve conter #parceria ou disclosure de afiliado. Nenhum roteiro pode fazer afirmações médicas, jurídicas ou de ganho garantido. XTTS v2 requer arquivo de referência de voz em assets/voice_reference.wav. Fallback para Piper TTS se XTTS indisponível.',
             ],
         ];
 

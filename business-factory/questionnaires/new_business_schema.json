@@ -7,7 +7,7 @@
     "name": { "type": "string" },
     "category": {
       "type": "string",
-      "enum": ["youtube_dark", "amazon_kdp", "digital_goods", "printables", "other"]
+      "enum": ["youtube_dark", "amazon_kdp", "digital_goods", "printables", "tiktok_shop_affiliate", "affiliate_other", "other"]
     },
     "description": { "type": "string" },
     "target_audience": { "type": "string" },

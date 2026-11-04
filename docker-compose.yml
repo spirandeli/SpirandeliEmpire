@@ -210,6 +210,54 @@ services:
         limits:
           memory: 4608M
 
+  # --- TIKTOK SHOP: VOICE CLONING TTS (XTTS v2) ---
+  xtts-api:
+    image: ghcr.io/coqui-ai/xtts-api:latest
+    container_name: empire_xtts
+    restart: unless-stopped
+    ports:
+      - "${XTTS_PORT:-5021}:5021"
+    volumes:
+      - ./storage/businesses/tiktok-shop-afiliados/assets:/assets:ro
+    environment:
+      - COQUI_TOS_AGREED=1
+    networks:
+      - ai-network
+    deploy:
+      resources:
+        limits:
+          memory: 3072M
+
+  # --- TIKTOK SHOP: WORKFLOW ORCHESTRATOR (n8n) ---
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: empire_n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme_n8n}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - WEBHOOK_URL=http://${N8N_HOST:-localhost}:5678/
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - XTTS_API_URL=http://xtts-api:5021/tts
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./storage/businesses/tiktok-shop-afiliados:/var/spirandeli/businesses/tiktok-shop-afiliados
+      - ./ai-engine:/opt/ai-engine:ro
+    networks:
+      - ai-network
+      - empire-network
+    depends_on:
+      - ollama
+      - xtts-api
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   # --- JEFFREY TELEGRAM BOT ---
   jeffrey-telegram:
     build:
@@ -266,4 +314,5 @@ volumes:
   redis_data:
   ollama_data:
   uptime_kuma_data:
+  n8n_data:
 
