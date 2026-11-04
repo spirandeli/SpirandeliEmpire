@@ -12,6 +12,10 @@ from typing import Dict, Any, Optional
 import httpx
 import redis
 
+# Importa o Gatekeeper de segurança/governança
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from permissions.gatekeeper import Gatekeeper, GatekeeperViolation
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -317,13 +321,112 @@ def main():
                 task = json.loads(task_data)
                 logger.info(f"Received task: {task.get('id', 'unknown')} | Type: {task.get('type')}")
                 process_task(task)
+        except redis.ConnectionError as e:
+            logger.error(f"Conexão com Redis perdida no worker do Jeffrey: {e}. Reconectando em 5 segundos...")
+            time.sleep(5)
+            r = None
+            while not r:
+                try:
+                    r = get_redis_client()
+                    r.ping()
+                    logger.info("Reconectado ao broker Redis com sucesso.")
+                except Exception:
+                    time.sleep(3)
+        except json.JSONDecodeError as e:
+            logger.error(f"Payload de tarefa corrompido ou JSON inválido recebido: {e}")
         except Exception as e:
+            logger.exception(f"Erro inesperado no loop principal de tarefas: {e}")
             time.sleep(2)
 
-def process_task(task: Dict[str, Any]):
-    """Process incoming empire task under strict security policies."""
+def _publish_task_result(r: redis.Redis, task_id: str, result: Dict[str, Any]) -> None:
+    """Publish task result back to Redis so the Laravel backend can pick it up."""
+    result_key = f"empire:jeffrey:results:{task_id}"
+    r.set(result_key, json.dumps(result), ex=3600)  # TTL: 1 hour
+    r.publish("empire:jeffrey:results:channel", json.dumps({"task_id": task_id}))
+
+
+def process_task(task: Dict[str, Any]) -> None:
+    """Process incoming empire task under strict security policies.
+
+    Flow:
+      1. Validate action via Gatekeeper (budget + critical-action approval + command safety)
+      2. Build prompt from task payload
+      3. Query AI engine with smart provider routing
+      4. Publish result back to Redis for the Laravel API to consume
+    """
+    task_id   = task.get("id", f"task_{int(time.time())}")
     task_type = task.get("type", "unknown")
-    logger.info(f"Executing task [{task_type}] with authorized specialized agents.")
+    payload   = task.get("payload", {})
+
+    logger.info(f"Processing task [{task_id}] type=[{task_type}]")
+
+    # --- 1. Gatekeeper: validate action before executing anything ---
+    gatekeeper = Gatekeeper(monthly_budget_limit=MONTHLY_BUDGET_LIMIT)
+    try:
+        approved, reason = gatekeeper.validate_action("Jeffrey", task_type, payload)
+    except GatekeeperViolation as e:
+        logger.error(f"Task [{task_id}] BLOCKED by Gatekeeper — FORBIDDEN COMMAND: {e}")
+        try:
+            r_client = get_redis_client()
+            _publish_task_result(r_client, task_id, {
+                "task_id": task_id,
+                "status": "blocked",
+                "reason": f"Gatekeeper: comando proibido detectado — {e}",
+            })
+        except Exception:
+            pass
+        return
+
+    if not approved:
+        logger.warning(f"Task [{task_id}] BLOCKED by Gatekeeper: {reason}")
+        try:
+            r_client = get_redis_client()
+            _publish_task_result(r_client, task_id, {
+                "task_id": task_id,
+                "status": "pending_approval",
+                "reason": reason,
+            })
+        except Exception:
+            pass
+        return
+
+    # --- 2. Build prompt ---
+    prompt        = payload.get("prompt", "")
+    system_prompt = payload.get("system_prompt")
+    provider      = payload.get("provider")
+
+    if not prompt:
+        logger.warning(f"Task [{task_id}] has no prompt. Skipping.")
+        return
+
+    # --- 3. Execute AI inference ---
+    logger.info(f"Task [{task_id}] approved by Gatekeeper. Querying AI engine (provider={provider or 'auto'})...")
+    ai_result = query_ai_engine(prompt, system_prompt, provider)
+
+    # --- 4. Publish result ---
+    result_payload = {
+        "task_id":   task_id,
+        "task_type": task_type,
+        "status":    "completed" if ai_result.get("success") else "failed",
+        "response":  ai_result.get("response", ""),
+        "provider":  ai_result.get("provider"),
+        "model":     ai_result.get("model"),
+        "latency_ms": ai_result.get("latency_ms", 0),
+        "fallback_used": ai_result.get("fallback_used", False),
+        "estimated_tokens": ai_result.get("estimated_tokens", 0),
+        "error":     ai_result.get("error") if not ai_result.get("success") else None,
+        "completed_at": datetime.utcnow().isoformat(),
+    }
+
+    try:
+        r_client = get_redis_client()
+        _publish_task_result(r_client, task_id, result_payload)
+        logger.info(
+            f"Task [{task_id}] completed. Provider={ai_result.get('provider')} "
+            f"| Tokens~{ai_result.get('estimated_tokens', 0)} | Latency={ai_result.get('latency_ms', 0)}ms"
+        )
+    except Exception as e:
+        logger.error(f"Task [{task_id}] failed to publish result to Redis: {e}")
 
 if __name__ == "__main__":
     main()

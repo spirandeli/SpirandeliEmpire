@@ -15,11 +15,11 @@ class OpenAiClientService
 
     public function __construct()
     {
-        $this->apiKey = env('OPENAI_API_KEY', config('ai.openai.api_key'));
-        $this->defaultModel = env('OPENAI_MODEL', config('ai.openai.default_model', 'gpt-4o-mini'));
-        $this->baseUrl = env('OPENAI_BASE_URL', config('ai.openai.base_url', 'https://api.openai.com/v1'));
-        $this->temperature = (float) env('OPENAI_TEMPERATURE', config('ai.openai.temperature', 0.7));
-        $this->maxTokens = (int) env('OPENAI_MAX_TOKENS', config('ai.openai.max_tokens', 4096));
+        $this->apiKey = config('ai.openai.api_key', env('OPENAI_API_KEY'));
+        $this->defaultModel = config('ai.openai.default_model', env('OPENAI_MODEL', 'gpt-4o-mini'));
+        $this->baseUrl = config('ai.openai.base_url', env('OPENAI_BASE_URL', 'https://api.openai.com/v1'));
+        $this->temperature = (float) config('ai.openai.temperature', env('OPENAI_TEMPERATURE', 0.7));
+        $this->maxTokens = (int) config('ai.openai.max_tokens', env('OPENAI_MAX_TOKENS', 4096));
     }
 
     /**

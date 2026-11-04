@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\FinancialRecord;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class BudgetGuardService
 {
@@ -11,7 +12,7 @@ class BudgetGuardService
 
     public function __construct()
     {
-        $this->monthlyLimit = (float) env('MONTHLY_BUDGET_LIMIT_BRL', 200.00);
+        $this->monthlyLimit = (float) config('ai.monthly_budget_limit_brl', env('MONTHLY_BUDGET_LIMIT_BRL', 200.00));
     }
 
     /**
@@ -28,11 +29,19 @@ class BudgetGuardService
 
     /**
      * Check if an additional amount can be spent without violating the R$ 200 limit.
+     * Uses database transaction lock to avoid race conditions in concurrent execution.
      */
     public function canSpend(float $amount): bool
     {
-        $current = $this->getCurrentMonthExpenses();
-        return ($current + $amount) <= $this->monthlyLimit;
+        return DB::transaction(function () use ($amount) {
+            $startOfMonth = Carbon::now()->startOfMonth();
+            $current = (float) FinancialRecord::where('type', '!=', 'revenue')
+                ->where('recorded_at', '>=', $startOfMonth)
+                ->lockForUpdate()
+                ->sum('amount_brl');
+
+            return ($current + $amount) <= $this->monthlyLimit;
+        });
     }
 
     /**
@@ -43,6 +52,7 @@ class BudgetGuardService
         $spent = $this->getCurrentMonthExpenses();
         $remaining = max(0, $this->monthlyLimit - $spent);
         $percentage = ($this->monthlyLimit > 0) ? ($spent / $this->monthlyLimit) * 100 : 100;
+        $alertPct = (float) config('ai.alert_budget_percentage', env('ALERT_BUDGET_PERCENTAGE', 80));
 
         return [
             'monthly_limit_brl' => $this->monthlyLimit,
@@ -50,7 +60,7 @@ class BudgetGuardService
             'remaining_brl' => round($remaining, 2),
             'percentage_used' => round($percentage, 2),
             'is_over_budget' => $spent > $this->monthlyLimit,
-            'warning_triggered' => $percentage >= (float) env('ALERT_BUDGET_PERCENTAGE', 80),
+            'warning_triggered' => $percentage >= $alertPct,
         ];
     }
 }

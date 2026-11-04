@@ -41,6 +41,7 @@ ALLOWED_IDS: set[int] = {int(i.strip()) for i in _raw_ids.split(",") if i.strip(
 
 # URL interna da API Laravel do Jeffrey
 JEFFREY_API_URL: str = os.getenv("JEFFREY_API_URL", "http://core-app/api/v1/jeffrey/chat")
+INTERNAL_API_SECRET: str = os.getenv("INTERNAL_API_SECRET", "")
 
 # Provider de IA padrão para requisições vindas do Telegram
 DEFAULT_AI_PROVIDER: str = os.getenv("TELEGRAM_AI_PROVIDER", "hybrid")
@@ -61,11 +62,18 @@ def _is_authorized(user_id: int) -> bool:
 
 async def _call_jeffrey(message: str, provider: str = DEFAULT_AI_PROVIDER) -> dict:
     """Chama a API interna do Jeffrey e retorna o dict de resposta."""
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if INTERNAL_API_SECRET:
+        headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+
     async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         resp = await client.post(
             JEFFREY_API_URL,
             json={"message": message, "provider": provider},
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            headers=headers,
         )
         resp.raise_for_status()
         return resp.json()
@@ -139,7 +147,10 @@ async def cmd_memoria(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             base = JEFFREY_API_URL.replace("/jeffrey/chat", "")
-            resp = await client.get(f"{base}/jeffrey/memories", headers={"Accept": "application/json"})
+            headers = {"Accept": "application/json"}
+            if INTERNAL_API_SECRET:
+                headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+            resp = await client.get(f"{base}/jeffrey/memories", headers=headers)
             resp.raise_for_status()
             memories = resp.json()
 
@@ -165,7 +176,10 @@ async def cmd_aprovacoes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             base = JEFFREY_API_URL.replace("/jeffrey/chat", "")
-            resp = await client.get(f"{base}/jeffrey/approvals", headers={"Accept": "application/json"})
+            headers = {"Accept": "application/json"}
+            if INTERNAL_API_SECRET:
+                headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+            resp = await client.get(f"{base}/jeffrey/approvals", headers=headers)
             resp.raise_for_status()
             approvals = resp.json()
 

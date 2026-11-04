@@ -14,7 +14,8 @@ import json
 import logging
 import subprocess
 import tempfile
-import requests
+from datetime import datetime
+import httpx
 
 logger = logging.getLogger("TikTokShopWorker")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -28,6 +29,34 @@ RENDER_SCRIPT    = os.getenv("TIKTOK_RENDER_SCRIPT", "/opt/ai-engine/video-proce
 BROLL_DIR        = os.getenv("TIKTOK_BROLL_DIR", "/var/spirandeli/businesses/tiktok-shop-afiliados/content/broll")
 OUTPUT_DIR       = os.getenv("TIKTOK_OUTPUT_DIR", "/var/spirandeli/businesses/tiktok-shop-afiliados/content/renders")
 CORE_API_URL     = os.getenv("JEFFREY_API_URL", "http://core-app/api/v1")
+MAX_VIDEOS_DAY   = int(os.getenv("TIKTOK_SHOP_MAX_VIDEOS_DAY", 9))
+
+
+def _get_today_video_count() -> int:
+    """Retorna quantos vídeos já foram gerados na data de hoje."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    count_file = os.path.join(OUTPUT_DIR, f".count_{today}")
+    if not os.path.exists(count_file):
+        return 0
+    try:
+        with open(count_file, "r") as f:
+            return int(f.read().strip() or 0)
+    except Exception:
+        return 0
+
+
+def _increment_today_count() -> int:
+    """Incrementa o contador de vídeos produzidos hoje."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    count_file = os.path.join(OUTPUT_DIR, f".count_{today}")
+    new_count = _get_today_video_count() + 1
+    try:
+        with open(count_file, "w") as f:
+            f.write(str(new_count))
+    except Exception as e:
+        logger.warning(f"Não foi possível persistir contagem diária: {e}")
+    return new_count
 
 SCRIPT_PROMPT_TEMPLATE = (
     "Escreva um roteiro curto e viral de 30 segundos para o TikTok vendendo o produto: {product_name}. "
@@ -52,7 +81,7 @@ def generate_script(product_name: str, product_price: str) -> str | None:
         "options": {"temperature": 0.85, "num_predict": 300}
     }
     try:
-        resp = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=120)
+        resp = httpx.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=120.0)
         resp.raise_for_status()
         script = resp.json().get("response", "").strip()
         logger.info(f"Roteiro gerado ({len(script)} chars) para '{product_name}'")
@@ -70,9 +99,9 @@ def synthesize_voice_xtts(script: str, output_path: str) -> bool:
 
     try:
         with open(XTTS_REF_AUDIO, "rb") as ref_f:
-            files = {"speaker_wav": ("voice_reference.wav", ref_f, "audio/wav")}
+            files = {"speaker_wav": ("voice_reference.wav", ref_f.read(), "audio/wav")}
             data  = {"text": script, "language": "pt"}
-            resp  = requests.post(XTTS_URL, files=files, data=data, timeout=180)
+            resp  = httpx.post(XTTS_URL, files=files, data=data, timeout=180.0)
             resp.raise_for_status()
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -139,6 +168,20 @@ def run_pipeline(product: dict) -> dict:
 
     result = {"product": product_name, "status": "failed", "output_video": None}
 
+    # Guardrail de volume anti-shadowban
+    today_count = _get_today_video_count()
+    if today_count >= MAX_VIDEOS_DAY:
+        logger.warning(
+            f"Guardrail acionado: Limite diário de {MAX_VIDEOS_DAY} vídeos/dia atingido (atual: {today_count}). "
+            f"Abortando pipeline para prevenir shadowban do algoritmo do TikTok."
+        )
+        return {
+            "product": product_name,
+            "status": "blocked_by_guardrail",
+            "reason": f"Limite diário de {MAX_VIDEOS_DAY} vídeos atingido.",
+            "output_video": None
+        }
+
     # Passo 1: Gerar roteiro
     logger.info(f"[1/4] Gerando roteiro para: {product_name}")
     script = generate_script(product_name, product_price)
@@ -179,6 +222,7 @@ def run_pipeline(product: dict) -> dict:
         if os.path.exists(audio_path):
             os.unlink(audio_path)
 
+    _increment_today_count()
     result["status"] = "pending_review"
     result["output_video"] = output_video
     result["script"] = script

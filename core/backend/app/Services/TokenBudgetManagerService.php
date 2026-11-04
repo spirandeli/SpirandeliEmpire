@@ -15,10 +15,10 @@ class TokenBudgetManagerService
 
     public function __construct()
     {
-        $this->tokenRoutingEnabled = (bool) env('TOKEN_ROUTING_ENABLED', config('ai.tokens.routing_enabled', true));
-        $this->localMaxThreshold = (int) env('TOKEN_THRESHOLD_LOCAL_MAX', config('ai.tokens.threshold_local_max', 800));
-        $this->longContextThreshold = (int) env('TOKEN_THRESHOLD_LONG_CONTEXT', config('ai.tokens.threshold_long_context', 3500));
-        $this->dailyApiTokenCap = (int) env('DAILY_API_TOKEN_CAP', config('ai.tokens.daily_api_token_cap', 500000));
+        $this->tokenRoutingEnabled = (bool) config('ai.tokens.routing_enabled', env('TOKEN_ROUTING_ENABLED', true));
+        $this->localMaxThreshold = (int) config('ai.tokens.threshold_local_max', env('TOKEN_THRESHOLD_LOCAL_MAX', 800));
+        $this->longContextThreshold = (int) config('ai.tokens.threshold_long_context', env('TOKEN_THRESHOLD_LONG_CONTEXT', 3500));
+        $this->dailyApiTokenCap = (int) config('ai.tokens.daily_api_token_cap', env('DAILY_API_TOKEN_CAP', 500000));
     }
 
     /**

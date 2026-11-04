@@ -15,6 +15,9 @@ return [
 
     'fallback_order' => explode(',', env('AI_FALLBACK_ORDER', 'gemini,openai,ollama')),
 
+    'monthly_budget_limit_brl' => (float) env('MONTHLY_BUDGET_LIMIT_BRL', 200.00),
+    'alert_budget_percentage' => (float) env('ALERT_BUDGET_PERCENTAGE', 80.0),
+
     /*
     |--------------------------------------------------------------------------
     | Token Management & Task Delimitation

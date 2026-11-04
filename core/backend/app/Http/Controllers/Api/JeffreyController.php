@@ -34,9 +34,10 @@ class JeffreyController extends Controller
         return response()->json(JeffreyMemory::where('is_active', true)->get());
     }
 
-    public function getDecisions(): JsonResponse
+    public function getDecisions(Request $request): JsonResponse
     {
-        return response()->json(AgentDecision::latest()->limit(50)->get());
+        $perPage = min(100, max(10, (int) $request->input('per_page', 50)));
+        return response()->json(AgentDecision::latest()->paginate($perPage));
     }
 
     public function getPendingApprovals(): JsonResponse

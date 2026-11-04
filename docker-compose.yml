@@ -36,15 +36,16 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - APP_DEBUG=${APP_DEBUG:-false}
       - APP_KEY=${APP_KEY}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - DB_CONNECTION=pgsql
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
       - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
+      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - AI_PROVIDER=${AI_PROVIDER:-hybrid}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
@@ -92,10 +93,10 @@ services:
       - DB_PORT=5432
       - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
       - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
+      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
       - ./core/backend:/var/www/backend
       - ./storage:/var/www/backend/storage
@@ -132,14 +133,15 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - DB_HOST=postgres
       - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
       - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
+      - DB_PASSWORD=${DB_PASSWORD}
       - MONTHLY_BUDGET_LIMIT_BRL=${MONTHLY_BUDGET_LIMIT_BRL:-200.00}
     volumes:
-      - ./:/app
+      - ./jeffrey:/app/jeffrey:ro
+      - ./ai-engine:/app/ai-engine:ro
       - ./storage:/app/storage
     networks:
       - internal-network
@@ -161,7 +163,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_DATABASE:-spirandeli_empire}
       POSTGRES_USER: ${DB_USERNAME:-empire_admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret_postgres_password_replace_me}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -181,13 +183,15 @@ services:
     image: redis:7-alpine
     container_name: empire_redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-secret_redis_password_replace_me} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 256mb --maxmemory-policy allkeys-lru"]
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - internal-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-secret_redis_password_replace_me}", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -215,8 +219,8 @@ services:
     image: ghcr.io/coqui-ai/xtts-api:latest
     container_name: empire_xtts
     restart: unless-stopped
-    ports:
-      - "${XTTS_PORT:-5021}:5021"
+    expose:
+      - "5021"
     volumes:
       - ./storage/businesses/tiktok-shop-afiliados/assets:/assets:ro
     environment:
@@ -273,8 +277,9 @@ services:
       - TELEGRAM_AI_PROVIDER=${TELEGRAM_AI_PROVIDER:-hybrid}
       - TELEGRAM_API_TIMEOUT=${TELEGRAM_API_TIMEOUT:-60}
       - JEFFREY_API_URL=http://core-app/api/v1/jeffrey/chat
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
     volumes:
-      - ./:/app
+      - ./jeffrey:/app/jeffrey:ro
     networks:
       - empire-network
       - internal-network

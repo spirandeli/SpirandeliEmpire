@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
+        $middleware->alias([
+            'internal.secret' => \App\Http\Middleware\VerifyInternalSecret::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

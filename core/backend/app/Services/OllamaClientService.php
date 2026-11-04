@@ -12,8 +12,8 @@ class OllamaClientService
 
     public function __construct()
     {
-        $this->baseUrl = env('OLLAMA_BASE_URL', config('ai.ollama.base_url', 'http://ollama:11434'));
-        $this->defaultModel = env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', config('ai.ollama.default_model', 'llama3.2:3b')));
+        $this->baseUrl = config('ai.ollama.base_url', env('OLLAMA_BASE_URL', 'http://ollama:11434'));
+        $this->defaultModel = config('ai.ollama.default_model', env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'llama3.2:3b')));
     }
 
     /**

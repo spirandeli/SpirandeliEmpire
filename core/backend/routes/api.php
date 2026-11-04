@@ -24,10 +24,12 @@ Route::prefix('v1')->group(function () {
     Route::patch('/businesses/{id}/status', [BusinessController::class, 'updateStatus']);
 
     // Jeffrey AI
-    Route::post('/jeffrey/chat', [JeffreyController::class, 'chat']);
-    Route::get('/jeffrey/memories', [JeffreyController::class, 'getMemories']);
-    Route::get('/jeffrey/decisions', [JeffreyController::class, 'getDecisions']);
-    Route::get('/jeffrey/approvals', [JeffreyController::class, 'getPendingApprovals']);
+    Route::middleware(['internal.secret'])->group(function () {
+        Route::post('/jeffrey/chat', [JeffreyController::class, 'chat']);
+        Route::get('/jeffrey/memories', [JeffreyController::class, 'getMemories']);
+        Route::get('/jeffrey/decisions', [JeffreyController::class, 'getDecisions']);
+        Route::get('/jeffrey/approvals', [JeffreyController::class, 'getPendingApprovals']);
+    });
 
     // Approvals Management
     Route::get('/approvals', [ApprovalController::class, 'index']);

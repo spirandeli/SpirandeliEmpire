@@ -16,12 +16,12 @@ class GeminiClientService
 
     public function __construct()
     {
-        $this->apiKey = env('GEMINI_API_KEY', config('ai.gemini.api_key'));
-        $this->defaultModel = env('GEMINI_MODEL', config('ai.gemini.default_model', 'gemini-1.5-flash'));
-        $this->baseUrl = env('GEMINI_BASE_URL', config('ai.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta'));
-        $this->temperature = (float) env('GEMINI_TEMPERATURE', config('ai.gemini.temperature', 0.7));
-        $this->maxTokens = (int) env('GEMINI_MAX_TOKENS', config('ai.gemini.max_tokens', 4096));
-        $this->freeTierMode = (bool) env('GEMINI_FREE_TIER_MODE', config('ai.gemini.free_tier_mode', true));
+        $this->apiKey = config('ai.gemini.api_key', env('GEMINI_API_KEY'));
+        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-1.5-flash'));
+        $this->baseUrl = config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'));
+        $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.7));
+        $this->maxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 4096));
+        $this->freeTierMode = (bool) config('ai.gemini.free_tier_mode', env('GEMINI_FREE_TIER_MODE', true));
     }
 
     /**
