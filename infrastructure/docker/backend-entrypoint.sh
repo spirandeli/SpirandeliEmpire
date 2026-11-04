@@ -26,11 +26,12 @@ if [ ! -f /var/www/backend/vendor/autoload.php ]; then
 fi
 
 # Ensure essential runtime directories and permissions
+mkdir -p /var/www/backend/bootstrap/cache
 mkdir -p /var/www/backend/storage/framework/cache/data
 mkdir -p /var/www/backend/storage/framework/sessions
 mkdir -p /var/www/backend/storage/framework/views
 mkdir -p /var/www/backend/storage/logs
 mkdir -p /var/spirandeli/businesses
-chmod -R 777 /var/www/backend/storage /var/spirandeli/businesses 2>/dev/null || true
+chmod -R 777 /var/www/backend/bootstrap/cache /var/www/backend/storage /var/spirandeli/businesses 2>/dev/null || true
 
 exec "$@"
