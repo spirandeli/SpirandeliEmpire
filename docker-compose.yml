@@ -51,7 +51,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - AI_PROVIDER=${AI_PROVIDER:-hybrid}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - LLAMA_MODEL=${LLAMA_MODEL:-qwen2.5:3b}
@@ -127,7 +127,7 @@ services:
     environment:
       - AI_PROVIDER=${AI_PROVIDER:-hybrid}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - LLAMA_MODEL=${LLAMA_MODEL:-qwen2.5:3b}
@@ -248,7 +248,7 @@ services:
     container_name: empire_n8n
     restart: unless-stopped
     ports:
-      - "${N8N_PORT:-5678}:5678"
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}

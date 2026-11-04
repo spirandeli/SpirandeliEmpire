@@ -8,23 +8,37 @@
 {$DOMAIN:localhost} {
     encode gzip zstd
 
-    # Security Headers
+    # Hardened Security Headers (Anti-XSS, Anti-Clickjacking, HSTS, Server Fingerprint Removal)
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         X-XSS-Protection "1; mode=block"
         Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+        X-Permitted-Cross-Domain-Policies "none"
+        -Server
+        -X-Powered-By
     }
 
+    # Block direct web access to any sensitive dotfiles (.env, .git, etc.)
+    @dotfiles {
+        path */.*
+        not path /.well-known/*
+    }
+    respond @dotfiles 403
+
     # API and Backend routes pass to Laravel PHP-FPM
+    # SECURITY: Strip internal service headers so external internet traffic can NEVER spoof internal bot auth
     @api {
         path /api/*
         path /sanctum/*
         path /broadcasting/*
     }
     handle @api {
+        request_header -X-Jeffrey-Internal
+        request_header -X-Internal-Secret
+        request_header X-Forwarded-From-Caddy "1"
         root * /var/www/backend/public
         php_fastcgi core-app:9000 {
             resolve_root_symlink
@@ -53,4 +67,3 @@
         format json
     }
 }
-

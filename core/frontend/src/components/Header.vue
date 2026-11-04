@@ -15,17 +15,35 @@
 
         <span class="text-[#85522d] font-bold hidden sm:inline">|</span>
 
-        <!-- Orchestration Info -->
-        <div class="hidden sm:flex items-center gap-2">
-          <span class="text-base leading-none drop-shadow">🐳</span>
-          <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Orquestração:</span>
-          <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">Docker Compose</span>
+        <!-- Active Profile & Focus Business Info -->
+        <div
+          @click="$emit('open-profile')"
+          class="hidden sm:flex items-center gap-2 cursor-pointer hover:brightness-110"
+          title="Clique para editar seu Perfil e Cadastros"
+        >
+          <span class="text-base leading-none drop-shadow">👤</span>
+          <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Perfil:</span>
+          <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">
+            {{ user?.name || 'Comandante' }}
+          </span>
+          <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#3b200e] text-[#fde68a] border border-[#85522d]">
+            🎯 {{ user?.profile_data?.focus_business_slug || 'tiktok-shop-afiliados' }}
+          </span>
         </div>
       </div>
     </div>
 
-    <!-- Right: 4 RPG Square Control Buttons -->
+    <!-- Right: RPG Control Buttons -->
     <div class="flex items-center gap-2">
+      <button
+        @click="$emit('open-profile')"
+        class="pixel-btn-gold h-11 px-3 flex items-center justify-center gap-1.5 text-xs font-extrabold uppercase"
+        title="Gerenciar Meu Perfil e Cadastros"
+      >
+        <span>👤</span>
+        <span class="hidden md:inline">Perfil & Cadastros</span>
+      </button>
+
       <router-link
         to="/vps"
         class="pixel-btn-wood w-11 h-11 flex items-center justify-center text-xl"
@@ -68,7 +86,14 @@
 <script setup>
 import axios from 'axios'
 
-defineEmits(['logout'])
+defineProps({
+  user: {
+    type: Object,
+    default: null,
+  },
+})
+
+defineEmits(['logout', 'open-profile'])
 
 const promptChangePassword = async () => {
   const currentPassword = prompt('Digite sua senha atual de Comandante:')

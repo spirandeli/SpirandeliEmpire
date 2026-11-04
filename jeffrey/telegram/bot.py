@@ -53,11 +53,40 @@ API_TIMEOUT: float = float(os.getenv("TELEGRAM_API_TIMEOUT", "60"))
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _is_authorized(user_id: int) -> bool:
-    """Retorna True se o usuário está na lista de autorizados (ou se a lista está vazia = modo aberto)."""
-    if not ALLOWED_IDS:
+def _is_authorized(user_id: int, username: str = "") -> bool:
+    """
+    Verifica se o usuário do Telegram está autorizado via TELEGRAM_ALLOWED_IDS (.env)
+    ou via campo telegram_id salvo no Perfil do Comandante no PostgreSQL.
+    Se nenhum ID estiver configurado ainda, bloqueia estranhos por segurança e orienta o Comandante.
+    """
+    if user_id in ALLOWED_IDS:
         return True
-    return user_id in ALLOWED_IDS
+
+    # Consulta dinâmica ao perfil do Comandante no banco PostgreSQL
+    try:
+        import psycopg2
+        import json
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "postgres"),
+            database=os.getenv("DB_DATABASE", "spirandeli_empire"),
+            user=os.getenv("DB_USERNAME", "empire_admin"),
+            password=os.getenv("DB_PASSWORD", ""),
+            connect_timeout=3,
+        )
+        with conn.cursor() as cur:
+            cur.execute("SELECT profile_data FROM users WHERE profile_data IS NOT NULL")
+            for (pdata,) in cur.fetchall():
+                data = pdata if isinstance(pdata, dict) else (json.loads(pdata) if pdata else {})
+                tg_cfg = str(data.get("telegram_id", "")).strip().lstrip("@").lower()
+                if tg_cfg and (tg_cfg == str(user_id) or (username and tg_cfg == username.strip().lstrip("@").lower())):
+                    ALLOWED_IDS.add(user_id)
+                    conn.close()
+                    return True
+        conn.close()
+    except Exception:
+        pass
+
+    return False
 
 
 def _build_headers() -> dict:
@@ -113,8 +142,12 @@ def _format_reply(data: dict) -> str:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not _is_authorized(user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(
+            f"⛔ *Acesso Blindado:* Seu Telegram ID (`{user.id}`) ainda não está autorizado.\n\n"
+            f"Para autorizar, acesse o painel web do *SpirandeliEmpire OS* → *👤 Perfil & Cadastros* e preencha o campo *Telegram ID* com `{user.id}` (ou `@{user.username or user.id}`).",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     text = (
@@ -131,8 +164,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    user = update.effective_user
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(f"⛔ Acesso não autorizado. Seu ID: `{user.id}`", parse_mode=ParseMode.MARKDOWN)
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
@@ -145,8 +179,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def cmd_memoria(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    user = update.effective_user
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(f"⛔ Acesso não autorizado. Seu ID: `{user.id}`", parse_mode=ParseMode.MARKDOWN)
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
@@ -172,8 +207,9 @@ async def cmd_memoria(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def cmd_aprovacoes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    user = update.effective_user
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(f"⛔ Acesso não autorizado. Seu ID: `{user.id}`", parse_mode=ParseMode.MARKDOWN)
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
@@ -202,8 +238,9 @@ async def cmd_aprovacoes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def cmd_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    user = update.effective_user
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(f"⛔ Acesso não autorizado. Seu ID: `{user.id}`", parse_mode=ParseMode.MARKDOWN)
         return
 
     text = (
@@ -228,8 +265,12 @@ async def cmd_ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not _is_authorized(user.id):
-        await update.message.reply_text("⛔ Acesso não autorizado.")
+    if not _is_authorized(user.id, user.username or ""):
+        await update.message.reply_text(
+            f"⛔ *Acesso Blindado:* Seu Telegram ID (`{user.id}`) não está autorizado.\n"
+            f"Cadastre `{user.id}` ou `@{user.username or user.id}` em *👤 Perfil & Cadastros* no painel do SpirandeliEmpire OS.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     text: str = update.message.text.strip()

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\JeffreyMemory;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class OpenAiClientService
 {
@@ -15,11 +17,40 @@ class OpenAiClientService
 
     public function __construct()
     {
-        $this->apiKey = config('ai.openai.api_key', env('OPENAI_API_KEY'));
+        $this->apiKey = $this->resolveApiKey();
         $this->defaultModel = config('ai.openai.default_model', env('OPENAI_MODEL', 'gpt-4o-mini'));
         $this->baseUrl = config('ai.openai.base_url', env('OPENAI_BASE_URL', 'https://api.openai.com/v1'));
         $this->temperature = (float) config('ai.openai.temperature', env('OPENAI_TEMPERATURE', 0.7));
         $this->maxTokens = (int) config('ai.openai.max_tokens', env('OPENAI_MAX_TOKENS', 4096));
+    }
+
+    protected function resolveApiKey(): ?string
+    {
+        $envKey = config('ai.openai.api_key', env('OPENAI_API_KEY'));
+        if (!empty($envKey) && strlen(trim($envKey)) > 10) {
+            return trim($envKey);
+        }
+        try {
+            $raw = Redis::get('empire:ai:config');
+            if ($raw) {
+                $cfg = json_decode($raw, true);
+                if (!empty($cfg['openai_api_key']) && strlen(trim($cfg['openai_api_key'])) > 10) {
+                    return trim($cfg['openai_api_key']);
+                }
+            }
+        } catch (\Exception $e) {}
+
+        try {
+            $mem = JeffreyMemory::where('category', 'system_ai_keys')->where('is_active', true)->first();
+            if ($mem && !empty($mem->content)) {
+                $cfg = json_decode($mem->content, true);
+                if (!empty($cfg['openai_api_key']) && strlen(trim($cfg['openai_api_key'])) > 10) {
+                    return trim($cfg['openai_api_key']);
+                }
+            }
+        } catch (\Exception $e) {}
+
+        return $envKey;
     }
 
     /**

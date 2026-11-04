@@ -25,36 +25,92 @@
       </div>
     </div>
 
-    <!-- Active Pipeline Card -->
-    <div class="bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 p-5 rounded-2xl border border-slate-800">
-      <div class="flex items-center justify-between mb-3">
+    <!-- Active Pipeline Card + API Key Quick Configuration -->
+    <div class="bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 p-5 rounded-2xl border border-slate-800 space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
         <span class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
-          Orquestração de Custos & Roteamento Inteligente
+          Divisão Cooperativa de Agentes: Llama (Leitura & Análise) + Gemini / Chat (Execução de Tarefas)
         </span>
-        <span class="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
-          Guardrail de R$ 200/mês Ativo
-        </span>
+        <div class="flex items-center gap-2">
+          <span
+            class="text-[11px] font-mono px-2.5 py-0.5 rounded border font-bold"
+            :class="(providers.google_gemini.configured || providers.openai.configured)
+              ? 'text-emerald-300 bg-emerald-950/80 border-emerald-700'
+              : 'text-amber-300 bg-amber-950/80 border-amber-700'"
+          >
+            {{ (providers.google_gemini.configured || providers.openai.configured)
+              ? '⚡ MODO COOPERATIVO ATIVO (Llama Analisa → Gemini/Chat Executa)'
+              : '🦙 MODO 100% LOCAL (Insira a API Key abaixo para ativar divisão)' }}
+          </span>
+          <button
+            @click="showKeyConfig = !showKeyConfig"
+            class="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs transition"
+          >
+            🔑 {{ showKeyConfig ? 'Fechar Chaves' : 'Configurar API Keys' }}
+          </button>
+        </div>
       </div>
+
+      <!-- Collapsible API Key Configurator -->
+      <form
+        v-if="showKeyConfig"
+        @submit.prevent="saveApiKeys"
+        class="p-4 rounded-xl bg-slate-950/90 border border-cyan-800/60 space-y-3 text-xs font-mono"
+      >
+        <div class="text-slate-300">
+          Insira sua <strong>GEMINI_API_KEY</strong> (Google AI Studio) e/ou <strong>OPENAI_API_KEY</strong>. Assim que salva, o sistema automaticamente deixa o <strong>Llama Local</strong> responsável por ler/analisar os dados e o <strong>Gemini / ChatGPT</strong> responsável por executar as tarefas:
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10px] text-cyan-400 mb-1">Google Gemini API Key (GEMINI_API_KEY)</label>
+            <input
+              v-model="keyForm.gemini_api_key"
+              type="password"
+              placeholder="AIzaSy..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:border-cyan-500 outline-none"
+            />
+          </div>
+          <div>
+            <label class="block text-[10px] text-amber-400 mb-1">OpenAI ChatGPT API Key (OPENAI_API_KEY - Opcional)</label>
+            <input
+              v-model="keyForm.openai_api_key"
+              type="password"
+              placeholder="sk-proj-..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:border-amber-500 outline-none"
+            />
+          </div>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="submit"
+            :disabled="savingKeys"
+            class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
+          >
+            {{ savingKeys ? 'Salvando e Ativando...' : '💾 Salvar Chaves & Ativar Divisão Cooperativa' }}
+          </button>
+        </div>
+      </form>
+
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
         <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-start gap-2.5">
-          <span class="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">1</span>
+          <span class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">1</span>
           <div>
-            <div class="font-bold text-slate-200">1º Prioridade: Google Gemini</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">Usa a cota gratuita do Google AI Studio (15 RPM / 1M TPM a R$ 0,00).</div>
+            <div class="font-bold text-slate-200">Etapa 1: Llama Local (Leitura & Análise)</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Lê arquivos, filtra pesquisas da web, analisa métricas dos negócios e prepara o resumo técnico a custo R$ 0,00.</div>
           </div>
         </div>
         <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-start gap-2.5">
-          <span class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">2</span>
+          <span class="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">2</span>
           <div>
-            <div class="font-bold text-slate-200">2º Fallback: OpenAI</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">Acionado caso a cota do Gemini expire; consome créditos de teste ou plano pay-as-you-go.</div>
+            <div class="font-bold text-slate-200">Etapa 2: Google Gemini (Executor Principal)</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Recebe a análise pronta do Llama e executa a tarefa final (roteiros, TikTok Shop, chamadas de ferramentas e entregáveis).</div>
           </div>
         </div>
         <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-start gap-2.5">
-          <span class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">3</span>
+          <span class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">3</span>
           <div>
-            <div class="font-bold text-slate-200">3º Garantia: Llama Local (Ollama)</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">Fallback 100% offline rodando localmente no CPU/RAM do VPS. Custo zero perpétuo.</div>
+            <div class="font-bold text-slate-200">Etapa 3: ChatGPT / OpenAI (Executor Alternativo)</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Executa tarefas complexas ou assume automaticamente caso a cota gratuita do Gemini seja atingida.</div>
           </div>
         </div>
       </div>
@@ -75,9 +131,9 @@
             </span>
           </div>
 
-          <h3 class="text-lg font-bold text-white mt-2">Gemini Flash & Pro</h3>
+          <h3 class="text-lg font-bold text-white mt-2">Gemini 3.8 Flash</h3>
           <p class="text-xs text-slate-400 mt-1">
-            Modelo Ativo: <span class="font-mono text-cyan-300">{{ providers.google_gemini.default_model }}</span>
+            Modelo Ativo: <span class="font-mono text-cyan-300">{{ providers.google_gemini.default_model || 'gemini-3.8-flash' }}</span>
           </p>
 
           <div class="mt-4 p-3 bg-slate-950/70 rounded-xl border border-slate-800/80 text-xs space-y-1.5">
@@ -309,7 +365,7 @@
             </span>
             <span class="text-xs font-mono text-slate-400">&gt; 3.500 tokens</span>
           </div>
-          <h4 class="text-sm font-bold text-slate-100">Gemini 1.5 Flash (1M Tokens)</h4>
+          <h4 class="text-sm font-bold text-slate-100">Gemini 3.8 Flash (1M Tokens)</h4>
           <p class="text-[11px] text-slate-400 leading-relaxed">
             Livros KDP completos, transcrições densas e processamento de documentos pesados.
           </p>
@@ -448,10 +504,11 @@
             v-model="selectedProvider"
             class="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 font-mono focus:outline-none focus:border-cyan-500"
           >
-            <option value="hybrid">⚡ Híbrido Automático (Delimitação por Tokens)</option>
-            <option value="gemini">✨ Google Gemini (Free Tier / Cloud)</option>
-            <option value="openai">🤖 OpenAI (GPT-4o Mini / Plans)</option>
-            <option value="ollama">🦙 Llama Local (Ollama - 100% Free)</option>
+            <option value="hybrid">⚡ Automático (Llama Lê/Analisa • Gemini/Chat Executa)</option>
+            <option value="cooperative">🤝 Pipeline 2 Etapas (Llama Analisa → Gemini/Chat Executa)</option>
+            <option value="gemini">✨ Google Gemini (Executor Cloud)</option>
+            <option value="openai">🤖 OpenAI ChatGPT (Executor Cloud)</option>
+            <option value="ollama">🦙 Llama Local (Leitura & Análise Offline)</option>
           </select>
         </div>
       </div>
@@ -498,11 +555,41 @@ import axios from 'axios'
 const loadingStatus = ref(false)
 const testingProvider = ref(null)
 const testResult = ref(null)
+const showKeyConfig = ref(false)
+const savingKeys = ref(false)
+const keyForm = ref({
+  gemini_api_key: '',
+  openai_api_key: '',
+})
+
+const saveApiKeys = async () => {
+  savingKeys.value = true
+  try {
+    const res = await axios.post('/api/v1/ai-engine/configure-keys', keyForm.value)
+    if (res.data?.status?.providers) {
+      providers.value = res.data.status.providers
+    }
+    testResult.value = {
+      provider: 'COOPERATIVO (LLAMA + GEMINI/CHAT)',
+      success: true,
+      message: res.data?.message || 'Chaves salvas com sucesso!',
+    }
+    keyForm.value.gemini_api_key = ''
+    keyForm.value.openai_api_key = ''
+    showKeyConfig.value = false
+    await fetchEngineStatus()
+    await runTokenSimulation()
+  } catch (err) {
+    alert(err.response?.data?.message || 'Erro ao salvar chaves de API.')
+  } finally {
+    savingKeys.value = false
+  }
+}
 
 const providers = ref({
   google_gemini: {
     configured: false,
-    default_model: 'gemini-1.5-flash',
+    default_model: 'gemini-3.8-flash',
   },
   openai: {
     configured: false,
@@ -617,7 +704,7 @@ const getTierBadgeClass = (tier) => {
 
 const getProviderLabel = (prov) => {
   if (prov === 'ollama' || prov === 'llama') return 'Llama Local (Ollama)'
-  if (prov === 'gemini') return 'Google Gemini 1.5 Flash'
+  if (prov === 'gemini') return 'Google Gemini 3.8 Flash'
   if (prov === 'openai') return 'OpenAI GPT-4o-mini'
   return prov || 'Híbrido'
 }

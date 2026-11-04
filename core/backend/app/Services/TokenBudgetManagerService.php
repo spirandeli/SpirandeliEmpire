@@ -37,17 +37,59 @@ class TokenBudgetManagerService
     }
 
     /**
-     * Determine optimal provider based on token volume and context constraints.
+     * Classify whether the request is a Reading/Analysis task (Llama Local) or an Execution task (Gemini / OpenAI Chat).
      */
-    public function determineOptimalProvider(int $estimatedTokens, ?string $preferredProvider = null): array
+    public function classifyTaskRole(?string $text, ?string $explicitRole = null): string
     {
-        // If a specific provider was explicitly requested and isn't 'hybrid', respect unless context exceeds local capacity
+        if ($explicitRole && in_array($explicitRole, ['read_analyze', 'execute_task'], true)) {
+            return $explicitRole;
+        }
+        if (empty($text)) {
+            return 'execute_task';
+        }
+
+        $lower = mb_strtolower($text, 'UTF-8');
+
+        // Explicit execution triggers (creating, generating scripts, running automations, tool calls)
+        $isExecution = (bool) preg_match(
+            '/\b(executar|execute|criar|crie|gerar|gere|roteiro|produzir|rodar|campanha|escrever|escreva|implementar|forjar|disparar|publicar|renderizar|tarefa)\b/u',
+            $lower
+        );
+
+        // Reading & Analysis triggers (reading logs/files, summarizing, classifying, inspecting metrics)
+        $isReadAnalyze = (bool) preg_match(
+            '/\b(ler|leia|analisar|analise|análise|resumir|resuma|resumo|inspecionar|classificar|classifique|triagem|extrair|verificar\s+status|diagnosticar|interpretar)\b/u',
+            $lower
+        );
+
+        if ($isReadAnalyze && !$isExecution) {
+            return 'read_analyze';
+        }
+
+        return 'execute_task';
+    }
+
+    /**
+     * Determine optimal provider based on task role (Llama = Read/Analyze, Gemini/OpenAI = Execute) and token volume.
+     */
+    public function determineOptimalProvider(
+        int $estimatedTokens,
+        ?string $preferredProvider = null,
+        ?string $promptText = null,
+        ?string $taskRole = null,
+        bool $geminiConfigured = true,
+        bool $openaiConfigured = false
+    ): array {
+        $resolvedRole = $this->classifyTaskRole($promptText, $taskRole);
+
+        // If a specific provider was explicitly requested and isn't 'hybrid'/'auto', respect unless context exceeds local capacity
         if ($preferredProvider && !in_array($preferredProvider, ['hybrid', 'auto'])) {
             if (in_array($preferredProvider, ['ollama', 'llama']) && $estimatedTokens > 6000) {
                 return [
-                    'provider' => 'gemini',
+                    'provider' => $geminiConfigured ? 'gemini' : ($openaiConfigured ? 'openai' : 'ollama'),
                     'tier' => 'heavy_context',
-                    'reason' => "Prompt com {$estimatedTokens} tokens excede a janela confortável do Llama local na VPS (8GB). Delegado ao Google Gemini (janela de 1M tokens) para evitar estouro de RAM.",
+                    'role' => $resolvedRole,
+                    'reason' => "Prompt com {$estimatedTokens} tokens excede a janela confortável do Llama local na VPS (8GB). Delegado ao Google Gemini/Chat para evitar estouro de RAM.",
                     'forced_delegation' => true,
                 ];
             }
@@ -55,40 +97,56 @@ class TokenBudgetManagerService
             return [
                 'provider' => $preferredProvider,
                 'tier' => $this->classifyTier($estimatedTokens),
+                'role' => $resolvedRole,
                 'reason' => "Provedor '{$preferredProvider}' explicitamente selecionado pelo operador.",
                 'forced_delegation' => false,
             ];
         }
 
-        // TIER 1: MICRO & TAREFAS LEVES (< 800 tokens)
-        // Ideal for local Llama or fast Gemini Free tier
+        // WHEN GEMINI OR OPENAI API KEY IS CONFIGURED:
+        // Rule requested by Commander:
+        // - Llama Local (Ollama) -> Read & Analyze things (leitura, triagem, análise de dados/arquivos/logs)
+        // - Gemini or Chat (OpenAI) -> Execute tasks (execução de tarefas, roteiros, ferramentas, planos de ação)
+        if ($geminiConfigured || $openaiConfigured) {
+            $cloudExecutor = $geminiConfigured ? 'gemini' : 'openai';
+            $cloudLabel = $geminiConfigured ? 'Google Gemini 3.8 Flash' : 'OpenAI ChatGPT';
+
+            if ($resolvedRole === 'read_analyze' && $estimatedTokens <= 6000) {
+                return [
+                    'provider' => 'ollama',
+                    'tier' => 'read_analyze',
+                    'role' => 'read_analyze',
+                    'reason' => "Modo Cooperativo Ativo: Tarefa de Leitura & Análise (~{$estimatedTokens} tokens) atribuída ao Llama Local (Ollama) para processar dados a custo zero.",
+                    'forced_delegation' => false,
+                ];
+            }
+
+            return [
+                'provider' => $cloudExecutor,
+                'tier' => $estimatedTokens > $this->longContextThreshold ? 'heavy_context' : 'task_execution',
+                'role' => 'execute_task',
+                'reason' => "Modo Cooperativo Ativo: Execução de Tarefa (~{$estimatedTokens} tokens) atribuída ao {$cloudLabel} (Llama reservado para leitura e análise).",
+                'forced_delegation' => false,
+            ];
+        }
+
+        // FALLBACK WHEN NO CLOUD API KEY IS CONFIGURED YET
         if ($estimatedTokens <= $this->localMaxThreshold) {
             return [
-                'provider' => 'ollama', // ou 'gemini' se Llama offline
+                'provider' => 'ollama',
                 'tier' => 'micro',
-                'reason' => "Tarefa curta (~{$estimatedTokens} tokens). Prioriza Llama Local no VPS para poupar cotas de API, com fallback para Gemini Free.",
+                'role' => $resolvedRole,
+                'reason' => "Sem chave Cloud ativa — Tarefa (~{$estimatedTokens} tokens) executada no Llama Local (Ollama).",
                 'forced_delegation' => false,
             ];
         }
 
-        // TIER 2: TAREFAS MÉDIAS & ROTEIROS (800 a 3500 tokens)
-        // Ideal for Google Gemini Free Tier (15 RPM / 1M TPM)
-        if ($estimatedTokens <= $this->longContextThreshold) {
-            return [
-                'provider' => 'gemini',
-                'tier' => 'standard',
-                'reason' => "Tarefa de porte médio (~{$estimatedTokens} tokens). Delegada à cota gratuita do Google Gemini 1.5 Flash (alta fluência em PT-BR a R$ 0,00).",
-                'forced_delegation' => false,
-            ];
-        }
-
-        // TIER 3: CONTEXTO MASSIVO & LIVROS KDP (> 3500 tokens até 1M tokens)
-        // Must go to Gemini 1.5 Flash due to massive 1M token context window
         return [
-            'provider' => 'gemini',
-            'tier' => 'heavy_context',
-            'reason' => "Contexto extenso (~{$estimatedTokens} tokens). Delegado ao Google Gemini 1.5 Flash para aproveitar a janela de 1 milhão de tokens sem degradar a RAM da VPS.",
-            'forced_delegation' => true,
+            'provider' => 'ollama',
+            'tier' => $this->classifyTier($estimatedTokens),
+            'role' => $resolvedRole,
+            'reason' => "Executando localmente no Llama (configure GEMINI_API_KEY ou OPENAI_API_KEY para ativar a divisão Llama Análise + Gemini/Chat Execução).",
+            'forced_delegation' => false,
         ];
     }
 
@@ -196,7 +254,7 @@ class TokenBudgetManagerService
                 [
                     'tier' => 'Contexto Massivo (> ' . $this->longContextThreshold . ' tokens)',
                     'examples' => 'Capítulos completos de livros KDP, transcrições longas, análise de documentos',
-                    'primary_target' => 'Google Gemini 1.5 Flash (Janela de 1 Milhão de Tokens)',
+                    'primary_target' => 'Google Gemini 3.8 Flash (Janela de 1 Milhão de Tokens)',
                     'advantage' => 'Não estoura os 8GB de RAM da VPS; capacidade de absorver bibliotecas inteiras'
                 ]
             ]

@@ -14,8 +14,12 @@ class EmpireAuthMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Allow internal Telegram Bot & Worker container requests on /api/v1/jeffrey/* and /api/v1/tasks*
-        if ($request->is('api/v1/jeffrey/*') || $request->is('api/v1/tasks*')) {
+        // Allow internal Telegram Bot & Worker container requests ONLY if they did NOT come through the external Caddy proxy
+        $cameThroughExternalProxy = $request->hasHeader('X-Forwarded-From-Caddy')
+            || $request->hasHeader('X-Forwarded-For')
+            || $request->hasHeader('CF-Connecting-IP');
+
+        if (!$cameThroughExternalProxy && ($request->is('api/v1/jeffrey/*') || $request->is('api/v1/tasks*'))) {
             $internalSecret = env('INTERNAL_API_SECRET');
             $providedSecret = $request->header('X-Internal-Secret') ?: $request->input('internal_secret');
             $internalHeader = $request->header('X-Jeffrey-Internal');
@@ -24,8 +28,8 @@ class EmpireAuthMiddleware
                 return $next($request);
             }
 
-            // Fallback when INTERNAL_API_SECRET is not set: require internal Docker IP + explicit internal bot header
-            $ip = (string) $request->ip();
+            // Fallback when INTERNAL_API_SECRET is not set: require direct internal Docker network IP + explicit internal bot header
+            $ip = (string) $request->server('REMOTE_ADDR', $request->ip());
             $isPrivateIp = str_starts_with($ip, '172.') || str_starts_with($ip, '10.') || $ip === '127.0.0.1';
             if (empty($internalSecret) && $isPrivateIp && $internalHeader === 'telegram-bot') {
                 return $next($request);
@@ -48,4 +52,3 @@ class EmpireAuthMiddleware
         return $next($request);
     }
 }
-

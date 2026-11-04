@@ -26,13 +26,16 @@ Route::get('/health', function () {
 });
 
 Route::prefix('v1')->group(function () {
-    // --- 1. Public Authentication Gate ---
+    // --- 1. Public Authentication & Registration Gate ---
     Route::get('/auth/status', [AuthController::class, 'status']);
     Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/register', [AuthController::class, 'register']);
 
     // --- Protected Commander Routes ---
     Route::middleware(EmpireAuthMiddleware::class)->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
+        Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
+        Route::get('/auth/profiles', [AuthController::class, 'listProfiles']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
 
@@ -63,11 +66,15 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/{id}/files', [ProjectController::class, 'files']);
         Route::post('/projects/{id}/read-file', [ProjectController::class, 'readFile']);
 
-        // --- 5. Business Management & Business Factory ---
+        // --- 5. Business Management, Accounts, Parameters & Automation ---
         Route::get('/businesses', [BusinessController::class, 'index']);
         Route::post('/businesses', [BusinessController::class, 'store']);
         Route::get('/businesses/{id}', [BusinessController::class, 'show']);
+        Route::put('/businesses/{id}', [BusinessController::class, 'update']);
         Route::patch('/businesses/{id}/status', [BusinessController::class, 'updateStatus']);
+        Route::post('/businesses/{id}/accounts', [BusinessController::class, 'saveAccounts']);
+        Route::post('/businesses/{id}/automation', [BusinessController::class, 'saveAutomationParams']);
+        Route::post('/businesses/{id}/run-agent', [BusinessController::class, 'runAgentAutomation']);
         Route::delete('/businesses/{id}', [BusinessController::class, 'destroy']);
 
         // --- 6. Financial Management & Budget Ceiling ---
@@ -77,13 +84,15 @@ Route::prefix('v1')->group(function () {
         Route::post('/finance/revenues', [FinanceController::class, 'storeRevenue']);
         Route::get('/analytics', [AnalyticsController::class, 'index']);
 
-        // --- 7. VPS Administration & Docker Real ---
+        // --- 7. VPS Administration, Docker Real & Security Audit ---
         Route::get('/vps/metrics', [VpsManagerController::class, 'metrics']);
+        Route::get('/vps/security-audit', [VpsManagerController::class, 'securityAudit']);
         Route::get('/vps/containers', [VpsManagerController::class, 'containers']);
         Route::get('/vps/containers/{name}/logs', [VpsManagerController::class, 'containerLogs']);
 
         // --- 8. AI Engine & Specialized Agents ---
         Route::get('/ai-engine/status', [AiEngineController::class, 'status']);
+        Route::post('/ai-engine/configure-keys', [AiEngineController::class, 'configureKeys']);
         Route::post('/ai-engine/test-provider', [AiEngineController::class, 'testProvider']);
         Route::post('/ai-engine/complete', [AiEngineController::class, 'complete']);
         Route::post('/ai-engine/estimate-tokens', [AiEngineController::class, 'estimateTokens']);

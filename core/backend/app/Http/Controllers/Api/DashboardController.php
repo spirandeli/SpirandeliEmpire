@@ -19,7 +19,12 @@ class DashboardController extends Controller
 {
     public function index(VpsMonitorService $vps, BudgetGuardService $budget): JsonResponse
     {
-        $businesses = Business::withCount('tasks')->get();
+        BusinessController::ensureCoreBusinessesExist();
+
+        $businesses = Business::withCount('tasks')
+            ->orderByRaw("CASE WHEN slug = 'tiktok-shop-afiliados' THEN 0 ELSE 1 END")
+            ->orderBy('id', 'asc')
+            ->get();
         $budgetStatus = $budget->getBudgetStatus();
         $systemMetrics = $vps->getSystemSummary();
 

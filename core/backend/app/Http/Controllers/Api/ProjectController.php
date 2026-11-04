@@ -89,11 +89,33 @@ class ProjectController extends Controller
 
         $slug = Str::slug($validated['name']);
 
+        // Security: Confine project path to authorized workspace directories (prevent registering /etc or /)
+        $rawPath = trim($validated['path']);
+        $allowedRoots = array_filter([
+            realpath(base_path()),
+            realpath(storage_path('businesses')),
+            realpath('/var/spirandeli/businesses'),
+        ]);
+        $resolvedCandidate = @realpath($rawPath);
+        $isAllowed = false;
+        if ($resolvedCandidate) {
+            foreach ($allowedRoots as $root) {
+                if (str_starts_with($resolvedCandidate, $root)) {
+                    $isAllowed = true;
+                    break;
+                }
+            }
+        }
+        $safePath = $isAllowed ? $resolvedCandidate : storage_path("businesses/{$slug}");
+        if (!File::isDirectory($safePath)) {
+            @File::makeDirectory($safePath, 0775, true);
+        }
+
         $project = Project::create([
             'name' => $validated['name'],
             'slug' => $slug,
             'description' => $validated['description'] ?? null,
-            'path' => $validated['path'],
+            'path' => $safePath,
             'git_repo' => $validated['git_repo'] ?? null,
             'git_branch' => $validated['git_branch'] ?? 'main',
             'stack' => $validated['stack'] ?? 'general',

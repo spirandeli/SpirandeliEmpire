@@ -90,6 +90,52 @@
       </div>
     </div>
 
+    <!-- Security Shield & Vulnerability Audit Panel -->
+    <div class="bg-slate-900/90 p-6 rounded-2xl border border-emerald-800/60 shadow-xl space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">🛡️</span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100 uppercase font-mono">
+              Escudo de Segurança & Auditoria Anti-Hacker
+            </h3>
+            <p class="text-xs text-slate-400">
+              Verificação ativa de superfície de ataque, autenticação HMAC-SHA256, rate-limiting e isolamento de rede
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 font-mono text-xs">
+          <span class="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+            Logins Bloqueados (24h): <strong class="text-amber-400">{{ securityAudit.failed_logins_24h || 0 }}</strong>
+          </span>
+          <span class="px-3 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-700 font-bold">
+            Blindagem: {{ securityAudit.score || 100 }}%
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
+        <div
+          v-for="chk in securityAudit.checks"
+          :key="chk.id"
+          class="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold text-slate-200 truncate">{{ chk.title }}</span>
+            <span
+              class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0"
+              :class="chk.status === 'secure'
+                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                : 'bg-amber-950 text-amber-400 border border-amber-800'"
+            >
+              {{ chk.status === 'secure' ? 'BLINDADO' : 'ATENÇÃO' }}
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">{{ chk.detail }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Container Grid (Real from Docker API) -->
     <div class="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-xl">
       <div class="flex items-center justify-between mb-4">
@@ -173,19 +219,22 @@ import axios from 'axios'
 const loading = ref(false)
 const telemetry = ref({})
 const containers = ref([])
+const securityAudit = ref({ score: 100, failed_logins_24h: 0, checks: [] })
 const activeLogContainer = ref(null)
 const containerLogsContent = ref('')
 
 const fetchVpsData = async () => {
   loading.value = true
   try {
-    const [metricsRes, containersRes] = await Promise.all([
+    const [metricsRes, containersRes, secRes] = await Promise.all([
       axios.get('/api/v1/vps/metrics'),
       axios.get('/api/v1/vps/containers'),
+      axios.get('/api/v1/vps/security-audit').catch(() => ({ data: null })),
     ])
 
     if (metricsRes.data?.telemetry) telemetry.value = metricsRes.data.telemetry
     if (containersRes.data?.containers) containers.value = containersRes.data.containers
+    if (secRes?.data?.checks) securityAudit.value = secRes.data
   } catch (err) {
     console.error('Falha ao obter telemetria da VPS:', err)
   } finally {

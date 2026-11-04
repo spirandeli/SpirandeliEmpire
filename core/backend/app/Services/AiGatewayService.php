@@ -33,16 +33,87 @@ class AiGatewayService
     }
 
     /**
-     * Generate text through the intelligent multi-provider gateway with token verification & smart delegation.
+     * Check if Gemini or OpenAI API key is configured for task execution.
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $preferredProvider = null, ?string $model = null): array
+    public function isCloudExecutorConfigured(): bool
     {
+        return $this->gemini->isConfigured() || $this->openai->isConfigured();
+    }
+
+    /**
+     * Two-stage cooperative pipeline:
+     * 1. Llama Local (Ollama) reads and analyzes the raw context/data/files.
+     * 2. Google Gemini or OpenAI Chat executes the final task/action based on Llama's analysis.
+     */
+    public function analyzeWithLlamaThenExecute(
+        string $rawContextToAnalyze,
+        string $executionPrompt,
+        ?string $systemPrompt = null,
+        ?string $preferredExecutor = null
+    ): array {
+        $llamaAnalysis = null;
+        $llamaModel = null;
+        $llamaLatency = 0;
+
+        // Stage 1: Llama Local reads and analyzes the context if cloud executor is available
+        if ($this->isCloudExecutorConfigured() && !empty(trim($rawContextToAnalyze))) {
+            $analysisPrompt = "Leia e analise de forma objetiva os seguintes dados do sistema/negócio, extraindo os fatos principais, métricas, contas e pontos críticos em até 6 tópicos curtos:\n\n" . $rawContextToAnalyze;
+            $analysisSystem = "Você é o módulo Analista Local (Llama) do SpirandeliEmpire OS. Sua única função é ler, filtrar e resumir dados brutos para preparar a execução do agente principal.";
+
+            $llamaRes = $this->ollama->generate($analysisPrompt, $analysisSystem);
+            if (!empty($llamaRes['success']) && !empty($llamaRes['response'])) {
+                $llamaAnalysis = trim($llamaRes['response']);
+                $llamaModel = $llamaRes['model'] ?? 'ollama_local';
+                $llamaLatency = $llamaRes['latency_ms'] ?? 0;
+                $this->tokenManager->recordUsage('ollama_llama', $this->tokenManager->estimateTokens($analysisPrompt . ' ' . $llamaAnalysis));
+            }
+        }
+
+        // Stage 2: Execute final task on Gemini or OpenAI Chat (or fallback to Llama if cloud fails)
+        $enrichedPrompt = $executionPrompt;
+        if ($llamaAnalysis) {
+            $enrichedPrompt = "### [LEITURA E ANÁLISE PRÉVIA DO LLAMA LOCAL ({$llamaModel})]:\n{$llamaAnalysis}\n\n---\n### [TAREFA PARA EXECUÇÃO]:\n{$executionPrompt}";
+        }
+
+        $executor = ($preferredExecutor && !in_array($preferredExecutor, ['hybrid', 'auto'], true))
+            ? $preferredExecutor
+            : ($this->gemini->isConfigured() ? 'gemini' : ($this->openai->isConfigured() ? 'openai' : 'ollama'));
+
+        $execResult = $this->generate($enrichedPrompt, $systemPrompt, $executor, null, 'execute_task');
+        if ($llamaAnalysis) {
+            $execResult['cooperative_pipeline'] = true;
+            $execResult['analyzer_provider'] = 'ollama_llama';
+            $execResult['analyzer_model'] = $llamaModel;
+            $execResult['analyzer_latency_ms'] = $llamaLatency;
+            $execResult['llama_analysis_summary'] = $llamaAnalysis;
+        }
+
+        return $execResult;
+    }
+
+    /**
+     * Generate text through the intelligent multi-provider gateway with role division (Llama = Read/Analyze, Gemini/Chat = Execute).
+     */
+    public function generate(
+        string $prompt,
+        ?string $systemPrompt = null,
+        ?string $preferredProvider = null,
+        ?string $model = null,
+        ?string $taskRole = null
+    ): array {
         // 1. Estimate tokens prior to dispatch
         $fullText = $prompt . ($systemPrompt ? ' ' . $systemPrompt : '');
         $estimatedInputTokens = $this->tokenManager->estimateTokens($fullText);
 
-        // 2. Token-based task delegation analysis
-        $delegation = $this->tokenManager->determineOptimalProvider($estimatedInputTokens, $preferredProvider);
+        // 2. Role & Token-based task delegation analysis
+        $delegation = $this->tokenManager->determineOptimalProvider(
+            $estimatedInputTokens,
+            $preferredProvider,
+            $prompt,
+            $taskRole,
+            $this->gemini->isConfigured(),
+            $this->openai->isConfigured()
+        );
         $strategy = $delegation['provider'];
 
         // If user explicitly asked for a provider, $delegation['forced_delegation'] indicates if safe limits overrode it
@@ -73,6 +144,7 @@ class AiGatewayService
             'output_tokens' => $outputTokens,
             'total_tokens' => $totalTokens,
             'tier' => $delegation['tier'],
+            'role' => $delegation['role'] ?? 'execute_task',
             'delegation_reason' => $delegation['reason'],
             'forced_delegation' => $delegation['forced_delegation'],
         ];
@@ -228,10 +300,11 @@ class AiGatewayService
                     'offline_ready' => true,
                 ],
             ],
+            'cooperative_mode_active' => $this->gemini->isConfigured() || $this->openai->isConfigured(),
             'hybrid_routing_pipeline' => [
-                'priority_1' => 'Google Gemini (Consome quota gratuita do Google AI Studio)',
-                'priority_2' => 'OpenAI GPT (Fallback para créditos OpenAI ou planos)',
-                'priority_3' => 'Llama Local via Ollama (Garantia zero-custo e 100% offline)',
+                'role_analysis' => 'Llama Local via Ollama -> Lê, filtra e analisa arquivos, métricas, logs e dados brutos da web (Custo R$ 0,00)',
+                'role_execution' => 'Google Gemini / OpenAI Chat -> Executa as tarefas finais, roteiros, planos de ação e chamadas de ferramentas',
+                'fallback_offline' => 'Llama Local assume 100% caso nenhuma chave Cloud esteja configurada ou a cota expire',
             ]
         ];
     }

@@ -40,7 +40,7 @@ AI_PROVIDER = os.getenv("AI_PROVIDER", "hybrid")
 
 # --- AI PROVIDERS CONFIGURATION ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -150,11 +150,55 @@ def test_ai_connections() -> bool:
     return False
 
 
+def _get_active_api_keys() -> Tuple[str, str]:
+    """
+    Resolve active GEMINI_API_KEY and OPENAI_API_KEY from environment variables,
+    falling back to dynamic configuration saved in Redis ('empire:ai:config') or PostgreSQL.
+    """
+    g_key = (GEMINI_API_KEY or "").strip()
+    o_key = (OPENAI_API_KEY or "").strip()
+    if len(g_key) > 10 and len(o_key) > 10:
+        return g_key, o_key
+
+    try:
+        r = get_redis_client()
+        raw = r.get("empire:ai:config")
+        if raw:
+            cfg = json.loads(raw)
+            if len(g_key) <= 10 and cfg.get("gemini_api_key"):
+                g_key = str(cfg["gemini_api_key"]).strip()
+            if len(o_key) <= 10 and cfg.get("openai_api_key"):
+                o_key = str(cfg["openai_api_key"]).strip()
+    except Exception:
+        pass
+
+    if len(g_key) <= 10 and len(o_key) <= 10:
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT content FROM jeffrey_memories WHERE category = 'system_ai_keys' AND is_active = TRUE ORDER BY id DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    cfg = json.loads(row[0])
+                    if len(g_key) <= 10 and cfg.get("gemini_api_key"):
+                        g_key = str(cfg["gemini_api_key"]).strip()
+                    if len(o_key) <= 10 and cfg.get("openai_api_key"):
+                        o_key = str(cfg["openai_api_key"]).strip()
+            conn.close()
+        except Exception:
+            pass
+
+    return g_key, o_key
+
+
 def query_gemini(prompt: str, system_prompt: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    if not GEMINI_API_KEY:
+    g_key, _ = _get_active_api_keys()
+    if len(g_key) <= 10:
         return None
     try:
-        url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent?key={g_key}"
         payload: Dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096}
@@ -164,6 +208,15 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None) -> Optional[D
 
         start = time.time()
         res = httpx.post(url, json=payload, timeout=45.0)
+        if res.status_code == 404:
+            for alt_model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+                if alt_model == GEMINI_MODEL:
+                    continue
+                alt_url = f"{GEMINI_BASE_URL}/models/{alt_model}:generateContent?key={g_key}"
+                alt_res = httpx.post(alt_url, json=payload, timeout=45.0)
+                if alt_res.status_code == 200:
+                    res = alt_res
+                    break
         latency = int((time.time() - start) * 1000)
 
         if res.status_code == 200:
@@ -183,11 +236,12 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None) -> Optional[D
 
 
 def query_openai(prompt: str, system_prompt: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    if not OPENAI_API_KEY:
+    _, o_key = _get_active_api_keys()
+    if len(o_key) <= 10:
         return None
     try:
         url = f"{OPENAI_BASE_URL}/chat/completions"
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        headers = {"Authorization": f"Bearer {o_key}"}
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -276,30 +330,75 @@ def estimate_tokens(text: str) -> int:
     return max(1, int(len(text.strip()) / 3.6))
 
 
-def determine_optimal_provider(estimated_tokens: int, requested_provider: Optional[str] = None) -> Tuple[str, str]:
+def _classify_task_role(prompt: str, task_type: str = "") -> str:
+    """
+    Classify whether a task is strictly Reading/Analysis ('read_analyze') -> Llama Local,
+    or Task Execution ('execute_task') -> Google Gemini / OpenAI Chat.
+    """
+    if task_type in ("analysis", "read_analyze", "log_analysis", "triage"):
+        return "read_analyze"
+    low = (prompt or "").lower()
+    is_exec = bool(re.search(r"\b(executar|execute|criar|crie|gerar|gere|roteiro|produzir|rodar|campanha|escrever|entreg|ciclo)\b", low))
+    is_read = bool(re.search(r"\b(ler|leia|analisar|analise|análise|resumir|resuma|inspecionar|classificar|triagem)\b", low))
+    if is_read and not is_exec:
+        return "read_analyze"
+    return "execute_task"
+
+
+def _llama_read_and_analyze(raw_context: str, task_goal: str) -> Optional[Dict[str, Any]]:
+    """
+    Use Llama Local (Ollama) specifically to read and analyze raw context, web snippets,
+    and business data before handing over to Gemini / OpenAI Chat for task execution.
+    """
+    if not raw_context or not raw_context.strip():
+        return None
+    analysis_system = (
+        "Você é o Agente Analista Local (Llama) do SpirandeliEmpire OS. "
+        "Sua função exclusiva é LER e ANALISAR os dados brutos fornecidos (pesquisas da web, métricas e contas do negócio) "
+        "e extrair um resumo analítico objetivo em tópicos curtos para que o Agente Executor (Gemini/ChatGPT) execute a tarefa final."
+    )
+    analysis_prompt = (
+        f"OBJETIVO DA MISSÃO: {task_goal[:300]}\n\n"
+        f"DADOS BRUTOS PARA LEITURA E ANÁLISE:\n{raw_context[:4500]}\n\n"
+        "Extraia em até 6 tópicos objetivos: (1) Principais produtos/tendências/fatos encontrados, "
+        "(2) Contas e parâmetros do negócio aplicáveis, (3) Recomendações técnicas para a execução:"
+    )
+    return query_ollama(analysis_prompt, analysis_system)
+
+
+def determine_optimal_provider(estimated_tokens: int, requested_provider: Optional[str] = None, task_role: str = "execute_task") -> Tuple[str, str]:
+    g_key, o_key = _get_active_api_keys()
+    has_gemini = len(g_key) > 10
+    has_openai = len(o_key) > 10
+
     if requested_provider and requested_provider not in ("hybrid", "auto"):
-        if requested_provider in ("ollama", "llama") and estimated_tokens > 6000 and GEMINI_API_KEY:
+        if requested_provider in ("ollama", "llama") and estimated_tokens > 6000 and has_gemini:
             return "gemini", f"Contexto de {estimated_tokens} tokens excede janela segura do Llama local. Delegado ao Gemini."
         return requested_provider, f"Provedor {requested_provider} requisitado explicitamente."
 
-    if GEMINI_API_KEY:
-        if estimated_tokens <= 800 and not GEMINI_API_KEY:
-            return "ollama", f"Tarefa leve (~{estimated_tokens} tokens). Resolvida localmente no Ollama."
-        return "gemini", f"Tarefa de agente (~{estimated_tokens} tokens). Delegada ao Google Gemini Free Tier para máxima velocidade e inteligência."
-
-    if OPENAI_API_KEY:
-        return "openai", f"Tarefa de agente (~{estimated_tokens} tokens). Delegada ao OpenAI."
+    # Cooperative Division when Gemini or OpenAI API Key is configured:
+    # - Llama Local (Ollama) -> Read & Analyze ('read_analyze')
+    # - Gemini or OpenAI Chat -> Execute Tasks ('execute_task')
+    if has_gemini or has_openai:
+        if task_role == "read_analyze" and estimated_tokens <= 6000:
+            return "ollama", f"Modo Cooperativo: Tarefa de Leitura & Análise (~{estimated_tokens} tokens) atribuída ao Llama Local (Ollama)."
+        if has_gemini:
+            return "gemini", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao Google Gemini (após leitura/análise do Llama)."
+        return "openai", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao OpenAI Chat (após leitura/análise do Llama)."
 
     return "ollama", f"Provedores cloud não configurados; executando localmente no Ollama (~{estimated_tokens} tokens)."
 
 
-def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: Optional[str] = None) -> Dict[str, Any]:
-    """Execute AI inference with smart provider routing and full fallback chain."""
+def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: Optional[str] = None, task_role: str = "execute_task") -> Dict[str, Any]:
+    """Execute AI inference with smart provider routing (Llama = Read/Analyze, Gemini/OpenAI = Execute) and full fallback chain."""
     full_text = prompt + (" " + system_prompt if system_prompt else "")
     est_tokens = estimate_tokens(full_text)
-    optimal_prov, delegation_reason = determine_optimal_provider(est_tokens, provider)
+    optimal_prov, delegation_reason = determine_optimal_provider(est_tokens, provider, task_role)
+    g_key, o_key = _get_active_api_keys()
+    has_gemini = len(g_key) > 10
+    has_openai = len(o_key) > 10
 
-    logger.info(f"Token analysis: ~{est_tokens} tokens | Routing: [{optimal_prov}] | {delegation_reason}")
+    logger.info(f"Token analysis: ~{est_tokens} tokens | Role: [{task_role}] | Routing: [{optimal_prov}] | {delegation_reason}")
     prov = optimal_prov
 
     if prov == "gemini":
@@ -309,7 +408,7 @@ def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: 
             res["delegation_reason"] = delegation_reason
             return res
         logger.warning("Gemini unavailable, falling back to OpenAI / Ollama...")
-        if OPENAI_API_KEY:
+        if has_openai:
             openai_res = query_openai(prompt, system_prompt)
             if openai_res:
                 openai_res["fallback_used"] = True
@@ -328,7 +427,7 @@ def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: 
             res["delegation_reason"] = delegation_reason
             return res
         logger.warning("OpenAI unavailable, falling back to Gemini / Ollama...")
-        if GEMINI_API_KEY:
+        if has_gemini:
             gemini_res = query_gemini(prompt, system_prompt)
             if gemini_res:
                 gemini_res["fallback_used"] = True
@@ -346,7 +445,7 @@ def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: 
             res["estimated_tokens"] = est_tokens
             res["delegation_reason"] = delegation_reason
             return res
-        if GEMINI_API_KEY:
+        if has_gemini:
             logger.warning("Local Ollama failed, falling back to Gemini...")
             gemini_res = query_gemini(prompt, system_prompt)
             if gemini_res:
@@ -493,22 +592,50 @@ def _load_agent_context_from_db(agent_name: str, business_id: Optional[Any] = No
                 memories_list = [{"category": r[0], "content": r[1]} for r in mem_rows]
                 ctx["memories_block"] = memory_manager.format_context_prompt(memories_list)
 
-            # 3. Business context (or list of businesses)
+            # 3. Business context (including accounts & automation parameters)
             if business_id and str(business_id).isdigit():
                 cur.execute(
-                    "SELECT name, slug, category, description, budget_limit_brl FROM businesses WHERE id = %s",
+                    "SELECT name, slug, category, description, budget_limit_brl, settings FROM businesses WHERE id = %s",
                     (int(business_id),)
                 )
                 b_row = cur.fetchone()
                 if b_row:
                     ctx["business_slug"] = b_row[1]
-                    ctx["business_info"] = f"Negócio em foco: {b_row[0]} ({b_row[2]}) — {b_row[3]} | Teto: R$ {b_row[4]}"
+                    b_settings = b_row[5] if isinstance(b_row[5], dict) else (json.loads(b_row[5]) if b_row[5] else {})
+                    b_accounts = b_settings.get("accounts") or []
+                    b_params = b_settings.get("automation_params") or {}
+                    acc_lines = []
+                    for acc in b_accounts:
+                        if isinstance(acc, dict):
+                            acc_lines.append(
+                                f"{acc.get('platform', 'Conta')}: {acc.get('handle', '')} "
+                                f"(ID: {acc.get('account_id', 'N/A')}, Link: {acc.get('affiliate_showcase_url', 'N/A')})"
+                            )
+                    acc_str = " | Contas Vinculadas: " + "; ".join(acc_lines) if acc_lines else ""
+                    param_str = ""
+                    if isinstance(b_params, dict) and b_params:
+                        param_str = (
+                            f" | Parâmetros do Negócio: Nicho={b_params.get('niche', '')}, "
+                            f"Público={b_params.get('target_audience', '')}, "
+                            f"Meta={b_params.get('daily_deliverables_goal', 3)}/dia, "
+                            f"CTA='{b_params.get('cta_template', '')}', "
+                            f"Regras='{b_params.get('custom_prompt_rules', '')}'"
+                        )
+                    ctx["business_info"] = (
+                        f"Negócio em foco: {b_row[0]} ({b_row[2]}) — {b_row[3]} | Teto: R$ {b_row[4]}"
+                        f"{acc_str}{param_str}"
+                    )
             else:
-                cur.execute("SELECT name, slug, category, status FROM businesses WHERE status = 'active' LIMIT 6")
+                cur.execute("SELECT name, slug, category, status, settings FROM businesses WHERE status = 'active' LIMIT 6")
                 b_rows = cur.fetchall()
                 if b_rows:
-                    b_summary = ", ".join([f"{r[0]} ({r[2]})" for r in b_rows])
-                    ctx["business_info"] = f"Negócios ativos no Império: {b_summary}"
+                    b_summary = []
+                    for r in b_rows:
+                        s_dict = r[4] if isinstance(r[4], dict) else (json.loads(r[4]) if r[4] else {})
+                        accs = s_dict.get("accounts") or []
+                        handles = ", ".join([a.get("handle", "") for a in accs if isinstance(a, dict) and a.get("handle")])
+                        b_summary.append(f"{r[0]} ({r[2]}{' - Contas: ' + handles if handles else ''})")
+                    ctx["business_info"] = f"Negócios ativos no Império: {'; '.join(b_summary)}"
 
             # 4. Current month expenses for Gatekeeper
             cur.execute("""
@@ -954,8 +1081,61 @@ def process_task(task: Dict[str, Any]) -> None:
                 "started_at": datetime.utcnow().isoformat()
             })
 
-        logger.info(f"Task [#{task_id}] querying AI engine (provider={provider or 'auto'})...")
-        ai_result = query_ai_engine(enriched_prompt, system_prompt, provider)
+        task_role = _classify_task_role(prompt, task_type)
+        g_key, o_key = _get_active_api_keys()
+        cloud_executor_ready = (len(g_key) > 10 or len(o_key) > 10) and provider not in ("ollama", "llama")
+
+        llama_analysis_block = ""
+        llama_analyzer_model = None
+        if cloud_executor_ready and task_role == "execute_task":
+            raw_for_llama = "\n".join(filter(None, [db_ctx.get("business_info", ""), web_context_block]))
+            if raw_for_llama.strip():
+                if r_live:
+                    _set_worker_state(r_live, {
+                        "status": "working",
+                        "task_id": task_id,
+                        "title": task_title,
+                        "agent_name": agent_name,
+                        "step": f"2.5/4 [Llama Local] Lendo e analisando dados brutos para preparar execução...",
+                        "progress_percent": 62,
+                        "started_at": datetime.utcnow().isoformat()
+                    })
+                logger.info(f"Task [#{task_id}] Stage 1: Llama Local reading and analyzing context...")
+                llama_res = _llama_read_and_analyze(raw_for_llama, prompt)
+                if llama_res and llama_res.get("success") and llama_res.get("response"):
+                    llama_analysis_block = llama_res["response"].strip()
+                    llama_analyzer_model = llama_res.get("model", _resolve_ollama_model())
+                    enriched_prompt = (
+                        f"{enriched_prompt}\n\n"
+                        f"### ANÁLISE PRÉVIA REALIZADA PELO LLAMA LOCAL ({llama_analyzer_model}):\n"
+                        f"{llama_analysis_block}\n\n"
+                        "Agora EXECUTE a tarefa final de forma completa com base nos dados e na análise acima:"
+                    )
+
+            if r_live:
+                exec_name = "Google Gemini" if len(g_key) > 10 else "OpenAI ChatGPT"
+                _set_worker_state(r_live, {
+                    "status": "working",
+                    "task_id": task_id,
+                    "title": task_title,
+                    "agent_name": agent_name,
+                    "step": f"3/4 [{exec_name}] Executando a tarefa final com {agent_name}...",
+                    "progress_percent": 80,
+                    "started_at": datetime.utcnow().isoformat()
+                })
+
+        logger.info(f"Task [#{task_id}] querying AI engine (provider={provider or 'auto'}, role={task_role})...")
+        ai_result = query_ai_engine(enriched_prompt, system_prompt, provider, task_role)
+        if llama_analysis_block and ai_result.get("success") and ai_result.get("response"):
+            exec_label = "Google Gemini" if ai_result.get("provider") == "google_gemini" else (
+                "OpenAI ChatGPT" if ai_result.get("provider") == "openai" else ai_result.get("provider", "IA")
+            )
+            header_badge = (
+                f"> 🦙 **Leitura & Análise Prévia:** Llama Local (`{llama_analyzer_model}`) • "
+                f"✨ **Execução da Tarefa:** {exec_label} (`{ai_result.get('model')}`)\n\n"
+            )
+            ai_result["response"] = header_badge + ai_result["response"]
+            ai_result["analyzer_model"] = llama_analyzer_model
 
     # --- 6. Save Deliverable & Publish Result ---
     if r_live:
@@ -1032,6 +1212,133 @@ def process_task(task: Dict[str, Any]) -> None:
         logger.error(f"Task [#{task_id}] failed to publish final result: {e}")
 
 
+def _check_scheduled_business_automations() -> List[Dict[str, Any]]:
+    """
+    Check active businesses with auto_enabled=True in settings->automation_params.
+    If their scheduled interval has elapsed and no pending/in_progress task is running for that business,
+    create a scheduled business automation task in PostgreSQL and return it for immediate execution.
+    """
+    scheduled_tasks: List[Dict[str, Any]] = []
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name, slug, category, settings FROM businesses WHERE status = 'active'")
+            rows = cur.fetchall()
+            now_dt = datetime.utcnow()
+
+            for row in rows:
+                b_id, b_name, b_slug, b_cat, raw_settings = row
+                settings = raw_settings if isinstance(raw_settings, dict) else (json.loads(raw_settings) if raw_settings else {})
+                params = settings.get("automation_params") or {}
+                accounts = settings.get("accounts") or []
+
+                if not isinstance(params, dict) or not params.get("auto_enabled", False):
+                    continue
+
+                freq = params.get("frequency", "daily")
+                interval_hours = 24
+                if freq == "every_6h":
+                    interval_hours = 6
+                elif freq == "every_12h":
+                    interval_hours = 12
+                elif freq == "weekly":
+                    interval_hours = 168
+
+                last_run_str = params.get("last_auto_run_at")
+                should_run = False
+                if not last_run_str:
+                    # Wait until first manual trigger or 1 hour after startup if never run
+                    continue
+                else:
+                    try:
+                        clean_iso = str(last_run_str).replace("Z", "+00:00")
+                        last_dt = datetime.fromisoformat(clean_iso).replace(tzinfo=None)
+                        elapsed_hours = (now_dt - last_dt).total_seconds() / 3600.0
+                        if elapsed_hours >= interval_hours:
+                            should_run = True
+                    except Exception:
+                        should_run = False
+
+                if not should_run:
+                    continue
+
+                # Check if business already has a pending or in_progress task
+                cur.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE business_id = %s AND status IN ('pending', 'in_progress')",
+                    (b_id,)
+                )
+                active_count = cur.fetchone()[0]
+                if active_count > 0:
+                    continue
+
+                agent_name = params.get("assigned_agent", "Jeffrey")
+                goal = params.get("daily_deliverables_goal", 3)
+                niche = params.get("niche", b_cat)
+                title = f"Ciclo Agendado [{b_name}]: {goal} entregáveis ({niche})"
+
+                acc_summary = "\n".join([
+                    f"- {a.get('platform', 'Conta')}: {a.get('handle', '')} (ID: {a.get('account_id', '')}, Link: {a.get('affiliate_showcase_url', '')})"
+                    for a in accounts if isinstance(a, dict)
+                ]) or "- Nenhuma conta cadastrada."
+
+                prompt_text = (
+                    f"Execute o ciclo periódico automatizado do negócio **{b_name}** ({b_cat}).\n\n"
+                    f"### CONTAS DO NEGÓCIO:\n{acc_summary}\n\n"
+                    f"### PARÂMETROS DO AGENTE:\n"
+                    f"- Nicho: {niche}\n"
+                    f"- Público-Alvo: {params.get('target_audience', '')}\n"
+                    f"- Meta: {goal} entregáveis completos\n"
+                    f"- Comissão Mínima: {params.get('min_commission_percent', 15)}% | Faixa: R$ {params.get('price_range_brl', '29-197')}\n"
+                    f"- Tom de Voz: {params.get('tone_of_voice', 'Persuasivo')}\n"
+                    f"- CTA Padrão: {params.get('cta_template', '')}\n"
+                    f"- Regras: {params.get('custom_prompt_rules', '')}\n"
+                )
+
+                task_payload = {
+                    "prompt": prompt_text,
+                    "business_slug": b_slug,
+                    "business_name": b_name,
+                    "accounts": accounts,
+                    "automation_params": params,
+                    "scheduled_cycle": True,
+                }
+
+                cur.execute(
+                    """
+                    INSERT INTO tasks (business_id, title, type, agent_name, payload, status, created_at, updated_at)
+                    VALUES (%s, %s, 'business_automation', %s, %s, 'pending', NOW(), NOW())
+                    RETURNING id
+                    """,
+                    (b_id, title[:120], agent_name, json.dumps(task_payload))
+                )
+                new_task_id = cur.fetchone()[0]
+
+                params["last_auto_run_at"] = now_dt.isoformat()
+                settings["automation_params"] = params
+                cur.execute(
+                    "UPDATE businesses SET settings = %s, updated_at = NOW() WHERE id = %s",
+                    (json.dumps(settings), b_id)
+                )
+                conn.commit()
+
+                scheduled_tasks.append({
+                    "id": str(new_task_id),
+                    "type": "business_automation",
+                    "agent_name": agent_name,
+                    "business_id": b_id,
+                    "title": title[:120],
+                    "payload": {
+                        **task_payload,
+                        "task_id": new_task_id,
+                    }
+                })
+        conn.close()
+    except Exception as e:
+        logger.debug(f"Scheduled business automation check skipped: {e}")
+
+    return scheduled_tasks
+
+
 def main():
     logger.info("Initializing Jeffrey Orchestrator v3.0 (Autonomous Multi-Agent Worker)...")
     logger.info(f"Budget Hard Cap: R$ {MONTHLY_BUDGET_LIMIT:.2f}/month")
@@ -1051,6 +1358,7 @@ def main():
     logger.info("Jeffrey Worker is now actively listening for empire tasks (Redis + PostgreSQL Auto-Recovery)...")
 
     last_db_recovery_check = 0.0
+    last_schedule_check = 0.0
 
     while True:
         try:
@@ -1078,6 +1386,14 @@ def main():
                 for orphan in orphan_tasks:
                     logger.info(f"Auto-recovering orphan PostgreSQL task #{orphan['id']}: {orphan['title']}")
                     process_task(orphan)
+
+            # Periodic autonomous business automation check (every 60 seconds when idle)
+            if (now_ts - last_schedule_check) >= 60.0:
+                last_schedule_check = now_ts
+                auto_tasks = _check_scheduled_business_automations()
+                for auto_task in auto_tasks:
+                    logger.info(f"Running scheduled business automation task #{auto_task['id']}: {auto_task['title']}")
+                    process_task(auto_task)
 
         except redis.ConnectionError as e:
             logger.error(f"Redis connection lost in Jeffrey worker: {e}. Reconnecting in 5s...")

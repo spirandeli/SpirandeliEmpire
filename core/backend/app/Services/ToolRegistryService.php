@@ -2,14 +2,17 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Api\BusinessController;
 use App\Models\ApprovalRequest;
 use App\Models\Business;
+use App\Models\JeffreyMemory;
 use App\Models\Project;
 use App\Models\Task;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 
 class ToolRegistryService
 {
@@ -94,17 +97,50 @@ class ToolRegistryService
             ],
             [
                 'name' => 'list_businesses',
-                'description' => 'Lista todos os negócios digitais cadastrados, categorias, status e tetos orçamentários.',
+                'description' => 'Lista todos os negócios digitais cadastrados (incluindo TikTok Shop Afiliados), suas contas vinculadas, parâmetros de automação e tetos orçamentários.',
                 'parameters' => [],
                 'category' => 'A',
             ],
             [
                 'name' => 'get_business_status',
-                'description' => 'Obtém métricas detalhadas, tarefas recentes e volume de um negócio digital específico.',
+                'description' => 'Obtém métricas detalhadas, contas vinculadas, parâmetros do agente e tarefas recentes de um negócio digital específico.',
                 'parameters' => [
                     'business_id' => ['type' => 'integer', 'required' => true, 'description' => 'ID do negócio'],
                 ],
                 'category' => 'A',
+            ],
+            [
+                'name' => 'update_business_automation',
+                'description' => 'Atualiza os parâmetros de automação do agente para um negócio (nicho, público-alvo, meta diária, comissão mínima, tom de voz, CTA, frequência e regras customizadas).',
+                'parameters' => [
+                    'business_id' => ['type' => 'integer', 'required' => true, 'description' => 'ID do negócio'],
+                    'automation_params' => ['type' => 'object', 'required' => true, 'description' => 'Parâmetros de automação (niche, target_audience, daily_deliverables_goal, min_commission_percent, cta_template, custom_prompt_rules, auto_enabled, frequency)'],
+                    'budget_limit_brl' => ['type' => 'number', 'required' => false, 'description' => 'Teto mensal em BRL'],
+                ],
+                'category' => 'B',
+            ],
+            [
+                'name' => 'manage_business_accounts',
+                'description' => 'Adiciona ou atualiza uma conta vinculada a um negócio (ex: conta TikTok Shop, YouTube Shorts, Instagram Reels, ID de afiliado, @handle e link da vitrine).',
+                'parameters' => [
+                    'business_id' => ['type' => 'integer', 'required' => true, 'description' => 'ID do negócio'],
+                    'platform' => ['type' => 'string', 'required' => true, 'description' => 'Plataforma (ex: TikTok Shop, YouTube Shorts, Instagram Reels)'],
+                    'handle' => ['type' => 'string', 'required' => true, 'description' => '@handle ou nome do perfil'],
+                    'account_id' => ['type' => 'string', 'required' => false, 'description' => 'ID de Afiliado / Seller ID'],
+                    'affiliate_showcase_url' => ['type' => 'string', 'required' => false, 'description' => 'Link da vitrine ou canal'],
+                    'email_or_login' => ['type' => 'string', 'required' => false, 'description' => 'E-mail ou login da conta'],
+                    'notes' => ['type' => 'string', 'required' => false, 'description' => 'Observações operacionais para o agente'],
+                ],
+                'category' => 'B',
+            ],
+            [
+                'name' => 'run_business_automation',
+                'description' => 'Dispara imediatamente um ciclo automatizado do agente para gerir um negócio usando suas contas vinculadas e parâmetros configurados.',
+                'parameters' => [
+                    'business_id' => ['type' => 'integer', 'required' => true, 'description' => 'ID do negócio'],
+                    'custom_objective' => ['type' => 'string', 'required' => false, 'description' => 'Objetivo específico opcional para este ciclo'],
+                ],
+                'category' => 'B',
             ],
             [
                 'name' => 'get_system_metrics',
@@ -220,10 +256,10 @@ class ToolRegistryService
                     return ['success' => false, 'error' => 'Arquivo não encontrado ou acesso restrito.'];
                 }
 
-                // Security: Prevent reading secrets
+                // Security: Prevent reading secrets, keys, credentials, or sqlite dumps
                 $filename = basename($filePath);
-                if (preg_match('/(\.env|\.pem|\.key|id_rsa)/i', $filename)) {
-                    return ['success' => false, 'error' => 'Acesso negado: leitura de arquivos sensíveis ou credenciais é proibida.'];
+                if (preg_match('/(\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|auth\.json|credentials|\.sqlite)/i', $filename)) {
+                    return ['success' => false, 'error' => 'Acesso negado: leitura de arquivos sensíveis ou credenciais é proibida pelo escudo de segurança.'];
                 }
 
                 $content = File::get($filePath);
@@ -339,19 +375,155 @@ class ToolRegistryService
                 ];
 
             case 'list_businesses':
+                BusinessController::ensureCoreBusinessesExist();
                 return [
                     'success' => true,
-                    'businesses' => Business::all(['id', 'name', 'slug', 'category', 'status', 'budget_limit_brl', 'storage_path'])->toArray(),
+                    'businesses' => Business::all()->map(fn($b) => [
+                        'id' => $b->id,
+                        'name' => $b->name,
+                        'slug' => $b->slug,
+                        'category' => $b->category,
+                        'status' => $b->status,
+                        'budget_limit_brl' => $b->budget_limit_brl,
+                        'accounts' => $b->accounts_list,
+                        'automation_params' => $b->automation_config,
+                    ])->toArray(),
                 ];
 
             case 'get_business_status':
+                BusinessController::ensureCoreBusinessesExist();
                 $business = Business::with(['tasks' => fn($q) => $q->latest()->limit(5)])->find($arguments['business_id'] ?? 0);
                 if (!$business) return ['success' => false, 'error' => 'Negócio não encontrado.'];
 
                 return [
                     'success' => true,
                     'business' => $business,
+                    'accounts' => $business->accounts_list,
+                    'automation_params' => $business->automation_config,
                 ];
+
+            case 'update_business_automation':
+                $business = Business::find($arguments['business_id'] ?? 0);
+                if (!$business) return ['success' => false, 'error' => 'Negócio não encontrado.'];
+
+                $settings = is_array($business->settings) ? $business->settings : [];
+                $mergedAutomation = array_merge($business->automation_config, $arguments['automation_params'] ?? []);
+                $settings['automation_params'] = $mergedAutomation;
+                $business->settings = $settings;
+                if (isset($arguments['budget_limit_brl'])) {
+                    $business->budget_limit_brl = (float) $arguments['budget_limit_brl'];
+                }
+                if (Schema::hasColumn('businesses', 'automation_params')) {
+                    $business->automation_params = $mergedAutomation;
+                }
+                $business->save();
+
+                return [
+                    'success' => true,
+                    'message' => "Parâmetros de automação do negócio {$business->name} atualizados com sucesso.",
+                    'automation_params' => $business->automation_config,
+                ];
+
+            case 'manage_business_accounts':
+                $business = Business::find($arguments['business_id'] ?? 0);
+                if (!$business) return ['success' => false, 'error' => 'Negócio não encontrado.'];
+
+                $accounts = $business->accounts_list;
+                $newAcc = [
+                    'id' => $arguments['id'] ?? ('acc_' . substr(md5(($arguments['platform'] ?? '') . ($arguments['handle'] ?? '')), 0, 8)),
+                    'platform' => $arguments['platform'] ?? 'TikTok Shop',
+                    'handle' => $arguments['handle'] ?? '@conta',
+                    'account_id' => $arguments['account_id'] ?? '',
+                    'email_or_login' => $arguments['email_or_login'] ?? '',
+                    'affiliate_showcase_url' => $arguments['affiliate_showcase_url'] ?? '',
+                    'webhook_url' => $arguments['webhook_url'] ?? '',
+                    'status' => $arguments['status'] ?? 'active',
+                    'notes' => $arguments['notes'] ?? '',
+                ];
+
+                $replaced = false;
+                foreach ($accounts as $idx => $existing) {
+                    if (($existing['handle'] ?? '') === $newAcc['handle'] && ($existing['platform'] ?? '') === $newAcc['platform']) {
+                        $accounts[$idx] = array_merge($existing, $newAcc);
+                        $replaced = true;
+                        break;
+                    }
+                }
+                if (!$replaced) {
+                    $accounts[] = $newAcc;
+                }
+
+                $settings = is_array($business->settings) ? $business->settings : [];
+                $settings['accounts'] = $accounts;
+                $business->settings = $settings;
+                if (Schema::hasColumn('businesses', 'accounts')) {
+                    $business->accounts = $accounts;
+                }
+                $business->save();
+
+                return [
+                    'success' => true,
+                    'message' => "Conta {$newAcc['handle']} ({$newAcc['platform']}) vinculada ao negócio {$business->name}.",
+                    'accounts' => $business->accounts_list,
+                ];
+
+            case 'run_business_automation':
+                $business = Business::find($arguments['business_id'] ?? 0);
+                if (!$business) return ['success' => false, 'error' => 'Negócio não encontrado.'];
+
+                $params = $business->automation_config;
+                $accounts = $business->accounts_list;
+                $agentName = $params['assigned_agent'] ?? 'Jeffrey';
+                $customObjective = $arguments['custom_objective'] ?? null;
+
+                $accountsSummary = collect($accounts)->map(function ($acc) {
+                    $plat = $acc['platform'] ?? 'Plataforma';
+                    $handle = $acc['handle'] ?? 'sem-handle';
+                    $affId = !empty($acc['account_id']) ? " (ID: {$acc['account_id']})" : '';
+                    $url = !empty($acc['affiliate_showcase_url']) ? " [Link: {$acc['affiliate_showcase_url']}]" : '';
+                    return "- {$plat}: {$handle}{$affId}{$url}";
+                })->implode("\n");
+                if (empty($accountsSummary)) {
+                    $accountsSummary = "- Nenhuma conta cadastrada.";
+                }
+
+                $taskTitle = $customObjective
+                    ? "[{$business->name}] {$customObjective}"
+                    : "Ciclo Autônomo [{$business->name}]: Gerar {$params['daily_deliverables_goal']} entregáveis ({$params['niche']})";
+
+                $fullPrompt = <<<PROMPT
+Execute o ciclo de gestão automatizada para o negócio **{$business->name}** (Categoria: {$business->category}).
+
+### 1. CONTAS VINCULADAS DO NEGÓCIO (gerencie e direcione a produção para estas contas):
+{$accountsSummary}
+
+### 2. PARÂMETROS OPERACIONAIS DO NEGÓCIO:
+- **Nicho / Foco:** {$params['niche']}
+- **Público-Alvo:** {$params['target_audience']}
+- **Meta Diária:** {$params['daily_deliverables_goal']} entregáveis completos
+- **Comissão Mínima / Margem:** {$params['min_commission_percent']}% | Faixa de Preço: R$ {$params['price_range_brl']}
+- **Tom de Voz:** {$params['tone_of_voice']}
+- **CTA Padrão:** {$params['cta_template']}
+- **Modo de Pipeline:** {$params['pipeline_mode']}
+- **Regras Específicas:** {$params['custom_prompt_rules']}
+PROMPT;
+                if ($customObjective) {
+                    $fullPrompt .= "\n\n### 3. OBJETIVO ESPECÍFICO DESTE CICLO:\n{$customObjective}";
+                }
+
+                return $this->executeTool('create_task', [
+                    'title' => mb_substr($taskTitle, 0, 120),
+                    'type' => 'business_automation',
+                    'agent_name' => $agentName,
+                    'business_id' => $business->id,
+                    'payload' => [
+                        'prompt' => $fullPrompt,
+                        'business_slug' => $business->slug,
+                        'business_name' => $business->name,
+                        'accounts' => $accounts,
+                        'automation_params' => $params,
+                    ],
+                ], $userId, $conversationId);
 
             case 'get_system_metrics':
                 return [
@@ -554,9 +726,18 @@ class ToolRegistryService
             if (!$realBase) return null;
         }
 
-        $cleanSub = str_replace(['..', "\0"], '', $subPath);
+        $cleanSub = str_replace(["\0"], '', $subPath);
+        if (preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $cleanSub)) {
+            return null;
+        }
         $cleanSub = ltrim($cleanSub, '/\\');
         $fullPath = $realBase . ($cleanSub ? DIRECTORY_SEPARATOR . $cleanSub : '');
+
+        // Verify symlink / realpath confinement inside $realBase
+        $existingTarget = File::exists($fullPath) ? realpath($fullPath) : realpath(dirname($fullPath));
+        if ($existingTarget && !str_starts_with($existingTarget, $realBase)) {
+            return null;
+        }
 
         return $fullPath;
     }

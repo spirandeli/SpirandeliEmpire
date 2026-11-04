@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\JeffreyMemory;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class GeminiClientService
 {
@@ -16,12 +18,41 @@ class GeminiClientService
 
     public function __construct()
     {
-        $this->apiKey = config('ai.gemini.api_key', env('GEMINI_API_KEY'));
-        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-2.5-flash'));
+        $this->apiKey = $this->resolveApiKey();
+        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-3.8-flash'));
         $this->baseUrl = config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'));
         $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.7));
         $this->maxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 4096));
         $this->freeTierMode = (bool) config('ai.gemini.free_tier_mode', env('GEMINI_FREE_TIER_MODE', true));
+    }
+
+    protected function resolveApiKey(): ?string
+    {
+        $envKey = config('ai.gemini.api_key', env('GEMINI_API_KEY'));
+        if (!empty($envKey) && strlen(trim($envKey)) > 10) {
+            return trim($envKey);
+        }
+        try {
+            $raw = Redis::get('empire:ai:config');
+            if ($raw) {
+                $cfg = json_decode($raw, true);
+                if (!empty($cfg['gemini_api_key']) && strlen(trim($cfg['gemini_api_key'])) > 10) {
+                    return trim($cfg['gemini_api_key']);
+                }
+            }
+        } catch (\Exception $e) {}
+
+        try {
+            $mem = JeffreyMemory::where('category', 'system_ai_keys')->where('is_active', true)->first();
+            if ($mem && !empty($mem->content)) {
+                $cfg = json_decode($mem->content, true);
+                if (!empty($cfg['gemini_api_key']) && strlen(trim($cfg['gemini_api_key'])) > 10) {
+                    return trim($cfg['gemini_api_key']);
+                }
+            }
+        } catch (\Exception $e) {}
+
+        return $envKey;
     }
 
     /**
@@ -77,6 +108,22 @@ class GeminiClientService
             $response = Http::timeout(45)
                 ->withHeaders(['Content-Type' => 'application/json'])
                 ->post($endpoint, $payload);
+
+            // If the requested model tag (e.g. gemini-3.8-flash) returns 404 on v1beta,
+            // automatically try fallback Flash endpoints while keeping Gemini 3.8 Flash as primary
+            if ($response->status() === 404) {
+                foreach (['gemini-2.5-flash', 'gemini-2.0-flash'] as $altModel) {
+                    if ($altModel === $targetModel) continue;
+                    $altEndpoint = "{$this->baseUrl}/models/{$altModel}:generateContent?key={$this->apiKey}";
+                    $altResp = Http::timeout(45)
+                        ->withHeaders(['Content-Type' => 'application/json'])
+                        ->post($altEndpoint, $payload);
+                    if ($altResp->successful()) {
+                        $response = $altResp;
+                        break;
+                    }
+                }
+            }
 
             $latencyMs = round((microtime(true) - $startTime) * 1000);
 

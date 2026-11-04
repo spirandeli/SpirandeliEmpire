@@ -2,28 +2,40 @@
   <aside class="w-60 sm:w-64 flex flex-col justify-between h-full select-none">
     <!-- Top & Middle Section -->
     <div class="space-y-2.5">
-      <!-- 1. Commander Profile Box (Top-Left) -->
-      <div class="pixel-wood rpg-rivets p-2.5 flex items-center gap-3">
+      <!-- 1. Commander Profile Box (Top-Left) - Clickable to open Profile & Registration Modal -->
+      <div
+        @click="$emit('open-profile')"
+        class="pixel-wood rpg-rivets p-2.5 flex items-center gap-3 cursor-pointer hover:brightness-110 transition group"
+        title="Clique para editar seu Perfil ou gerenciar Cadastros"
+      >
         <!-- Pixel Avatar Frame -->
-        <div class="w-14 h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#1a0b03] shadow-[inset_0_2px_4px_rgba(0,0,0,0.7),0_1px_0_#85522d] overflow-hidden flex items-center justify-center">
+        <div class="w-14 h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#1a0b03] group-hover:border-[#f59e0b] shadow-[inset_0_2px_4px_rgba(0,0,0,0.7),0_1px_0_#85522d] overflow-hidden flex items-center justify-center relative">
           <img
             src="/assets/sprites/avatar.png"
             alt="Spirandeli Commander"
             class="w-full h-full object-cover"
           />
+          <span class="absolute bottom-0 right-0 bg-[#f59e0b] text-[#1e0d04] text-[8px] font-black px-1 rounded-tl">
+            ✎
+          </span>
         </div>
 
         <!-- Name & Level Bar -->
         <div class="flex-1 min-w-0 pr-1">
-          <h1 class="font-extrabold text-[13px] tracking-wide text-[#fff7e6] uppercase truncate rpg-text-outline-sm">
-            SPIRANDELIEMPIRE
-          </h1>
-          <div class="flex items-center gap-1.5 mt-2">
+          <div class="flex items-center justify-between gap-1">
+            <h1 class="font-extrabold text-[12.5px] tracking-wide text-[#fff7e6] uppercase truncate rpg-text-outline-sm">
+              {{ user?.name || 'SPIRANDELIEMPIRE' }}
+            </h1>
+          </div>
+          <p class="text-[10px] text-[#fde68a] truncate font-semibold">
+            {{ user?.profile_data?.title || 'Comandante Soberano' }}
+          </p>
+          <div class="flex items-center gap-1.5 mt-1">
             <span class="px-1.5 py-0.5 text-[10px] font-bold bg-[#281509] text-[#f5d7a1] border border-[#6e4223] rounded-sm shadow-inner shrink-0">
-              Lv. 3
+              Lv. {{ user?.profile_data?.level || 3 }}
             </span>
-            <div class="pixel-bar-bg flex-1 h-3.5">
-              <div class="pixel-bar-energy h-full w-[58%]"></div>
+            <div class="pixel-bar-bg flex-1 h-3">
+              <div class="pixel-bar-energy h-full w-[72%]"></div>
             </div>
           </div>
         </div>
@@ -110,6 +122,15 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 
+defineProps({
+  user: {
+    type: Object,
+    default: null,
+  },
+})
+
+defineEmits(['open-profile'])
+
 const route = useRoute()
 const jeffreyWorking = ref(false)
 const activeTasksCount = ref(0)
@@ -143,7 +164,7 @@ const isActive = (path) => {
 const menu = [
   { name: 'Visão Geral', path: '/', icon: '🏠' },
   { name: 'Jeffrey AI & Agentes', path: '/jeffrey', icon: '🧑' },
-  { name: 'Negócios (Manager)', path: '/businesses', icon: '🛡️' },
+  { name: 'Negócios & Contas', path: '/businesses', icon: '🛡️' },
   { name: 'Business Factory', path: '/factory', icon: '🏭' },
   { name: 'AI Engine (Local)', path: '/ai-engine', icon: '⚙️' },
   { name: 'Financeiro (Teto R$ 200)', path: '/financial', icon: '💰' },

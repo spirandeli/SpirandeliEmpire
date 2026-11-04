@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Api\BusinessController;
 use App\Models\AgentDecision;
 use App\Models\Conversation;
 use App\Models\JeffreyMemory;
@@ -9,6 +10,7 @@ use App\Models\Message;
 use App\Models\Project;
 use App\Models\Business;
 use App\Models\Task;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 class JeffreyOrchestratorService
@@ -51,11 +53,29 @@ class JeffreyOrchestratorService
         }
 
         // 2. Fetch context
+        BusinessController::ensureCoreBusinessesExist();
         $businessId = $conversation->business_id;
         $projectId = $conversation->project_id;
 
         $project = $projectId ? Project::find($projectId) : null;
         $business = $businessId ? Business::find($businessId) : null;
+        if (!$business) {
+            // Default context includes TikTok Shop Afiliados if none selected
+            $business = Business::where('slug', 'tiktok-shop-afiliados')->first();
+        }
+
+        $user = $userId ? User::find($userId) : User::first();
+        $userProfileSummary = 'Comandante Spirandeli';
+        if ($user) {
+            $pData = is_array($user->profile_data) ? $user->profile_data : [];
+            $title = $pData['title'] ?? 'Comandante do Império';
+            $focusSlug = $pData['focus_business_slug'] ?? 'tiktok-shop-afiliados';
+            $dailyGoal = $pData['daily_goal'] ?? '';
+            $customRules = $pData['custom_instructions'] ?? '';
+            $userProfileSummary = "{$user->name} ({$title}) | Foco: {$focusSlug}"
+                . ($dailyGoal ? " | Meta Diária: {$dailyGoal}" : '')
+                . ($customRules ? " | Diretriz Pessoal: {$customRules}" : '');
+        }
 
         $activeMemories = JeffreyMemory::where('is_active', true)
             ->where(function ($q) use ($businessId) {
@@ -89,7 +109,17 @@ class JeffreyOrchestratorService
 
         // 3. System Prompt & Live Tasks Context
         $projectContext = $project ? "PROJETO: {$project->name} ({$project->slug})" : "Sem projeto selecionado.";
-        $businessContext = $business ? "NEGÓCIO: {$business->name} ({$business->category}) - Teto: R$ {$business->budget_limit_brl}" : "Sem negócio específico em foco.";
+        $businessAccountsStr = '';
+        $businessParamsStr = '';
+        if ($business) {
+            $accs = collect($business->accounts_list)->map(fn($a) => ($a['platform'] ?? 'Conta') . ': ' . ($a['handle'] ?? '') . (!empty($a['account_id']) ? " [ID:{$a['account_id']}]" : ''))->implode(', ');
+            $p = $business->automation_config;
+            $businessAccountsStr = $accs ? " | Contas: {$accs}" : '';
+            $businessParamsStr = !empty($p['niche']) ? " | Nicho: {$p['niche']} | Meta: " . ($p['daily_deliverables_goal'] ?? 3) . "/dia | CTA: " . ($p['cta_template'] ?? '') : '';
+        }
+        $businessContext = $business
+            ? "NEGÓCIO ATIVO: {$business->name} (ID: {$business->id}, {$business->category}) - Teto: R$ {$business->budget_limit_brl}{$businessAccountsStr}{$businessParamsStr}"
+            : "Sem negócio específico em foco.";
 
         $recentTasks = Task::latest()->limit(3)->get();
         $tasksContext = 'Nenhuma tarefa em background registrada no momento.';
@@ -103,33 +133,38 @@ class JeffreyOrchestratorService
             $tasksContext = implode(" | ", $taskLines);
         }
 
-        // Check if cloud providers are configured; if running purely on CPU local Ollama,
-        // use a compact prompt (~160 tokens) so CPU prompt-evaluation takes ~2s instead of >90s.
-        $cloudConfigured = !empty(env('GEMINI_API_KEY')) || !empty(env('OPENAI_API_KEY'));
+        // Check if cloud providers (Gemini or OpenAI) are configured via .env or UI Config;
+        // if running purely on CPU local Ollama, use a compact prompt (~160 tokens) so CPU prompt-evaluation takes ~2s.
+        $cloudConfigured = $this->aiGateway->isCloudExecutorConfigured();
         $forceLocal = in_array($provider ?: env('AI_PROVIDER', 'hybrid'), ['ollama', 'llama'], true);
         $useCompactLocalPrompt = !$cloudConfigured || $forceLocal;
 
         if ($useCompactLocalPrompt) {
             $systemPrompt = <<<PROMPT
 Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS.
+PERFIL DO COMANDANTE: {$userProfileSummary}
 Orçamento: R$ {$budgetStatus['current_spent_brl']}/R$ {$budgetStatus['monthly_limit_brl']}. {$projectContext} | {$businessContext}
 Tarefas reais no sistema: {$tasksContext}
-FERRAMENTAS: list_projects, inspect_project, read_project_file, list_businesses, get_business_status, get_system_metrics, list_docker_containers, inspect_ai_models, create_task, list_tasks.
-REGRA: Entregue a resposta diretamente agora. Se precisar executar uma ferramenta ou delegar pesquisa/trabalho em 2º plano, adicione no final:
+FERRAMENTAS: list_projects, inspect_project, read_project_file, list_businesses, get_business_status, update_business_automation, manage_business_accounts, run_business_automation, get_system_metrics, list_docker_containers, inspect_ai_models, create_task, list_tasks, web_search.
+REGRA: Entregue a resposta diretamente agora. Se precisar executar uma ferramenta ou delegar pesquisa/trabalho/automação de negócio em 2º plano, adicione no final:
 [TOOL_CALL: create_task, {"title": "Resumo da tarefa", "type": "research", "agent_name": "Research Agent"}]
 Responda em português brasileiro de forma executiva, objetiva e direta.
 PROMPT;
         } else {
             $systemPrompt = <<<PROMPT
 Você é Jeffrey, o agente executivo central e arquiteto de software do SpirandeliEmpire OS.
-Sua missão: Administrar o império, planejar novos negócios digitais, analisar código de projetos existentes, gerenciar tarefas e coordenar a VPS.
+Sua missão: Administrar o império de forma automatizada, gerir cada negócio usando suas contas vinculadas e parâmetros operacionais, planejar novos negócios digitais, analisar código de projetos existentes, gerenciar tarefas e coordenar a VPS.
+
+PERFIL DO COMANDANTE ATIVO:
+{$userProfileSummary}
 
 DIRETRIZES FUNDAMENTAIS:
 1. Respeite sempre o limite orçamentário mensal de R$ 200,00.
 2. Status atual do orçamento: R$ {$budgetStatus['current_spent_brl']} gastos de R$ {$budgetStatus['monthly_limit_brl']}.
 3. Priorize soluções seguras, eficientes e de custo zero.
 4. Jamais invente versículos ou dados históricos falsos para o RISADA.exe.
-5. Jamais diga que está pesquisando ou encaminhando à equipe sem disparar uma ferramenta real. Se precisar executar uma ação real ou criar uma tarefa em segundo plano, utilize a sintaxe exata:
+5. Você gerencia diretamente os negócios (especialmente TikTok Shop Afiliados) usando suas contas vinculadas (@handle, ID de afiliado, link da vitrine) e parâmetros de automação.
+6. Jamais diga que está pesquisando ou encaminhando à equipe sem disparar uma ferramenta real. Se precisar executar uma ação real, configurar contas/parâmetros de negócio ou criar uma tarefa em segundo plano, utilize a sintaxe exata:
 [TOOL_CALL: nome_da_ferramenta, {"parametro": "valor"}]
 
 CONTEXTO ATUAL:
@@ -164,8 +199,14 @@ PROMPT;
 
         $fullPrompt = $conversationHistory . "Comandante: " . $userMessage . "\n\nJeffrey:";
 
-        // 5. Query AI Gateway
-        $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider);
+        // 5. Query AI Gateway with Role Division (Llama = Read/Analyze, Gemini/OpenAI = Execute Tasks)
+        $taskRole = $this->aiGateway->getTokenManager()->classifyTaskRole($userMessage);
+        if ($cloudConfigured && !$forceLocal && preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage)) {
+            $rawContextForLlama = "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
+            $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider);
+        } else {
+            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole);
+        }
 
         if ($response['success']) {
             $replyText = $response['response'];

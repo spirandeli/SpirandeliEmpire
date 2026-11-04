@@ -7,7 +7,6 @@
         <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
-              <!-- Mini bar chart icon -->
               <span class="inline-flex items-end gap-0.5 h-3.5">
                 <span class="w-1 h-2 bg-[#2563eb] border border-[#1e0d04]"></span>
                 <span class="w-1 h-3 bg-[#3b82f6] border border-[#1e0d04]"></span>
@@ -21,7 +20,7 @@
             </div>
 
             <div class="text-[12px] font-extrabold text-[#4ade80] rpg-text-outline-sm tracking-wide">
-              Totalmente Isolados
+              TikTok Shop + 4 Ativos
             </div>
           </div>
 
@@ -127,16 +126,16 @@
           class="w-7 h-6 object-contain"
         />
         <h2 class="font-extrabold text-sm sm:text-[15px] text-[#fff6e0] tracking-wide rpg-text-outline-sm">
-          Negócios Estratégicos Iniciais
+          Negócios Estratégicos & Gestão Autônoma
         </h2>
       </div>
 
       <!-- Main Wooden Container Frame -->
       <div class="pixel-wood rpg-rivets p-3.5 pt-5">
         <!-- Top Wooden Horizontal Beam Decoration -->
-        <div class="flex items-center justify-between mb-3 px-1">
+        <div class="flex items-center justify-between mb-3 px-1 flex-wrap gap-2">
           <span class="text-[11px] text-[#d9bc8c] font-medium">
-            Pipelines operacionais isolados sob governança do Jeffrey AI
+            Cada negócio possui suas próprias Contas Vinculadas e Parâmetros para gestão automatizada do Jeffrey AI
           </span>
           <div class="flex items-center gap-3">
             <button
@@ -144,38 +143,50 @@
               @click="showAllBusinesses = !showAllBusinesses"
               class="text-[11px] font-bold text-[#fbbf24] hover:underline"
             >
-              {{ showAllBusinesses ? 'Mostrar 4 Iniciais' : `+ ${extraBusinesses.length} Negócios Afiliados` }}
+              {{ showAllBusinesses ? 'Ocultar Extras' : `+ ${extraBusinesses.length} Negócios Extras` }}
             </button>
             <router-link
               to="/businesses"
-              class="text-[11px] font-bold text-[#fde68a] hover:text-white transition"
+              class="pixel-btn-gold px-3 py-1 text-[11px] font-extrabold uppercase"
             >
-              Gerenciar Todos →
+              ⚙️ Gerenciar Contas & Parâmetros →
             </router-link>
           </div>
         </div>
 
-        <!-- 4 Strategic Business Parchment Cards Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <!-- 5 Strategic Business Parchment Cards Grid (TikTok Shop Featured #1) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           <div
             v-for="card in strategicCards"
             :key="card.slug"
             @click="$router.push('/businesses')"
-            class="rpg-parchment-inner p-3.5 pt-3 flex flex-col justify-between cursor-pointer hover:brightness-[1.03] transition-all border-[3px] border-[#2b1507] shadow-[0_4px_0_#1c0c03]"
+            class="rpg-parchment-inner p-3.5 pt-3 flex flex-col justify-between cursor-pointer hover:brightness-[1.03] transition-all border-[3px] shadow-[0_4px_0_#1c0c03]"
+            :class="card.slug === 'tiktok-shop-afiliados' ? 'border-[#d97706] ring-2 ring-[#fbbf24]/60' : 'border-[#2b1507]'"
           >
             <div>
               <!-- Top Ribbon Banner -->
-              <div class="text-center mb-3">
+              <div class="text-center mb-2.5 flex items-center justify-between gap-1">
                 <span class="rpg-ribbon">
                   {{ card.ribbon }}
+                </span>
+                <span
+                  class="px-1.5 py-0.5 text-[9px] font-black rounded uppercase"
+                  :class="card.autoEnabled ? 'bg-emerald-800 text-emerald-100' : 'bg-[#3b200e] text-[#fde68a]'"
+                >
+                  {{ card.autoEnabled ? '🤖 AUTO ON' : '⚙️ PRONTO' }}
                 </span>
               </div>
 
               <!-- Business Brand Icon + Name -->
               <div class="flex items-center gap-2 mb-2">
-                <!-- Custom Brand Badge -->
                 <div
-                  v-if="card.badgeType === 'youtube'"
+                  v-if="card.badgeType === 'tiktok'"
+                  class="w-8 h-7 rounded-[4px] bg-[#0f172a] border-2 border-[#ec4899] flex items-center justify-center text-[#38bdf8] text-xs font-black shadow-sm shrink-0"
+                >
+                  ♪
+                </div>
+                <div
+                  v-else-if="card.badgeType === 'youtube'"
                   class="w-8 h-6 rounded-[4px] bg-[#dc2626] border-2 border-[#2b1507] flex items-center justify-center text-white text-[10px] font-black shadow-sm shrink-0"
                 >
                   ▶
@@ -199,32 +210,29 @@
                   🖨️
                 </div>
 
-                <h3 class="font-extrabold text-[15px] text-[#1e0d04] leading-tight truncate">
+                <h3 class="font-extrabold text-[14px] text-[#1e0d04] leading-tight truncate">
                   {{ card.name }}
                 </h3>
               </div>
 
               <!-- Business Description -->
-              <p class="text-[12px] text-[#3a1f0d] font-medium leading-snug min-h-[48px]">
+              <p class="text-[11.5px] text-[#3a1f0d] font-medium leading-snug min-h-[44px] line-clamp-3">
                 {{ card.description }}
               </p>
 
-              <!-- Divider Line -->
-              <div class="border-t border-[#b88746] my-2.5"></div>
-
-              <!-- Budget Ceiling & Isolated Storage Path -->
-              <div class="text-[11px] text-[#2b1507] font-semibold leading-snug">
-                <div>
-                  Teto: <span class="font-extrabold">R$ {{ formatBrl(card.budget_limit_brl) }}</span> |
+              <!-- Linked Accounts & Goal Pill -->
+              <div class="mt-2 p-1.5 rounded bg-[#f5e3c3] border border-[#b88746] text-[10.5px] text-[#2b1507] space-y-0.5">
+                <div class="truncate font-bold">
+                  🔐 Contas: <span class="text-[#78350f]">{{ card.primaryHandle }}</span>
                 </div>
-                <div class="text-[#4a2810] font-mono text-[10.5px] truncate">
-                  storage/{{ card.storage_path }}
+                <div class="truncate">
+                  🎯 Meta: <strong>{{ card.dailyGoal }}/dia</strong> • Teto: R$ {{ formatBrl(card.budget_limit_brl) }}
                 </div>
               </div>
             </div>
 
             <!-- Bottom Pixel-Art Scene Illustration -->
-            <div class="mt-3 pt-1 flex items-end justify-center h-14 overflow-hidden">
+            <div class="mt-2.5 pt-1 flex items-end justify-center h-12 overflow-hidden">
               <img
                 :src="card.sprite"
                 :alt="card.name"
@@ -234,7 +242,7 @@
           </div>
         </div>
 
-        <!-- Optional Expandable Row for Extra / Affiliate Businesses -->
+        <!-- Optional Expandable Row for Extra Businesses -->
         <div
           v-if="showAllBusinesses && extraBusinesses.length > 0"
           class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3 pt-3 border-t-2 border-[#3b200e]"
@@ -270,8 +278,8 @@ const loading = ref(false)
 const showAllBusinesses = ref(false)
 
 const summary = ref({
-  total_businesses: 4,
-  active_businesses: 4,
+  total_businesses: 5,
+  active_businesses: 5,
   paused_businesses: 0,
   running_tasks: 0,
 })
@@ -299,6 +307,18 @@ const businesses = ref([])
 
 const defaultStrategicCards = [
   {
+    slug: 'tiktok-shop-afiliados',
+    ribbon: '🔥 TIKTOK SHOP',
+    badgeType: 'tiktok',
+    name: 'TikTok Shop Afiliados',
+    description: 'Mineração de produtos virais, roteiros de alta conversão e vídeos Anti-Ban para TikTok Shop.',
+    budget_limit_brl: 50,
+    storage_path: 'businesses/tiktok-shop-afiliados',
+    sprite: '/assets/sprites/biz-youtube.png',
+    defaultHandle: '@achadinhos.spirandeli',
+    defaultGoal: 5,
+  },
+  {
     slug: 'risada-exe',
     ribbon: 'YOUTUBE DARK',
     badgeType: 'youtube',
@@ -307,6 +327,8 @@ const defaultStrategicCards = [
     budget_limit_brl: 60,
     storage_path: 'businesses/risada-exe',
     sprite: '/assets/sprites/biz-youtube.png',
+    defaultHandle: '@risada.exe',
+    defaultGoal: 2,
   },
   {
     slug: 'kdp-factory',
@@ -317,6 +339,8 @@ const defaultStrategicCards = [
     budget_limit_brl: 50,
     storage_path: 'businesses/kdp-factory',
     sprite: '/assets/sprites/biz-kdp.png',
+    defaultHandle: 'Spirandeli Publishing',
+    defaultGoal: 1,
   },
   {
     slug: 'digital-products',
@@ -327,6 +351,8 @@ const defaultStrategicCards = [
     budget_limit_brl: 60,
     storage_path: 'businesses/digital-products',
     sprite: '/assets/sprites/biz-pdf.png',
+    defaultHandle: '@spirandeli.digital',
+    defaultGoal: 2,
   },
   {
     slug: 'printable-factory',
@@ -337,17 +363,33 @@ const defaultStrategicCards = [
     budget_limit_brl: 30,
     storage_path: 'businesses/printable-factory',
     sprite: '/assets/sprites/biz-printable.png',
+    defaultHandle: '@spirandeli.printables',
+    defaultGoal: 3,
   },
 ]
 
 const strategicCards = computed(() => {
   return defaultStrategicCards.map((def) => {
     const found = businesses.value.find((b) => b.slug === def.slug)
-    if (!found) return def
+    if (!found) {
+      return {
+        ...def,
+        primaryHandle: def.defaultHandle,
+        dailyGoal: def.defaultGoal,
+        autoEnabled: true,
+      }
+    }
+    const accs = found.accounts_list || found.accounts || found.settings?.accounts || []
+    const params = found.automation_config || found.automation_params || found.settings?.automation_params || {}
     return {
       ...def,
+      name: found.name || def.name,
+      description: found.description || def.description,
       budget_limit_brl: found.budget_limit_brl ?? def.budget_limit_brl,
       storage_path: found.storage_path || def.storage_path,
+      primaryHandle: accs[0]?.handle || def.defaultHandle,
+      dailyGoal: params.daily_deliverables_goal ?? def.defaultGoal,
+      autoEnabled: params.auto_enabled !== false,
     }
   })
 })
@@ -358,7 +400,7 @@ const extraBusinesses = computed(() => {
 })
 
 const displayBusinessesCount = computed(() => {
-  return summary.value.total_businesses || 4
+  return Math.max(summary.value.total_businesses || 5, businesses.value.length || 5)
 })
 
 const formatBrl = (val) => {
