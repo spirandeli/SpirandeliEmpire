@@ -216,7 +216,7 @@ services:
 
   # --- TIKTOK SHOP: VOICE CLONING TTS (XTTS v2) ---
   xtts-api:
-    image: ghcr.io/coqui-ai/xtts-api:latest
+    image: daswer123/xtts-api-server:latest
     container_name: empire_xtts
     restart: unless-stopped
     expose:
@@ -234,7 +234,7 @@ services:
 
   # --- TIKTOK SHOP: WORKFLOW ORCHESTRATOR (n8n) ---
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: n8nio/n8n:latest
     container_name: empire_n8n
     restart: unless-stopped
     ports:
