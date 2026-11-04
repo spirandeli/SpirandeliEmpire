@@ -38,7 +38,8 @@ core/backend/yarn-error.log
 
 # Frontend (Vue 3 / Vite)
 core/frontend/node_modules/
-core/frontend/dist/
+# core/frontend/dist/ mantido no git para deploy imediato sem precisar de nodejs no host da vps
+!core/frontend/dist/**
 core/frontend/.vite/
 
 # Python & AI Engine cache

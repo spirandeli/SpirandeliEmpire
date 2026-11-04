@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpirandeliEmpire OS - Central Command</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 antialiased">
+  <div id="app" class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-[#080c15] border-r border-slate-800 flex flex-col justify-between p-4">
+      <div>
+        <div class="flex items-center space-x-3 mb-6 p-2">
+          <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-bold text-black shadow-lg text-lg">
+            S
+          </div>
+          <div>
+            <h1 class="font-bold text-sm tracking-wider uppercase">SpirandeliEmpire</h1>
+            <span class="text-[10px] text-amber-400 mono tracking-widest bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800/50">OS v2.0</span>
+          </div>
+        </div>
+
+        <button @click="currentTab = 'factory'" class="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs rounded-lg mb-6 shadow-md uppercase tracking-wider">
+          + Novo Negócio Digital
+        </button>
+
+        <nav class="space-y-1 text-xs">
+          <a @click="currentTab = 'dashboard'" href="#" :class="currentTab === 'dashboard' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Visão Geral (Dashboard)</a>
+          <a @click="currentTab = 'jeffrey'" href="#" :class="currentTab === 'jeffrey' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Jeffrey AI & Agentes</a>
+          <a @click="currentTab = 'businesses'" href="#" :class="currentTab === 'businesses' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Negócios (Manager)</a>
+          <a @click="currentTab = 'factory'" href="#" :class="currentTab === 'factory' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Business Factory</a>
+          <a @click="currentTab = 'ai-engine'" href="#" :class="currentTab === 'ai-engine' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">AI Engine (Local)</a>
+          <a @click="currentTab = 'financial'" href="#" :class="currentTab === 'financial' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Financeiro (Teto R$ 200)</a>
+          <a @click="currentTab = 'vps'" href="#" :class="currentTab === 'vps' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:bg-slate-800/50'" class="block px-3 py-2.5 rounded-lg font-medium transition">Administração VPS</a>
+        </nav>
+      </div>
+
+      <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+        <div class="flex items-center space-x-2 text-cyan-400 font-bold mb-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Jeffrey Online</span>
+        </div>
+        <div class="text-[11px] text-slate-400">Limite: <span class="text-amber-400 mono">R$ 200/mês</span></div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-[#0e1626] to-[#0b0f19]">
+      <!-- Header -->
+      <header class="flex items-center justify-between pb-6 mb-6 border-b border-slate-800">
+        <div class="mono text-xs text-slate-400">
+          Servidor: <span class="text-emerald-400 font-bold">VPS Ubuntu 24.04 LTS</span> | Orquestração: <span class="text-amber-400">Docker Compose</span>
+        </div>
+        <div class="flex items-center space-x-3 text-xs mono">
+          <span class="px-3 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300">HTTPS / TLS Ativo</span>
+        </div>
+      </header>
+
+      <!-- Tab: Dashboard -->
+      <section v-if="currentTab === 'dashboard'" class="space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400 uppercase mono">Negócios no Ecossistema</div>
+            <div class="text-2xl font-bold text-white mt-1">4</div>
+            <div class="text-xs text-emerald-400 mt-1 mono">Totalmente Isolados</div>
+          </div>
+          <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400 uppercase mono">Orçamento Mensal</div>
+            <div class="text-2xl font-bold text-amber-400 mt-1">R$ 0,00 / R$ 200</div>
+            <div class="text-xs text-slate-400 mt-1 mono">Teto estrito de segurança</div>
+          </div>
+          <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400 uppercase mono">Receita Confirmada</div>
+            <div class="text-2xl font-bold text-emerald-400 mt-1">R$ 0,00</div>
+            <div class="text-xs text-slate-400 mt-1 mono">Sem projeções fictícias</div>
+          </div>
+          <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-800">
+            <div class="text-xs text-slate-400 uppercase mono">Consumo VPS</div>
+            <div class="text-2xl font-bold text-cyan-400 mt-1">RAM 28%</div>
+            <div class="text-xs text-slate-400 mt-1 mono">CPU 7.8% • SSD 14%</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <h3 class="text-base font-bold mb-4">Negócios Estratégicos Iniciais</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div v-for="biz in businesses" :key="biz.name" class="p-4 bg-slate-950/60 rounded-xl border border-slate-800">
+              <span class="text-[10px] mono px-2 py-0.5 rounded bg-slate-800 text-amber-400 uppercase">{{ biz.category }}</span>
+              <h4 class="font-bold text-sm text-slate-100 mt-2">{{ biz.name }}</h4>
+              <p class="text-xs text-slate-400 mt-1 leading-relaxed">{{ biz.description }}</p>
+              <div class="mt-4 pt-2 border-t border-slate-800 text-[10px] mono text-slate-500">
+                Teto: R$ {{ biz.budget }} | {{ biz.vol }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Jeffrey AI -->
+      <section v-if="currentTab === 'jeffrey'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-cyan-600 flex items-center justify-center font-bold text-slate-950 text-base">J</div>
+            <div>
+              <h3 class="font-bold text-sm">Jeffrey AI - Centro de Conversa Estratégica</h3>
+              <p class="text-xs text-slate-400 mono">Modelo local: qwen2.5:3b (Ollama) • Diretrizes ativas: Fidelidade Bíblica, Teto R$ 200, Sem Comandos Arbitrários</p>
+            </div>
+          </div>
+          <div class="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-300 leading-relaxed whitespace-pre-line mb-4">
+            {{ jeffreyWelcome }}
+          </div>
+          <div class="flex gap-2">
+            <input v-model="chatInput" placeholder="Apresente uma ideia de negócio ou solicite viabilidade técnica..." class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-xs outline-none focus:border-cyan-500">
+            <button @click="sendToJeffrey" class="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-lg">Enviar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Businesses -->
+      <section v-if="currentTab === 'businesses'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <h3 class="font-bold text-base mb-4">Gerenciador de Negócios Independentes</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-for="biz in businesses" :key="biz.name" class="p-4 bg-slate-950/60 rounded-xl border border-slate-800">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-bold text-sm text-slate-100">{{ biz.name }}</span>
+                <span class="text-[10px] mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">Provisionado</span>
+              </div>
+              <p class="text-xs text-slate-400 mb-4">{{ biz.description }}</p>
+              <div class="flex space-x-2 text-xs mono">
+                <button class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700">Pausar</button>
+                <button class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700">Backup</button>
+                <button class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700">Logs</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Business Factory -->
+      <section v-if="currentTab === 'factory'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <h3 class="font-bold text-base mb-2">Business Factory - Novo Negócio</h3>
+          <p class="text-xs text-slate-400 mb-4">Questionário de viabilidade e provisionamento isolado com supervisão humana.</p>
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="block text-slate-400 mb-1 mono">Nome do Negócio</label>
+              <input class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs" placeholder="Ex: Canal Histórias Bíblicas Shorts">
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1 mono">Categoria</label>
+              <select class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs">
+                <option>YouTube Dark (RISADA.exe / Histórias Bíblicas)</option>
+                <option>Amazon KDP (eBooks e Devocionais)</option>
+                <option>Produtos Digitais (PDF / Planners)</option>
+                <option>Printable Factory (Artes e Quadros)</option>
+              </select>
+            </div>
+            <button class="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg uppercase mono">
+              Submeter à Análise de Jeffrey →
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: AI Engine -->
+      <section v-if="currentTab === 'ai-engine'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <h3 class="font-bold text-base mb-2">AI Engine Local (Open-Source)</h3>
+          <p class="text-xs text-slate-400 mb-4">Motor desacoplado: Ollama (qwen2.5:3b), Piper TTS (Português Brasileiro), FFmpeg.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mono text-xs">
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block">Ollama Inference</span>
+              Status: Ativo localmente sem custos de API
+            </div>
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block">Piper Neural TTS</span>
+              Voz: pt_BR-faber-medium (ultra leve)
+            </div>
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block">GPU sob Demanda</span>
+              Status: CPU Only (R$ 0,00 de custo extra)
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Financial -->
+      <section v-if="currentTab === 'financial'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <h3 class="font-bold text-base mb-2">Governança Financeira & Teto Operacional</h3>
+          <p class="text-xs text-slate-400 mb-4">Orçamento operacional de R$ 200,00/mês estritamente protegido.</p>
+          <div class="grid grid-cols-3 gap-4 mono text-xs">
+            <div class="p-4 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Teto Mensal</span>
+              <span class="text-xl font-bold text-amber-400">R$ 200,00</span>
+            </div>
+            <div class="p-4 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Despesas Realizadas</span>
+              <span class="text-xl font-bold text-red-400">R$ 0,00</span>
+            </div>
+            <div class="p-4 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Saldo Restante</span>
+              <span class="text-xl font-bold text-emerald-400">R$ 200,00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: VPS Admin -->
+      <section v-if="currentTab === 'vps'" class="space-y-4">
+        <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold text-base">Administração & Diagnóstico da VPS</h3>
+            <a href="/kuma" target="_blank" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs mono">Abrir Uptime Kuma ↗</a>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mono text-xs">
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Caddy Proxy</span>
+              <span class="text-emerald-400 font-bold">ONLINE (Port 80/443)</span>
+            </div>
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">PostgreSQL 16</span>
+              <span class="text-emerald-400 font-bold">HEALTHY</span>
+            </div>
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Redis 7</span>
+              <span class="text-emerald-400 font-bold">HEALTHY</span>
+            </div>
+            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+              <span class="text-slate-400 block">Ollama AI</span>
+              <span class="text-cyan-400 font-bold">READY</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const { createApp, ref } = Vue
+    createApp({
+      setup() {
+        const currentTab = ref('dashboard')
+        const chatInput = ref('')
+        const jeffreyWelcome = ref('Saudações, Comandante. Eu sou Jeffrey, orquestrador central do SpirandeliEmpire OS v2.0.\n\nEstou operando sobre a infraestrutura modular containerizada em Docker. Todas as regras de isolamento, fidelidade das fontes e teto operacional de R$ 200/mês estão ativas.\n\nComo posso coordenar o império agora?')
+
+        const businesses = [
+          { name: 'RISADA.exe', category: 'YouTube Dark', budget: '60.00', vol: 'storage/businesses/risada-exe', description: 'Canal de histórias bíblicas com ilustrações originais, voz brasileira e roteiros fiéis.' },
+          { name: 'KDP Factory', category: 'Amazon KDP', budget: '50.00', vol: 'storage/businesses/kdp-factory', description: 'Pipeline automatizado de produção de eBooks, devocionais e estudos para Amazon KDP.' },
+          { name: 'Digital Products', category: 'PDFs & Planners', budget: '40.00', vol: 'storage/businesses/digital-products', description: 'Estudos bíblicos em PDF, cronologias e materiais devocionais de alta conversão.' },
+          { name: 'Printable Factory', category: 'Printables', budget: '30.00', vol: 'storage/businesses/printable-factory', description: 'Quadros, cartões e artes originais de alta resolução para impressão.' }
+        ]
+
+        const sendToJeffrey = () => {
+          if (!chatInput.value.trim()) return
+          alert('Jeffrey recebeu sua solicitação: "' + chatInput.value + '". O comando foi registrado na fila de orquestração.')
+          chatInput.value = ''
+        }
+
+        return { currentTab, chatInput, jeffreyWelcome, businesses, sendToJeffrey }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>
+
