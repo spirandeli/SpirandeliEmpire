@@ -41,7 +41,12 @@ AI_PROVIDER = os.getenv("AI_PROVIDER", "hybrid")
 # --- AI PROVIDERS CONFIGURATION ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+raw_gemini_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").strip().rstrip("/")
+if "generativelanguage" not in raw_gemini_url:
+    raw_gemini_url = "https://generativelanguage.googleapis.com/v1beta"
+elif not raw_gemini_url.endswith("/v1beta") and not raw_gemini_url.endswith("/v1"):
+    raw_gemini_url += "/v1beta"
+GEMINI_BASE_URL = raw_gemini_url
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -236,8 +241,10 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
         if system_prompt:
             base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
-        candidate_models = [GEMINI_MODEL]
-        for fallback_m in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
+        candidate_models = []
+        if GEMINI_MODEL:
+            candidate_models.append(GEMINI_MODEL)
+        for fallback_m in ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview", "gemini-2.5-flash"):
             if fallback_m not in candidate_models:
                 candidate_models.append(fallback_m)
 
@@ -247,23 +254,43 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
 
         # Force IPv4 transport so broken Docker IPv6 routing on Linux VPS never causes 45s timeouts
         transport = httpx.HTTPTransport(local_address="0.0.0.0")
-        with httpx.Client(transport=transport, timeout=httpx.Timeout(25.0, connect=6.0)) as client:
+        with httpx.Client(transport=transport, timeout=httpx.Timeout(35.0, connect=8.0)) as client:
             for model_name in candidate_models:
                 url = f"{GEMINI_BASE_URL}/models/{model_name}:generateContent?key={g_key}"
-                try:
-                    attempt = client.post(url, json=base_payload)
-                    if attempt.status_code == 200:
+                model_retries = 3 if model_name == (GEMINI_MODEL or "gemini-3.8-flash") else 1
+
+                for attempt_idx in range(1, model_retries + 1):
+                    try:
+                        attempt = client.post(url, json=base_payload)
+                        if attempt.status_code == 200:
+                            res = attempt
+                            used_model = model_name
+                            break
                         res = attempt
-                        used_model = model_name
+                        err_text = attempt.text
+                        is_retryable = attempt.status_code in (404, 400, 429, 500, 502, 503, 504) or any(
+                            term in err_text.lower() for term in ("high demand", "overloaded", "temporary", "quota", "rate")
+                        )
+                        if is_retryable:
+                            if attempt_idx < model_retries:
+                                wait_sec = attempt_idx * 1.4
+                                logger.info(f"Gemini {model_name} pico temporario de demanda ({attempt.status_code}). Tentativa {attempt_idx}/{model_retries}. Aguardando {wait_sec}s...")
+                                time.sleep(wait_sec)
+                                continue
+                            else:
+                                logger.warning(f"Gemini {model_name} persistiu em alta demanda apos {model_retries} tentativas. Testando proximo modelo...")
+                                time.sleep(0.4)
+                                break
                         break
-                    res = attempt
-                    if attempt.status_code in (404, 400):
-                        continue
+                    except Exception as inner_e:
+                        clean_err = re.sub(r"key=[^&\s]+", "key=***", str(inner_e))
+                        logger.warning(f"Gemini attempt on {model_name} failed: {clean_err}")
+                        if attempt_idx < model_retries:
+                            time.sleep(1.2)
+                            continue
+                        break
+                if res is not None and res.status_code == 200:
                     break
-                except Exception as inner_e:
-                    clean_err = re.sub(r"key=[^&\s]+", "key=***", str(inner_e))
-                    logger.warning(f"Gemini attempt on {model_name} failed: {clean_err}")
-                    continue
 
         latency = int((time.time() - start) * 1000)
 

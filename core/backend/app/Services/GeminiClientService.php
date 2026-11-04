@@ -20,9 +20,22 @@ class GeminiClientService
     {
         $this->apiKey = $this->resolveApiKey();
         $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-3.8-flash'));
-        $this->baseUrl = config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'));
+
+        $rawBaseUrl = trim((string) config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta')));
+        // Auto-correct invalid hosts like 'https://googleapis.com' to official 'https://generativelanguage.googleapis.com/v1beta'
+        if (empty($rawBaseUrl) || ($rawBaseUrl === 'https://googleapis.com') || (str_contains($rawBaseUrl, 'googleapis.com') && !str_contains($rawBaseUrl, 'generativelanguage'))) {
+            $rawBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+        } elseif (!str_contains($rawBaseUrl, '/v1beta') && !str_contains($rawBaseUrl, '/v1')) {
+            $rawBaseUrl = rtrim($rawBaseUrl, '/') . '/v1beta';
+        }
+        $this->baseUrl = rtrim($rawBaseUrl, '/');
+
         $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.6));
-        $this->maxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 4096));
+
+        // Auto-correct typos like 665536 down to Google's true maximum 65536
+        $rawMaxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 65536));
+        $this->maxTokens = min(max($rawMaxTokens, 512), 65536);
+
         $this->freeTierMode = (bool) config('ai.gemini.free_tier_mode', env('GEMINI_FREE_TIER_MODE', true));
     }
 
@@ -136,11 +149,14 @@ class GeminiClientService
             ];
         }
 
+        // Google Gemini 3.8 Flash allows up to 65536 tokens of output. Values > 65536 cause schema validation errors.
+        $safeMaxTokens = min(max((int) $this->maxTokens, 512), 65536);
+
         $payload = [
             'contents' => $contents,
             'generationConfig' => [
                 'temperature' => $this->temperature,
-                'maxOutputTokens' => $this->maxTokens,
+                'maxOutputTokens' => $safeMaxTokens,
             ]
         ];
 
@@ -152,8 +168,12 @@ class GeminiClientService
             ];
         }
 
-        $candidateModels = [$targetModel];
-        foreach (['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as $altModel) {
+        // Primary user choice (Gemini 3.8 Flash) first, followed by Gemini 3 family models and robust fallbacks
+        $candidateModels = [];
+        if ($targetModel) {
+            $candidateModels[] = $targetModel;
+        }
+        foreach (['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'] as $altModel) {
             if (!in_array($altModel, $candidateModels, true)) {
                 $candidateModels[] = $altModel;
             }
@@ -165,34 +185,62 @@ class GeminiClientService
 
         foreach ($candidateModels as $modelName) {
             $endpoint = "{$this->baseUrl}/models/{$modelName}:generateContent?key={$this->apiKey}";
-            try {
-                $attemptResp = Http::timeout(22)
-                    ->connectTimeout(6)
-                    ->withOptions(['force_ip_resolve' => 'v4'])
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->post($endpoint, $payload);
 
-                if ($attemptResp->successful()) {
+            // Allow up to 3 retries with backoff for primary model (e.g. Gemini 3.8 Flash) to ride out temporary demand spikes
+            $modelRetries = ($modelName === $targetModel) ? 3 : 1;
+
+            for ($attempt = 1; $attempt <= $modelRetries; $attempt++) {
+                try {
+                    $attemptResp = Http::timeout(35)
+                        ->connectTimeout(8)
+                        ->withOptions(['force_ip_resolve' => 'v4'])
+                        ->withHeaders(['Content-Type' => 'application/json'])
+                        ->post($endpoint, $payload);
+
+                    if ($attemptResp->successful()) {
+                        $response = $attemptResp;
+                        $usedModel = $modelName;
+                        break 2; // Success! Break out of both retry loop and candidate models loop
+                    }
+
                     $response = $attemptResp;
-                    $usedModel = $modelName;
+                    $statusCode = $attemptResp->status();
+                    $errMsg = $attemptResp->json('error.message') ?? "HTTP {$statusCode}";
+                    $lastError = $errMsg;
+
+                    // If 503 (high demand), 429 (quota/rate limit), 500, 502, 504, retry primary model with backoff!
+                    $isHighDemandOrRateLimit = in_array($statusCode, [503, 429, 500, 502, 504], true)
+                        || preg_match('/(high demand|temporary|overloaded|resource_exhausted|quota|rate|unavailable)/i', $errMsg);
+
+                    if ($isHighDemandOrRateLimit) {
+                        if ($attempt < $modelRetries) {
+                            $waitMs = $attempt * 1400000; // 1.4s, 2.8s
+                            Log::info("Gemini {$modelName} pico de demanda (HTTP {$statusCode}). Tentativa {$attempt}/{$modelRetries}. Aguardando " . ($waitMs / 1000000) . "s antes de tentar novamente...");
+                            usleep($waitMs);
+                            continue;
+                        } else {
+                            Log::warning("Gemini {$modelName} com alta demanda persistente após {$modelRetries} tentativas. Tentando próximo modelo da família...");
+                            usleep(400000);
+                            break; // Try next candidate model
+                        }
+                    }
+
+                    // If 404 or 400 (model tag not recognized on this API tier), immediately try next model
+                    if (in_array($statusCode, [404, 400], true)) {
+                        break;
+                    }
+
+                    break;
+                } catch (\Throwable $e) {
+                    $cleanMsg = preg_replace('/key=[^&\s]+/i', 'key=***', $e->getMessage());
+                    $lastError = $cleanMsg;
+                    Log::warning("Gemini attempt on {$modelName} failed: {$cleanMsg}");
+                    if ($attempt < $modelRetries) {
+                        usleep(1200000);
+                        continue;
+                    }
                     break;
                 }
-
-                $response = $attemptResp;
-                $statusCode = $attemptResp->status();
-                $errMsg = $attemptResp->json('error.message') ?? "HTTP {$statusCode}";
-                $lastError = $errMsg;
-
-                // If 404 or 400 (model tag not recognized on v1beta), try next Flash model
-                if (in_array($statusCode, [404, 400], true)) {
-                    continue;
-                }
-                break;
-            } catch (\Throwable $e) {
-                $cleanMsg = preg_replace('/key=[^&\s]+/i', 'key=***', $e->getMessage());
-                $lastError = $cleanMsg;
-                Log::warning("Gemini attempt on {$modelName} failed: {$cleanMsg}");
-                continue;
             }
         }
 
