@@ -25,24 +25,33 @@ class OllamaClientService
         $startTime = microtime(true);
 
         try {
+            // Use /api/chat with proper system/user roles (better instruction-following than /api/generate).
+            $messages = [];
+            if ($systemPrompt) {
+                $messages[] = ['role' => 'system', 'content' => $systemPrompt];
+            }
+            $messages[] = ['role' => 'user', 'content' => $prompt];
+
             $payload = [
                 'model' => $targetModel,
-                'prompt' => $prompt,
+                'messages' => $messages,
                 'stream' => false,
+                'options' => [
+                    // Ollama defaults to a 2048-token context, which silently truncates Jeffrey's
+                    // system prompt (rules + tools + memories + history). Raise it explicitly.
+                    'num_ctx' => (int) env('JEFFREY_CONTEXT_WINDOW', 8192),
+                    'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.6),
+                ],
             ];
 
-            if ($systemPrompt) {
-                $payload['system'] = $systemPrompt;
-            }
-
             $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 90));
-            $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/generate", $payload);
+            $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/chat", $payload);
             $latencyMs = round((microtime(true) - $startTime) * 1000);
 
             if ($response->successful()) {
                 return [
                     'success' => true,
-                    'response' => $response->json('response'),
+                    'response' => $response->json('message.content'),
                     'model' => $targetModel,
                     'provider' => 'ollama_llama',
                     'latency_ms' => $latencyMs,

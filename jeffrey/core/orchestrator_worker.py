@@ -34,7 +34,7 @@ AI_PROVIDER = os.getenv("AI_PROVIDER", "hybrid")
 # --- AI PROVIDERS CONFIGURATION ---
 # 1. Google Gemini (Free tier from Google AI Studio / Paid credits)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 
 # 2. OpenAI (Credits / Plans)

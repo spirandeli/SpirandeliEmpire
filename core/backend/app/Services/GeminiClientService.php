@@ -17,7 +17,7 @@ class GeminiClientService
     public function __construct()
     {
         $this->apiKey = config('ai.gemini.api_key', env('GEMINI_API_KEY'));
-        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-1.5-flash'));
+        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-2.5-flash'));
         $this->baseUrl = config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'));
         $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.7));
         $this->maxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 4096));

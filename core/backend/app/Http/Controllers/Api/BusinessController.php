@@ -8,8 +8,11 @@ use App\Models\Task;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class BusinessController extends Controller
 {
@@ -104,6 +107,10 @@ class BusinessController extends Controller
         ]);
 
         $slug = Str::slug($validated['name']);
+        if ($slug === '') {
+            // Name made only of symbols/emojis would yield an empty slug
+            $slug = 'negocio-' . Str::lower(Str::random(6));
+        }
         
         // Ensure unique slug
         $originalSlug = $slug;
@@ -114,14 +121,19 @@ class BusinessController extends Controller
         }
 
         $storagePath = "businesses/{$slug}";
-        $fullPath = base_path($storagePath);
+        // storage/ is a writable mounted volume (./storage on the host). base_path() pointed
+        // inside the app code dir, which is not writable by www-data in the container.
+        $fullPath = storage_path($storagePath);
 
-        // 1. Create directory structure physically
-        if (!File::exists($fullPath)) {
-            File::makeDirectory($fullPath . '/assets', 0755, true);
-            File::makeDirectory($fullPath . '/output', 0755, true);
-            File::makeDirectory($fullPath . '/scripts', 0755, true);
-            File::makeDirectory($fullPath . '/logs', 0755, true);
+        // 1. Create directory structure physically (non-fatal: never block DB provisioning)
+        $directoriesCreated = false;
+        $fsError = null;
+        try {
+            foreach (['assets', 'output', 'scripts', 'logs'] as $dir) {
+                if (!File::isDirectory("{$fullPath}/{$dir}")) {
+                    File::makeDirectory("{$fullPath}/{$dir}", 0775, true);
+                }
+            }
 
             // Create initial README documentation
             $readmeContent = "# {$validated['name']}\n\n"
@@ -134,45 +146,69 @@ class BusinessController extends Controller
                 . "- Isolamento de armazenamento garantido em `{$storagePath}`\n";
 
             File::put($fullPath . '/README.md', $readmeContent);
+            $directoriesCreated = true;
+        } catch (Throwable $e) {
+            $fsError = $e->getMessage();
+            Log::warning("Business Factory: falha ao criar diretórios em {$fullPath}: {$fsError}");
         }
 
-        // 2. Persist in database
-        $business = Business::create([
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'category' => $validated['category'],
-            'description' => $validated['description'] ?? null,
-            'template_used' => $validated['template_used'] ?? 'custom',
-            'storage_path' => $storagePath,
-            'budget_limit_brl' => $validated['budget_limit_brl'] ?? 50.00,
-            'status' => 'active',
-        ]);
+        // 2-4. Persist in database atomically
+        try {
+            $business = DB::transaction(function () use ($validated, $slug, $storagePath, $directoriesCreated, $fsError) {
+                $business = Business::create([
+                    'name' => $validated['name'],
+                    'slug' => $slug,
+                    'category' => $validated['category'],
+                    'description' => $validated['description'] ?? null,
+                    'template_used' => $validated['template_used'] ?? 'custom',
+                    'storage_path' => $storagePath,
+                    'budget_limit_brl' => $validated['budget_limit_brl'] ?? 50.00,
+                    'status' => 'active',
+                ]);
 
-        // 3. Register operational memory for Jeffrey
-        JeffreyMemory::create([
-            'business_id' => $business->id,
-            'category' => 'context',
-            'key' => "business_launch_{$business->slug}",
-            'content' => "Negócio digital {$business->name} ({$business->category}) provisionado com sucesso. Teto: R$ {$business->budget_limit_brl}.",
-            'is_active' => true,
-        ]);
+                // Register operational memory for Jeffrey
+                JeffreyMemory::create([
+                    'business_id' => $business->id,
+                    'category' => 'context',
+                    'key' => "business_launch_{$business->slug}",
+                    'content' => "Negócio digital {$business->name} ({$business->category}) provisionado com sucesso. Teto: R$ {$business->budget_limit_brl}.",
+                    'is_active' => true,
+                ]);
 
-        // 4. Create initial setup task
-        Task::create([
-            'business_id' => $business->id,
-            'agent_name' => 'Business Agent',
-            'title' => "Estruturação inicial de {$business->name}",
-            'type' => 'provisioning',
-            'status' => 'completed',
-            'payload' => ['category' => $business->category, 'storage' => $storagePath],
-            'result' => ['directories_created' => true, 'readme' => true],
-            'completed_at' => now(),
-        ]);
+                // Create initial setup task
+                Task::create([
+                    'business_id' => $business->id,
+                    'agent_name' => 'Business Agent',
+                    'title' => "Estruturação inicial de {$business->name}",
+                    'type' => 'provisioning',
+                    'status' => $directoriesCreated ? 'completed' : 'failed',
+                    'payload' => ['category' => $business->category, 'storage' => $storagePath],
+                    'result' => ['directories_created' => $directoriesCreated, 'readme' => $directoriesCreated, 'error' => $fsError],
+                    'completed_at' => now(),
+                ]);
+
+                return $business;
+            });
+        } catch (Throwable $e) {
+            Log::error('Business Factory: falha ao persistir negócio', [
+                'slug' => $slug,
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Falha ao registrar o negócio no banco de dados.',
+                'error' => config('app.debug') ? $e->getMessage() : 'Veja storage/logs/laravel.log para detalhes.',
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
             'business' => $business,
-            'message' => "Negócio {$business->name} provisionado com sucesso!",
+            'message' => $directoriesCreated
+                ? "Negócio {$business->name} provisionado com sucesso!"
+                : "Negócio {$business->name} registrado, mas a estrutura de pastas não pôde ser criada (verifique permissões de storage/).",
         ], 201);
     }
 
