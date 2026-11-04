@@ -114,7 +114,9 @@ class JeffreyOrchestratorService
 Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS.
 Orçamento: R$ {$budgetStatus['current_spent_brl']}/R$ {$budgetStatus['monthly_limit_brl']}. {$projectContext} | {$businessContext}
 Tarefas reais no sistema: {$tasksContext}
-REGRA: Entregue a resposta ou pesquisa diretamente agora. Se precisar delegar uma tarefa longa em background, adicione no final: [TOOL_CALL: create_task, {"title": "Resumo da tarefa", "type": "research", "agent_name": "Research Agent"}]
+FERRAMENTAS: list_projects, inspect_project, read_project_file, list_businesses, get_business_status, get_system_metrics, list_docker_containers, inspect_ai_models, create_task, list_tasks.
+REGRA: Entregue a resposta diretamente agora. Se precisar executar uma ferramenta ou delegar pesquisa/trabalho em 2º plano, adicione no final:
+[TOOL_CALL: create_task, {"title": "Resumo da tarefa", "type": "research", "agent_name": "Research Agent"}]
 Responda em português brasileiro de forma executiva, objetiva e direta.
 PROMPT;
         } else {
@@ -175,37 +177,45 @@ PROMPT;
         $toolCallsExecuted = [];
         $toolResults = [];
 
-        // 6. Detect and execute tool calls if present in the response
-        if (preg_match('/\[TOOL_CALL:\s*([a-zA-Z0-9_]+),\s*(\{.*?\})\]/s', $replyText, $matches)) {
-            $toolName = trim($matches[1]);
-            $argsRaw = trim($matches[2]);
-            $toolArgs = json_decode($argsRaw, true) ?: [];
+        // 6. Detect and execute tool calls (supports nested JSON objects and multiple calls)
+        $extractedCalls = $this->extractToolCalls($replyText);
+        if (!empty($extractedCalls)) {
+            foreach ($extractedCalls as $call) {
+                $toolName = $call['name'];
+                $toolArgs = $call['arguments'];
 
-            $toolResult = $this->tools->executeTool($toolName, $toolArgs, $userId, $conversation->id);
-            $toolCallsExecuted[] = ['name' => $toolName, 'arguments' => $toolArgs];
-            $toolResults[] = ['name' => $toolName, 'result' => $toolResult];
+                $toolResult = $this->tools->executeTool($toolName, $toolArgs, $userId, $conversation->id);
+                $toolCallsExecuted[] = ['name' => $toolName, 'arguments' => $toolArgs];
+                $toolResults[] = ['name' => $toolName, 'result' => $toolResult];
 
-            // Append execution summary
-            $formattedResult = json_encode($toolResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $replyText .= "\n\n---\n**Execução de Ferramenta Real [{$toolName}]:**\n```json\n{$formattedResult}\n```";
+                if ($toolName === 'create_task' && isset($toolResult['task']->id)) {
+                    $tId = $toolResult['task']->id;
+                    $tTitle = $toolResult['task']->title;
+                    $replyText .= "\n\n---\n⚙️ **Tarefa Real Enfileirada [#$tId]:** _{$tTitle}_\nO worker em 2º plano já recebeu a missão. Acompanhe no **Monitor do Jeffrey** ao lado.";
+                } else {
+                    $formattedResult = json_encode($toolResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    $replyText .= "\n\n---\n**Execução de Ferramenta Real [{$toolName}]:**\n```json\n{$formattedResult}\n```";
+                }
+            }
         } elseif (
             preg_match('/(estou\s+(fazendo a pesquisa|pesquisando|encaminhando|trabalhando|analisando|coletando|buscando|iniciando)|vou\s+(pesquisar|encaminhar|iniciar|coletar|preparar))/iu', $replyText)
         ) {
             // Auto-enqueue a real background task if the model promised background work without emitting [TOOL_CALL]
-            $activeConvTask = Task::whereIn('status', ['pending', 'in_progress'])
-                ->where('created_at', '>=', now()->subMinutes(15))
+            $taskPrompt = $userMessage;
+            if (mb_strlen($userMessage) < 35 && $previousMessages->isNotEmpty()) {
+                $lastUserMsg = $previousMessages->where('role', 'user')->last();
+                if ($lastUserMsg) {
+                    $taskPrompt = $lastUserMsg->content . ' — ' . $userMessage;
+                }
+            }
+            $taskTitle = mb_substr($taskPrompt, 0, 90);
+
+            $duplicateTask = Task::whereIn('status', ['pending', 'in_progress'])
+                ->where('title', $taskTitle)
+                ->where('created_at', '>=', now()->subMinutes(2))
                 ->first();
 
-            if (!$activeConvTask) {
-                // Determine the real topic from user's message or previous user message
-                $taskPrompt = $userMessage;
-                if (mb_strlen($userMessage) < 35 && $previousMessages->isNotEmpty()) {
-                    $lastUserMsg = $previousMessages->where('role', 'user')->last();
-                    if ($lastUserMsg) {
-                        $taskPrompt = $lastUserMsg->content . ' — ' . $userMessage;
-                    }
-                }
-                $taskTitle = mb_substr($taskPrompt, 0, 90);
+            if (!$duplicateTask) {
                 $toolArgs = [
                     'title' => $taskTitle,
                     'type' => 'research_and_execution',
@@ -221,7 +231,7 @@ PROMPT;
                 $toolResults[] = ['name' => 'create_task', 'result' => $toolResult];
 
                 $createdTaskId = $toolResult['task']->id ?? '?';
-                $replyText .= "\n\n---\n⚙️ **Tarefa Real Iniciada [#$createdTaskId]:** _{$taskTitle}_\nAcompanhe o progresso em tempo real no painel **Trabalhos & Progresso do Jeffrey** ao lado. Assim que o worker finalizar, o resultado completo será postado nesta conversa.";
+                $replyText .= "\n\n---\n⚙️ **Tarefa Real Iniciada [#$createdTaskId]:** _{$taskTitle}_\nAcompanhe o progresso em tempo real no painel **Monitor do Jeffrey** ao lado. Assim que o worker finalizar, o resultado completo será postado nesta conversa.";
             }
         }
 
@@ -295,5 +305,77 @@ PROMPT;
             'input_payload' => $payload,
             'status' => 'executed',
         ]);
+    }
+
+    /**
+     * Extract all [TOOL_CALL: tool_name, {...}] blocks supporting nested JSON braces.
+     */
+    protected function extractToolCalls(string $text): array
+    {
+        $calls = [];
+        $offset = 0;
+        while (preg_match('/\[TOOL_CALL:\s*([a-zA-Z0-9_]+)\s*(?:,\s*)?/s', $text, $m, PREG_OFFSET_CAPTURE, $offset)) {
+            $fullMatchStart = $m[0][1];
+            $fullMatchLen = strlen($m[0][0]);
+            $toolName = trim($m[1][0]);
+            $cursor = $fullMatchStart + $fullMatchLen;
+
+            // Check if followed by JSON object '{'
+            if ($cursor < strlen($text) && $text[$cursor] === '{') {
+                $depth = 0;
+                $inString = false;
+                $escape = false;
+                $jsonStart = $cursor;
+                $jsonEnd = null;
+                $len = strlen($text);
+
+                for ($i = $cursor; $i < $len; $i++) {
+                    $ch = $text[$i];
+                    if ($escape) {
+                        $escape = false;
+                        continue;
+                    }
+                    if ($ch === '\\' && $inString) {
+                        $escape = true;
+                        continue;
+                    }
+                    if ($ch === '"') {
+                        $inString = !$inString;
+                        continue;
+                    }
+                    if (!$inString) {
+                        if ($ch === '{') {
+                            $depth++;
+                        } elseif ($ch === '}') {
+                            $depth--;
+                            if ($depth === 0) {
+                                $jsonEnd = $i;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($jsonEnd !== null) {
+                    $jsonStr = substr($text, $jsonStart, $jsonEnd - $jsonStart + 1);
+                    $decoded = json_decode($jsonStr, true);
+                    $calls[] = [
+                        'name' => $toolName,
+                        'arguments' => is_array($decoded) ? $decoded : [],
+                    ];
+                    $offset = $jsonEnd + 1;
+                    continue;
+                }
+            }
+
+            // Tool call with no arguments e.g. [TOOL_CALL: list_projects]
+            $calls[] = [
+                'name' => $toolName,
+                'arguments' => [],
+            ];
+            $offset = $cursor;
+        }
+
+        return $calls;
     }
 }

@@ -72,15 +72,6 @@ def create_tiktok_video(
     Returns:
         True se renderizou com sucesso, False caso contrário.
     """
-    try:
-        # Importação local para evitar falha no import em ambientes sem GPU
-        from moviepy.editor import (
-            AudioFileClip, VideoFileClip, TextClip, CompositeVideoClip
-        )
-    except ImportError as e:
-        logger.error(f"MoviePy não está instalado. Execute: pip install moviepy pillow. Erro: {e}")
-        return False
-
     # Validação de entradas
     for path, label in [(audio_path, "Áudio"), (background_video_path, "B-roll")]:
         if not os.path.exists(path):
@@ -88,6 +79,15 @@ def create_tiktok_video(
             return False
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+    # Tenta MoviePy primeiro; se não estiver instalado, usa o motor nativo FFmpeg com Anti-Ban Pipeline
+    try:
+        from moviepy.editor import (
+            AudioFileClip, VideoFileClip, TextClip, CompositeVideoClip
+        )
+    except ImportError:
+        logger.info("MoviePy ausente — utilizando renderizador nativo FFmpeg + Anti-Ban Pipeline (C2PA Strip + SynthID Disruption)...")
+        return _render_via_ffmpeg_antiban(audio_path, background_video_path, output_path, text_script)
 
     try:
         # 1. Carrega o áudio gerado pela IA
@@ -151,11 +151,110 @@ def create_tiktok_video(
         )
 
         logger.info(f"✅ Vídeo renderizado com sucesso: {output_path}")
+        _apply_antiban_postprocess(output_path)
         return True
 
     except Exception as e:
-        logger.error(f"Falha ao renderizar vídeo TikTok: {e}", exc_info=True)
+        logger.warning(f"MoviePy falhou ({e}), acionando fallback nativo FFmpeg Anti-Ban...")
+        return _render_via_ffmpeg_antiban(audio_path, background_video_path, output_path, text_script)
+
+
+def _format_srt_time(seconds: float) -> str:
+    hrs = int(seconds // 3600)
+    mins = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds - int(seconds)) * 1000)
+    return f"{hrs:02d}:{mins:02d}:{secs:02d},{millis:03d}"
+
+
+def _render_via_ffmpeg_antiban(
+    audio_path: str,
+    background_video_path: str,
+    output_path: str,
+    text_script: str
+) -> bool:
+    """
+    Renderiza vídeo TikTok 9:16 diretamente via FFmpeg aplicando o Video Anti-Ban Pipeline completo:
+      1. Remoção de metadados C2PA / JUMBF / XMP (-map_metadata -1 + exiftool)
+      2. Humanização Pixel-Level Anti-SynthID (rescale 1084x1924 -> crop 1080x1920 + film grain noise=alls=4 + fps 29.97)
+      3. Legendas dinâmicas geradas em SRT
+    """
+    import subprocess
+    import tempfile
+
+    try:
+        # Obter duração do áudio via ffprobe
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", audio_path
+        ]
+        probe_res = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
+        duration = max(1.0, float(probe_res.stdout.strip() or "30.0"))
+    except Exception:
+        duration = 30.0
+
+    phrases = _split_into_phrases(text_script)
+    time_per_phrase = duration / max(len(phrases), 1)
+
+    srt_file = tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False, encoding="utf-8")
+    try:
+        for idx, phrase in enumerate(phrases, 1):
+            start_t = (idx - 1) * time_per_phrase
+            end_t = idx * time_per_phrase
+            srt_file.write(f"{idx}\n{_format_srt_time(start_t)} --> {_format_srt_time(end_t)}\n{phrase}\n\n")
+        srt_file.close()
+
+        escaped_srt = srt_file.name.replace("\\", "/").replace(":", "\\:")
+        vf_filter = (
+            "scale=1084:1924:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,"
+            "noise=alls=4:allf=t+u,"
+            "fps=29.97,"
+            f"subtitles='{escaped_srt}':force_style='Fontsize=18,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=65'"
+        )
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-stream_loop", "-1", "-i", background_video_path,
+            "-i", audio_path,
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-map_metadata", "-1",
+            "-map_chapters", "-1",
+            "-fflags", "+bitexact",
+            "-flags:v", "+bitexact",
+            "-flags:a", "+bitexact",
+            "-vf", vf_filter,
+            "-c:v", VIDEO_CODEC, "-preset", "fast", "-crf", "20", "-b:v", BITRATE,
+            "-c:a", AUDIO_CODEC, "-b:a", "192k",
+            "-pix_fmt", "yuv420p",
+            "-shortest",
+            "-movflags", "+faststart",
+            output_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        _apply_antiban_postprocess(output_path)
+        logger.info(f"✅ Vídeo TikTok renderizado via FFmpeg Anti-Ban: {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Falha no FFmpeg Anti-Ban renderer: {e}")
         return False
+    finally:
+        if os.path.exists(srt_file.name):
+            os.unlink(srt_file.name)
+
+
+def _apply_antiban_postprocess(video_path: str) -> None:
+    """Executa exiftool para garantir remoção total de átomos C2PA/JUMBF/XMP."""
+    import subprocess
+    try:
+        subprocess.run(
+            ["exiftool", "-all=", "-overwrite_original", video_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30
+        )
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

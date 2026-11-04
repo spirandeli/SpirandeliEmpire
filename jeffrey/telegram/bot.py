@@ -60,14 +60,20 @@ def _is_authorized(user_id: int) -> bool:
     return user_id in ALLOWED_IDS
 
 
-async def _call_jeffrey(message: str, provider: str = DEFAULT_AI_PROVIDER) -> dict:
-    """Chama a API interna do Jeffrey e retorna o dict de resposta."""
+def _build_headers() -> dict:
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
+        "X-Jeffrey-Internal": "telegram-bot",
     }
     if INTERNAL_API_SECRET:
         headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+    return headers
+
+
+async def _call_jeffrey(message: str, provider: str = DEFAULT_AI_PROVIDER) -> dict:
+    """Chama a API interna do Jeffrey e retorna o dict de resposta."""
+    headers = _build_headers()
 
     async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
         resp = await client.post(
@@ -147,9 +153,7 @@ async def cmd_memoria(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             base = JEFFREY_API_URL.replace("/jeffrey/chat", "")
-            headers = {"Accept": "application/json"}
-            if INTERNAL_API_SECRET:
-                headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+            headers = _build_headers()
             resp = await client.get(f"{base}/jeffrey/memories", headers=headers)
             resp.raise_for_status()
             memories = resp.json()
@@ -176,9 +180,7 @@ async def cmd_aprovacoes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             base = JEFFREY_API_URL.replace("/jeffrey/chat", "")
-            headers = {"Accept": "application/json"}
-            if INTERNAL_API_SECRET:
-                headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+            headers = _build_headers()
             resp = await client.get(f"{base}/jeffrey/approvals", headers=headers)
             resp.raise_for_status()
             approvals = resp.json()

@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# Install system utilities & multimedia tools
+# Install system utilities, multimedia & anti-ban tools (ffmpeg + exiftool)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libimage-exiftool-perl \
     curl \
     git \
     build-essential \

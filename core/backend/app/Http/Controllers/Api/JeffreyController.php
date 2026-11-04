@@ -81,6 +81,38 @@ class JeffreyController extends Controller
         $workerState = null;
 
         try {
+            // Migrate any tasks stuck in legacy prefixed Redis keys into the unified key
+            foreach (['spirandeli_database_empire:jeffrey:tasks', 'laravel_database_empire:jeffrey:tasks'] as $legacyKey) {
+                $legacyLen = (int) Redis::llen($legacyKey);
+                while ($legacyLen > 0) {
+                    $item = Redis::rpop($legacyKey);
+                    if ($item) {
+                        Redis::lpush('empire:jeffrey:tasks', $item);
+                    }
+                    $legacyLen--;
+                }
+            }
+
+            // If there are pending tasks in PostgreSQL but Redis queue is empty, re-enqueue them automatically
+            $currentQueueLen = (int) Redis::llen('empire:jeffrey:tasks');
+            if ($counts['pending'] > 0 && $currentQueueLen === 0) {
+                foreach ($activeTasks->where('status', 'pending') as $orphanTask) {
+                    $queuePayload = json_encode([
+                        'id' => (string) $orphanTask->id,
+                        'title' => $orphanTask->title,
+                        'type' => $orphanTask->type,
+                        'agent_name' => $orphanTask->agent_name,
+                        'business_id' => $orphanTask->business_id,
+                        'payload' => array_merge($orphanTask->payload ?? [], [
+                            'task_id' => $orphanTask->id,
+                            'prompt' => $orphanTask->payload['prompt'] ?? $orphanTask->title,
+                        ]),
+                        'created_at' => optional($orphanTask->created_at)->toIso8601String() ?? now()->toIso8601String(),
+                    ]);
+                    Redis::lpush('empire:jeffrey:tasks', $queuePayload);
+                }
+            }
+
             $queueLength = (int) Redis::llen('empire:jeffrey:tasks');
             $rawState = Redis::get('empire:jeffrey:worker_state');
             if ($rawState) {
@@ -90,40 +122,41 @@ class JeffreyController extends Controller
             // Redis fallback
         }
 
-        if (!$workerState) {
-            $running = $activeTasks->firstWhere('status', 'in_progress');
-            if ($running) {
-                $workerState = [
-                    'status' => 'working',
-                    'task_id' => $running->id,
-                    'title' => $running->title,
-                    'agent_name' => $running->agent_name,
-                    'step' => 'Executando inferência e processamento em background...',
-                    'progress_percent' => 55,
-                    'started_at' => optional($running->started_at)->toIso8601String(),
-                ];
-            } elseif ($counts['pending'] > 0) {
-                $next = $activeTasks->first();
-                $workerState = [
-                    'status' => 'queued',
-                    'task_id' => $next?->id,
-                    'title' => $next?->title,
-                    'agent_name' => $next?->agent_name ?? 'Jeffrey',
-                    'step' => 'Na fila aguardando worker iniciar processamento...',
-                    'progress_percent' => 15,
-                ];
-            } else {
-                $workerState = [
-                    'status' => 'idle',
-                    'step' => 'Ocioso — Aguardando novas ordens ou tarefas assíncronas.',
-                    'progress_percent' => 0,
-                ];
-            }
+        $running = $activeTasks->firstWhere('status', 'in_progress');
+        $workerActivelyRunning = $running !== null || (($workerState['status'] ?? '') === 'working');
+
+        if ($running && (($workerState['status'] ?? '') !== 'working')) {
+            $workerState = [
+                'status' => 'working',
+                'task_id' => $running->id,
+                'title' => $running->title,
+                'agent_name' => $running->agent_name,
+                'step' => 'Executando inferência e processamento em background...',
+                'progress_percent' => 55,
+                'started_at' => optional($running->started_at)->toIso8601String(),
+            ];
+        } elseif (!$running && $counts['pending'] > 0 && (($workerState['status'] ?? '') !== 'working')) {
+            $next = $activeTasks->first();
+            $workerState = [
+                'status' => 'queued',
+                'task_id' => $next?->id,
+                'title' => $next?->title,
+                'agent_name' => $next?->agent_name ?? 'Jeffrey',
+                'step' => 'Na fila aguardando worker iniciar processamento...',
+                'progress_percent' => 15,
+            ];
+        } elseif (!$workerState) {
+            $workerState = [
+                'status' => 'idle',
+                'step' => 'Ocioso — Aguardando novas ordens ou tarefas assíncronas.',
+                'progress_percent' => 0,
+            ];
         }
 
         return response()->json([
             'success' => true,
-            'is_working' => ($counts['in_progress'] > 0 || $counts['pending'] > 0 || ($workerState['status'] ?? '') === 'working'),
+            'is_working' => $workerActivelyRunning,
+            'has_queued' => $counts['pending'] > 0,
             'queue_length' => $queueLength,
             'worker_state' => $workerState,
             'counts' => $counts,

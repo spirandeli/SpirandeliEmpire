@@ -54,7 +54,14 @@
                 class="text-[10px] px-2 py-0.5 rounded bg-[#78350f] text-[#fef08a] border border-[#f59e0b] flex items-center gap-1.5 animate-pulse"
               >
                 <span class="w-2 h-2 rounded-full bg-[#fbbf24]"></span>
-                ⚙️ TRABALHANDO ({{ (jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) }} ativa)
+                ⚙️ TRABALHANDO ({{ jeffreyActivity.counts?.in_progress || 1 }} ativa)
+              </span>
+              <span
+                v-else-if="jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0"
+                class="text-[10px] px-2 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#d97706] flex items-center gap-1.5"
+              >
+                <span class="w-2 h-2 rounded-full bg-[#f59e0b]"></span>
+                ⏳ NA FILA ({{ jeffreyActivity.counts?.pending || 0 }} aguardando)
               </span>
               <span
                 v-else
@@ -253,14 +260,31 @@
 
       <!-- SUB-TAB 1: TASKS -->
       <div v-if="activitySubTab === 'tasks'" class="flex-1 overflow-y-auto pixel-wood-inset p-2 space-y-2 text-xs">
-        <div class="p-2.5 rounded border-2" :class="jeffreyActivity.is_working ? 'bg-[#3b200e] border-[#f59e0b]' : 'bg-[#241207] border-[#4a2810]'">
+        <div
+          class="p-2.5 rounded border-2"
+          :class="jeffreyActivity.is_working
+            ? 'bg-[#3b200e] border-[#f59e0b]'
+            : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
+              ? 'bg-[#2b1507] border-[#d97706]'
+              : 'bg-[#241207] border-[#4a2810]'"
+        >
           <div class="flex items-center justify-between text-[11px] font-bold">
             <span class="text-[#fef08a]">Estado Real do Worker:</span>
             <span
               class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase"
-              :class="jeffreyActivity.is_working ? 'bg-[#f59e0b] text-[#1e0d04]' : 'bg-[#14532d] text-[#86efac]'"
+              :class="jeffreyActivity.is_working
+                ? 'bg-[#0284c7] text-white'
+                : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
+                  ? 'bg-[#f59e0b] text-[#1e0d04]'
+                  : 'bg-[#14532d] text-[#86efac]'"
             >
-              {{ jeffreyActivity.is_working ? 'EM EXECUÇÃO' : 'OCIOSO / LIVRE' }}
+              {{
+                jeffreyActivity.is_working
+                  ? 'EM EXECUÇÃO'
+                  : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
+                    ? 'NA FILA'
+                    : 'OCIOSO / LIVRE'
+              }}
             </span>
           </div>
           <div class="text-[11px] text-[#e2c699] mt-1 leading-snug">
@@ -310,12 +334,27 @@
             <span>{{ formatTimeShort(t.completed_at || t.started_at || t.created_at) }}</span>
           </div>
 
-          <div v-if="t.status === 'in_progress' || t.status === 'pending'" class="pt-1">
+          <div v-if="t.status === 'in_progress' || t.status === 'pending'" class="pt-1 space-y-1">
             <div class="pixel-bar-bg w-full h-2.5">
               <div
                 class="pixel-bar-energy h-full transition-all"
-                :style="{ width: t.status === 'in_progress' ? '65%' : '20%' }"
+                :style="{
+                  width: t.status === 'in_progress'
+                    ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.progress_percent)
+                        ? jeffreyActivity.worker_state.progress_percent + '%'
+                        : '65%')
+                    : '15%'
+                }"
               ></div>
+            </div>
+            <div class="text-[10px] text-[#5c3419] font-semibold">
+              {{
+                t.status === 'in_progress'
+                  ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.step)
+                      ? jeffreyActivity.worker_state.step
+                      : '⚙️ Worker processando no motor de IA...')
+                  : '⏳ Aguardando vez na fila do worker...'
+              }}
             </div>
           </div>
 
@@ -387,6 +426,80 @@
             <span>Motor: {{ d.input_payload?.provider || 'system' }} ({{ d.input_payload?.latency_ms || 0 }}ms)</span>
             <span>{{ formatTimeShort(d.created_at) }}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DE DISPARO DE TAREFA EM 2º PLANO (AGENTES AUTÔNOMOS) -->
+    <div
+      v-if="showNewTaskModal"
+      class="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+    >
+      <div class="pixel-wood rpg-rivets p-4 max-w-md w-full space-y-3">
+        <div class="flex items-center justify-between border-b border-[#784725] pb-2">
+          <div class="font-extrabold text-sm text-[#fef08a] flex items-center gap-2">
+            <span>⚡</span>
+            <span>Delegar Tarefa em 2º Plano ao Agente</span>
+          </div>
+          <button @click="showNewTaskModal = false" class="text-[#c49a6c] hover:text-white text-xs font-bold">✕</button>
+        </div>
+
+        <div class="space-y-2.5 text-xs">
+          <div>
+            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Agente Especialista</label>
+            <select
+              v-model="newTaskForm.agent_name"
+              class="w-full bg-[#241207] text-[#fef08a] text-xs font-bold rounded px-2.5 py-2 border border-[#784725]"
+            >
+              <option value="Research Agent">🔎 Research Agent (Pesquisa Web, TikTok Shop, Bíblia & Tendências)</option>
+              <option value="Content Creator">✍️ Content Creator (Roteiros Shorts, Vídeos Longos & Livros KDP)</option>
+              <option value="Business Analyst">📊 Business Analyst (Viabilidade, Nichos & Monetização)</option>
+              <option value="Jeffrey">🧙‍♂️ Jeffrey (Orquestrador & Arquiteto Geral)</option>
+              <option value="DevOps Engineer">🛠️ DevOps Engineer (Infraestrutura VPS & Containers)</option>
+              <option value="Finance Agent">💰 Finance Agent (Auditoria & Guardião de Orçamento)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Tipo de Operação</label>
+            <select
+              v-model="newTaskForm.type"
+              class="w-full bg-[#241207] text-[#fef08a] text-xs font-bold rounded px-2.5 py-2 border border-[#784725]"
+            >
+              <option value="research_and_execution">🌐 Pesquisa Web Ao Vivo + Relatório Prático</option>
+              <option value="content_creation">🎬 Criação de Roteiro / Copywriting / Manuscrito KDP</option>
+              <option value="market_analysis">📈 Análise de Produtos Virais & Afiliados</option>
+              <option value="tiktok_video_pipeline">📱 Pipeline Vídeo TikTok Shop (Roteiro + TTS + Render)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Missão / Prompt Detalhado</label>
+            <textarea
+              v-model="newTaskForm.prompt"
+              rows="4"
+              placeholder="Ex: Identificar 10 produtos viralizados na TikTok Shop Brasil com alta margem de comissão e criar 3 ganchos de vídeo para os melhores..."
+              class="w-full pixel-wood-inset p-2.5 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b]"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            @click="showNewTaskModal = false"
+            class="pixel-btn-wood px-3 py-1.5 text-xs"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            @click="submitNewBackgroundTask"
+            :disabled="submittingTask || !newTaskForm.prompt.trim()"
+            class="pixel-btn-gold px-4 py-1.5 text-xs"
+          >
+            {{ submittingTask ? 'Enfileirando...' : '🚀 Disparar no Worker' }}
+          </button>
         </div>
       </div>
     </div>
@@ -469,28 +582,43 @@ const formatTimeShort = (iso) => {
   }
 }
 
-const promptNewBackgroundTask = async () => {
-  const title = prompt('Qual trabalho ou pesquisa o Jeffrey deve executar em segundo plano?')
-  if (!title || !title.trim()) return
+const showNewTaskModal = ref(false)
+const submittingTask = ref(false)
+const newTaskForm = ref({
+  agent_name: 'Research Agent',
+  type: 'research_and_execution',
+  prompt: '',
+})
+
+const promptNewBackgroundTask = () => {
+  newTaskForm.value.prompt = ''
+  showNewTaskModal.value = true
+}
+
+const submitNewBackgroundTask = async () => {
+  const promptText = newTaskForm.value.prompt.trim()
+  if (!promptText || submittingTask.value) return
+  submittingTask.value = true
   try {
     const res = await axios.post('/api/v1/tasks', {
-      title: title.trim().slice(0, 120),
-      type: 'research_and_execution',
-      agent_name: 'Research Agent',
+      title: promptText.slice(0, 120),
+      type: newTaskForm.value.type,
+      agent_name: newTaskForm.value.agent_name,
       payload: {
-        prompt: title.trim(),
+        prompt: promptText,
         provider: chosenProvider.value,
         conversation_id: activeConversationId.value,
       },
     })
     if (res.data?.task) {
+      showNewTaskModal.value = false
       showActivityPanel.value = true
       activitySubTab.value = 'tasks'
       await fetchJeffreyActivity()
       if (activeConversationId.value) {
         messages.value.push({
           role: 'assistant',
-          content: `⚙️ **[Tarefa #${res.data.task.id} Enfileirada no Worker]:** _${res.data.task.title}_\n\nAcompanhe o progresso na barra lateral **Monitor do Jeffrey**. Assim que finalizar, o resultado completo será entregue aqui no chat!`,
+          content: `⚙️ **[Tarefa #${res.data.task.id} Enfileirada — ${res.data.task.agent_name}]:** _${res.data.task.title}_\n\nAcompanhe o progresso na barra lateral **Monitor do Jeffrey**. Assim que finalizar, o resultado completo será entregue aqui no chat!`,
           provider: 'jeffrey-worker',
         })
         scrollToBottom()
@@ -498,6 +626,8 @@ const promptNewBackgroundTask = async () => {
     }
   } catch (e) {
     alert('Erro ao criar tarefa: ' + (e.response?.data?.message || e.message))
+  } finally {
+    submittingTask.value = false
   }
 }
 

@@ -36,25 +36,47 @@ def render_short_video(
         logger.error("No valid image provided for video render.")
         return False
 
+    # Enforce Video Anti-Ban Pipeline (SKILL.md):
+    # 1. C2PA / metadata stripping (-map_metadata -1 -map_chapters -1 -fflags +bitexact)
+    # 2. Pixel-level SynthID disruption (rescale 1084x1924 -> crop 1080x1920 + film grain noise=alls=4:allf=t+u + fps 29.97)
+    vf_chain = (
+        "scale=1084:1924:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,"
+        "noise=alls=4:allf=t+u,"
+        "fps=29.97"
+    )
+    if subtitles_path and os.path.exists(subtitles_path):
+        escaped_sub = subtitles_path.replace("\\", "/").replace(":", "\\:")
+        vf_chain += f",subtitles='{escaped_sub}'"
+
     cmd = [
         FFMPEG_BIN,
         "-y",
         "-loop", "1",
         "-i", first_image,
         "-i", audio_wav_path,
+        "-map_metadata", "-1",
+        "-map_chapters", "-1",
+        "-fflags", "+bitexact",
+        "-flags:v", "+bitexact",
+        "-flags:a", "+bitexact",
         "-c:v", "libx264",
-        "-tune", "stillimage",
+        "-preset", "fast",
+        "-crf", "20",
         "-c:a", "aac",
         "-b:a", "192k",
         "-pix_fmt", "yuv420p",
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+        "-vf", vf_chain,
         "-shortest",
+        "-movflags", "+faststart",
         output_mp4_path
     ]
 
     try:
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        logger.info(f"Rendered short video successfully: {output_mp4_path}")
+        # Optional ExifTool C2PA/JUMBF cleanup if installed
+        subprocess.run(["exiftool", "-all=", "-overwrite_original", output_mp4_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.info(f"Rendered short video with Anti-Ban pipeline successfully: {output_mp4_path}")
         return True
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg error: {e.stderr.decode('utf-8', errors='ignore')}")

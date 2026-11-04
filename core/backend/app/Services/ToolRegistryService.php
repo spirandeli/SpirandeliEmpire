@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Project;
 use App\Models\Task;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
@@ -149,6 +150,14 @@ class ToolRegistryService
                 'parameters' => [],
                 'category' => 'A',
             ],
+            [
+                'name' => 'web_search',
+                'description' => 'Pesquisa informações, tendências, produtos virais (ex: TikTok Shop) e notícias em tempo real na internet.',
+                'parameters' => [
+                    'query' => ['type' => 'string', 'required' => true, 'description' => 'Termo de busca na web'],
+                ],
+                'category' => 'A',
+            ],
         ];
     }
 
@@ -228,6 +237,46 @@ class ToolRegistryService
                     'file' => $arguments['relative_path'],
                     'size_bytes' => File::size($filePath),
                     'content' => $content,
+                ];
+
+            case 'search_project_files':
+                $project = Project::find($arguments['project_id'] ?? 0);
+                if (!$project) return ['success' => false, 'error' => 'Projeto não encontrado.'];
+
+                $targetPath = $this->resolveSafeProjectPath($project->path, '');
+                if (!$targetPath || !File::exists($targetPath)) {
+                    return ['success' => false, 'error' => 'Caminho do projeto inacessível.'];
+                }
+
+                $query = trim((string) ($arguments['query'] ?? ''));
+                if ($query === '') {
+                    return ['success' => false, 'error' => 'Informe um termo de busca (query).'];
+                }
+
+                $matches = [];
+                foreach (File::allFiles($targetPath) as $file) {
+                    $rel = str_replace($targetPath . DIRECTORY_SEPARATOR, '', $file->getPathname());
+                    if (preg_match('/(node_modules|vendor|\.git|\.env)/i', $rel)) {
+                        continue;
+                    }
+                    if ($file->getSize() > 524288) {
+                        continue;
+                    }
+                    $fileContent = @File::get($file->getPathname());
+                    if ($fileContent && stripos($fileContent, $query) !== false) {
+                        $matches[] = [
+                            'file' => $rel,
+                            'size_bytes' => $file->getSize(),
+                        ];
+                        if (count($matches) >= 25) break;
+                    }
+                }
+
+                return [
+                    'success' => true,
+                    'project' => $project->name,
+                    'query' => $query,
+                    'matches' => $matches,
                 ];
 
             case 'create_project_file':
@@ -399,21 +448,109 @@ class ToolRegistryService
                     'tasks' => $tasks->toArray(),
                 ];
 
+            case 'web_search':
+                $query = trim((string) ($arguments['query'] ?? ''));
+                if ($query === '') {
+                    return ['success' => false, 'error' => 'Termo de busca vazio.'];
+                }
+                return [
+                    'success' => true,
+                    'query' => $query,
+                    'results' => $this->performWebSearch($query),
+                ];
+
             default:
                 return ['success' => false, 'error' => "Ferramenta desconhecida: {$toolName}"];
         }
     }
 
     /**
+     * Perform live zero-cost web search via DuckDuckGo HTML and Google News RSS.
+     */
+    protected function performWebSearch(string $query): array
+    {
+        $results = [];
+        try {
+            $resp = Http::timeout(8)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                    'Accept-Language' => 'pt-BR,pt;q=0.9',
+                ])
+                ->asForm()
+                ->post('https://html.duckduckgo.com/html/', ['q' => $query, 'kl' => 'br-pt']);
+
+            if ($resp->successful()) {
+                $body = $resp->body();
+                preg_match_all('/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/s', $body, $titleMatches);
+                preg_match_all('/<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/s', $body, $snipMatches);
+                $urls = $titleMatches[1] ?? [];
+                $titles = $titleMatches[2] ?? [];
+                $snippets = $snipMatches[1] ?? [];
+
+                foreach (array_slice($titles, 0, 8) as $idx => $rawTitle) {
+                    $results[] = [
+                        'title' => trim(html_entity_decode(strip_tags($rawTitle))),
+                        'url' => $urls[$idx] ?? '',
+                        'snippet' => isset($snippets[$idx]) ? trim(html_entity_decode(strip_tags($snippets[$idx]))) : '',
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('DuckDuckGo search warning: ' . $e->getMessage());
+        }
+
+        if (count($results) < 3) {
+            try {
+                $rssUrl = 'https://news.google.com/rss/search?q=' . urlencode($query) . '&hl=pt-BR&gl=BR&ceid=BR:pt-419';
+                $resp = Http::timeout(6)->get($rssUrl);
+                if ($resp->successful()) {
+                    preg_match_all('/<item>.*?<title>(.*?)<\/title>.*?<link>(.*?)<\/link>.*?<pubDate>(.*?)<\/pubDate>.*?<\/item>/s', $resp->body(), $items);
+                    foreach (array_slice($items[1] ?? [], 0, 6) as $idx => $rawT) {
+                        $results[] = [
+                            'title' => trim(html_entity_decode(str_replace(['<![CDATA[', ']]>'], '', $rawT))),
+                            'url' => trim($items[2][$idx] ?? ''),
+                            'snippet' => 'Publicado em ' . trim($items[3][$idx] ?? ''),
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                // Ignore RSS fallback error
+            }
+        }
+
+        return $results;
+    }
+
+    /**
      * Resolves and verifies that a project subpath is safely confined within the authorized project directory.
-     * Prevents directory traversal attacks.
+     * Prevents directory traversal attacks and heals container volume paths.
      */
     protected function resolveSafeProjectPath(string $basePath, string $subPath): ?string
     {
         $realBase = realpath($basePath);
         if (!$realBase) {
-            // Se o path for relativo à raiz do app
-            $realBase = realpath(base_path($basePath));
+            // Try storage_path or /var/spirandeli fallback for business workspaces inside Docker
+            if (preg_match('#businesses[/\\\\]([a-zA-Z0-9_\-]+)#', $basePath, $m)) {
+                $slug = $m[1];
+                $candidates = [
+                    storage_path("businesses/{$slug}"),
+                    "/var/spirandeli/businesses/{$slug}",
+                    base_path("businesses/{$slug}"),
+                ];
+                foreach ($candidates as $cand) {
+                    if (File::isDirectory($cand)) {
+                        $realBase = realpath($cand);
+                        break;
+                    }
+                }
+                if (!$realBase) {
+                    $fallbackDir = storage_path("businesses/{$slug}");
+                    @File::makeDirectory($fallbackDir, 0775, true);
+                    $realBase = realpath($fallbackDir);
+                }
+            } else {
+                $realBase = realpath(base_path($basePath));
+            }
             if (!$realBase) return null;
         }
 

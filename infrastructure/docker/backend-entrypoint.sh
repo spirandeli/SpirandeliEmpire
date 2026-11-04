@@ -32,6 +32,7 @@ mkdir -p /var/www/backend/storage/framework/sessions
 mkdir -p /var/www/backend/storage/framework/views
 mkdir -p /var/www/backend/storage/logs
 mkdir -p /var/spirandeli/businesses
+rm -f /var/www/backend/bootstrap/cache/config.php /var/www/backend/bootstrap/cache/routes-v7.php 2>/dev/null || true
 chmod -R 777 /var/www/backend/bootstrap/cache /var/www/backend/storage /var/spirandeli/businesses 2>/dev/null || true
 
 exec "$@"

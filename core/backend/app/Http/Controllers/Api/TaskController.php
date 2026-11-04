@@ -130,7 +130,11 @@ class TaskController extends Controller
         }
 
         $task->status = 'cancelled';
+        $task->completed_at = now();
         $task->save();
+
+        // Remove any pending entries for this task from the Redis queue
+        $this->removeTaskFromRedisQueue($task->id);
 
         return response()->json([
             'success' => true,
@@ -147,9 +151,14 @@ class TaskController extends Controller
         $task = Task::findOrFail($id);
         $task->status = 'pending';
         $task->error_message = null;
+        $task->started_at = null;
+        $task->completed_at = null;
         $task->save();
 
         try {
+            // Avoid duplicate queue entries for the same task ID
+            $this->removeTaskFromRedisQueue($task->id);
+
             $queuePayload = json_encode([
                 'id' => (string) $task->id,
                 'type' => $task->type,
@@ -173,6 +182,24 @@ class TaskController extends Controller
             'task' => $task,
             'message' => "Tarefa #{$id} reenfileirada com sucesso.",
         ]);
+    }
+
+    /**
+     * Remove duplicate/cancelled task entries from Redis queue.
+     */
+    protected function removeTaskFromRedisQueue(int $taskId): void
+    {
+        try {
+            $items = Redis::lrange('empire:jeffrey:tasks', 0, -1);
+            foreach ($items as $raw) {
+                $decoded = json_decode($raw, true);
+                if (isset($decoded['id']) && (int) $decoded['id'] === $taskId) {
+                    Redis::lrem('empire:jeffrey:tasks', 0, $raw);
+                }
+            }
+        } catch (\Exception $e) {
+            // Ignore Redis errors on cleanup
+        }
     }
 }
 

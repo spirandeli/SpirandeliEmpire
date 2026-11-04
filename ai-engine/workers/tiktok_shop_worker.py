@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 # --- Configurações (via variáveis de ambiente) ---
 OLLAMA_URL       = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-OLLAMA_MODEL     = os.getenv("LLAMA_MODEL", "llama3:8b")
+OLLAMA_MODEL     = os.getenv("LLAMA_MODEL", os.getenv("DEFAULT_TEXT_MODEL", "qwen2.5:3b"))
 XTTS_URL         = os.getenv("XTTS_API_URL", "http://xtts-api:5021/tts")
 XTTS_REF_AUDIO   = os.getenv("XTTS_REFERENCE_AUDIO", "/var/spirandeli/businesses/tiktok-shop-afiliados/assets/voice_reference.wav")
 RENDER_SCRIPT    = os.getenv("TIKTOK_RENDER_SCRIPT", "/opt/ai-engine/video-processing/render_tiktok_video.py")
