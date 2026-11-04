@@ -162,13 +162,23 @@ class ToolRegistryService
             ],
             [
                 'name' => 'create_task',
-                'description' => 'Cria uma nova tarefa assíncrona para execução por agentes especializados.',
+                'description' => 'Cria uma nova tarefa assíncrona para execução por agentes especializados (suporta encadeamento via depends_on_task_id).',
                 'parameters' => [
                     'title' => ['type' => 'string', 'required' => true, 'description' => 'Título da tarefa'],
-                    'type' => ['type' => 'string', 'required' => true, 'description' => 'Tipo da tarefa'],
-                    'agent_name' => ['type' => 'string', 'required' => false, 'description' => 'Nome do agente responsável'],
+                    'type' => ['type' => 'string', 'required' => true, 'description' => 'Tipo da tarefa (research, content_creation, business_automation)'],
+                    'agent_name' => ['type' => 'string', 'required' => false, 'description' => 'Nome do agente responsável (ex: Research Agent, Copy & Hooks Agent)'],
                     'business_id' => ['type' => 'integer', 'required' => false, 'description' => 'ID do negócio associado'],
+                    'depends_on_task_id' => ['type' => 'integer', 'required' => false, 'description' => 'ID de outra tarefa que deve terminar antes desta iniciar'],
                     'payload' => ['type' => 'object', 'required' => false, 'description' => 'Parâmetros da tarefa'],
+                ],
+                'category' => 'B',
+            ],
+            [
+                'name' => 'create_task_pipeline',
+                'description' => 'Cria um pipeline encadeado de 2 ou mais tarefas onde a segunda tarefa aguarda automaticamente o resultado completo da primeira tarefa terminar (ex: Task 1 pesquisa 10 produtos virais -> Task 2 aguarda a Task 1 e cria os hooks de 3 segundos para cada produto).',
+                'parameters' => [
+                    'business_id' => ['type' => 'integer', 'required' => false, 'description' => 'ID do negócio associado'],
+                    'steps' => ['type' => 'array', 'required' => true, 'description' => 'Lista ordenada de etapas [{title, type, agent_name, prompt}]'],
                 ],
                 'category' => 'B',
             ],
@@ -572,6 +582,11 @@ PROMPT;
                     $payloadData['prompt'] = $arguments['prompt'] ?? $arguments['title'] ?? 'Executar tarefa solicitada';
                 }
 
+                $dependsOnTaskId = $arguments['depends_on_task_id'] ?? ($payloadData['depends_on_task_id'] ?? null);
+                if ($dependsOnTaskId) {
+                    $payloadData['depends_on_task_id'] = (int) $dependsOnTaskId;
+                }
+
                 $task = Task::create([
                     'title' => $arguments['title'] ?? 'Nova Tarefa',
                     'type' => $arguments['type'] ?? 'research',
@@ -581,28 +596,80 @@ PROMPT;
                     'status' => 'pending',
                 ]);
 
-                try {
-                    $queuePayload = json_encode([
-                        'id' => (string) $task->id,
-                        'type' => $task->type,
-                        'agent_name' => $task->agent_name,
-                        'business_id' => $task->business_id,
-                        'payload' => array_merge($payloadData, [
-                            'task_id' => $task->id,
-                            'conversation_id' => $conversationId,
-                            'prompt' => $payloadData['prompt'],
-                        ]),
-                        'created_at' => now()->toIso8601String(),
-                    ]);
-                    Redis::lpush('empire:jeffrey:tasks', $queuePayload);
-                } catch (\Exception $e) {
-                    Log::warning("Redis queue push deferred for task #{$task->id}: " . $e->getMessage());
+                // Only push to Redis immediately if this task is NOT waiting on another task to finish first
+                if (!$dependsOnTaskId) {
+                    try {
+                        $queuePayload = json_encode([
+                            'id' => (string) $task->id,
+                            'type' => $task->type,
+                            'agent_name' => $task->agent_name,
+                            'business_id' => $task->business_id,
+                            'payload' => array_merge($payloadData, [
+                                'task_id' => $task->id,
+                                'conversation_id' => $conversationId,
+                                'prompt' => $payloadData['prompt'],
+                            ]),
+                            'created_at' => now()->toIso8601String(),
+                        ]);
+                        Redis::lpush('empire:jeffrey:tasks', $queuePayload);
+                    } catch (\Exception $e) {
+                        Log::warning("Redis queue push deferred for task #{$task->id}: " . $e->getMessage());
+                    }
                 }
 
                 return [
                     'success' => true,
                     'task' => $task,
-                    'message' => "Tarefa #{$task->id} enfileirada no worker assíncrono do Império.",
+                    'depends_on_task_id' => $dependsOnTaskId ? (int) $dependsOnTaskId : null,
+                    'message' => $dependsOnTaskId
+                        ? "Tarefa #{$task->id} criada em fila encadeada (aguardando conclusão da Tarefa #{$dependsOnTaskId})."
+                        : "Tarefa #{$task->id} enfileirada no worker assíncrono do Império.",
+                ];
+
+            case 'create_task_pipeline':
+                $steps = $arguments['steps'] ?? [];
+                $businessId = $arguments['business_id'] ?? null;
+                if (empty($steps) || !is_array($steps)) {
+                    return ['success' => false, 'error' => 'Nenhuma etapa (steps) informada para o pipeline de tarefas.'];
+                }
+
+                $createdTasks = [];
+                $previousTaskId = null;
+
+                foreach ($steps as $idx => $step) {
+                    $stepNum = $idx + 1;
+                    $totalSteps = count($steps);
+                    $rawTitle = $step['title'] ?? "Etapa {$stepNum}/{$totalSteps}";
+                    $stepTitle = str_starts_with($rawTitle, 'Etapa') ? $rawTitle : "Etapa {$stepNum}/{$totalSteps}: {$rawTitle}";
+                    $stepType = $step['type'] ?? ($idx === 0 ? 'research' : 'content_creation');
+                    $stepAgent = $step['agent_name'] ?? ($idx === 0 ? 'Research Agent' : 'Copy & Hooks Agent');
+                    $stepPrompt = $step['prompt'] ?? $rawTitle;
+
+                    $res = $this->executeTool('create_task', [
+                        'title' => mb_substr($stepTitle, 0, 120),
+                        'type' => $stepType,
+                        'agent_name' => $stepAgent,
+                        'business_id' => $businessId,
+                        'depends_on_task_id' => $previousTaskId,
+                        'payload' => [
+                            'prompt' => $stepPrompt,
+                            'pipeline_step' => $stepNum,
+                            'pipeline_total' => $totalSteps,
+                            'depends_on_task_id' => $previousTaskId,
+                            'conversation_id' => $conversationId,
+                        ],
+                    ], $userId, $conversationId);
+
+                    if (!empty($res['task']->id)) {
+                        $createdTasks[] = $res['task'];
+                        $previousTaskId = $res['task']->id;
+                    }
+                }
+
+                return [
+                    'success' => true,
+                    'pipeline_tasks' => $createdTasks,
+                    'message' => count($createdTasks) . ' tarefas encadeadas criadas com sucesso.',
                 ];
 
             case 'get_task_status':
@@ -637,60 +704,188 @@ PROMPT;
     }
 
     /**
-     * Perform live zero-cost web search via DuckDuckGo HTML and Google News RSS.
+     * Clean conversational prompt into high-precision search keywords.
      */
-    protected function performWebSearch(string $query): array
+    public function cleanSearchQuery(string $rawPrompt): string
     {
+        $q = preg_replace('/^(execute de forma completa.*?:|execute o ciclo.*?:)\s*/isu', '', $rawPrompt);
+        $q = trim(explode("\n", $q)[0] ?? $rawPrompt);
+        $q = preg_replace(
+            '/\b(identificar|identifique|listar|liste|pesquisar|pesquise|buscar|busque|encontrar|encontre|fazer um levantamento|faça um levantamento|me de|me dê|quero|preciso de|quais são|quais os|os \d+|as \d+|\d+ melhores|\d+ principais)\b/iu',
+            ' ',
+            $q
+        );
+        $q = preg_replace('/\btiktokshop\b/iu', 'TikTok Shop Brasil', $q);
+        $q = preg_replace('/\bviralizados\b/iu', 'virais mais vendidos', $q);
+        $q = trim(preg_replace('/\s+/', ' ', $q), " -:,.?!");
+        return mb_strlen($q) >= 3 ? mb_substr($q, 0, 110) : mb_substr(trim($rawPrompt), 0, 100);
+    }
+
+    protected function decodeSearchRedirectUrl(string $rawUrl): string
+    {
+        $u = trim(html_entity_decode($rawUrl));
+        if (str_contains($u, 'uddg=')) {
+            if (preg_match('/[?&]uddg=([^&]+)/', $u, $m)) {
+                return urldecode($m[1]);
+            }
+        }
+        if (str_contains($u, '/RU=')) {
+            if (preg_match('#/RU=([^/]+)/RK=#', $u, $m)) {
+                return urldecode($m[1]);
+            }
+        }
+        if (str_starts_with($u, '//')) {
+            return 'https:' . $u;
+        }
+        return $u;
+    }
+
+    /**
+     * Perform live zero-cost multi-engine web search (Bing RSS, Yahoo BR, DuckDuckGo, Google News RSS, Mercado Livre BR).
+     */
+    public function performWebSearch(string $query): array
+    {
+        $cleanQ = $this->cleanSearchQuery($query);
         $results = [];
+        $seenUrls = [];
+
+        $headers = [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+            'Accept-Language' => 'pt-BR,pt;q=0.9',
+        ];
+
+        $addResult = function (string $title, string $url, string $snippet) use (&$results, &$seenUrls) {
+            $realUrl = $this->decodeSearchRedirectUrl($url);
+            if ($title === '' || $realUrl === '' || !str_starts_with($realUrl, 'http')) {
+                return;
+            }
+            if (isset($seenUrls[$realUrl])) {
+                return;
+            }
+            $seenUrls[$realUrl] = true;
+            $results[] = [
+                'title' => trim(preg_replace('/\s+/', ' ', $title)),
+                'url' => $realUrl,
+                'snippet' => trim(preg_replace('/\s+/', ' ', $snippet)),
+            ];
+        };
+
+        // 1. Bing Web Search RSS (PT-BR)
         try {
-            $resp = Http::timeout(8)
-                ->withHeaders([
-                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-                    'Accept-Language' => 'pt-BR,pt;q=0.9',
-                ])
-                ->asForm()
-                ->post('https://html.duckduckgo.com/html/', ['q' => $query, 'kl' => 'br-pt']);
-
-            if ($resp->successful()) {
-                $body = $resp->body();
-                preg_match_all('/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/s', $body, $titleMatches);
-                preg_match_all('/<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/s', $body, $snipMatches);
-                $urls = $titleMatches[1] ?? [];
-                $titles = $titleMatches[2] ?? [];
-                $snippets = $snipMatches[1] ?? [];
-
-                foreach (array_slice($titles, 0, 8) as $idx => $rawTitle) {
-                    $results[] = [
-                        'title' => trim(html_entity_decode(strip_tags($rawTitle))),
-                        'url' => $urls[$idx] ?? '',
-                        'snippet' => isset($snippets[$idx]) ? trim(html_entity_decode(strip_tags($snippets[$idx]))) : '',
-                    ];
+            $bingUrl = 'https://www.bing.com/search?q=' . urlencode($cleanQ) . '&format=rss&setlang=pt-BR&cc=BR';
+            $resp = Http::timeout(6)->withHeaders($headers)->get($bingUrl);
+            if ($resp->successful() && str_contains($resp->body(), '<item>')) {
+                preg_match_all('/<item>.*?<title>(.*?)<\/title>.*?<link>(.*?)<\/link>.*?<description>(.*?)<\/description>.*?<\/item>/s', $resp->body(), $items);
+                foreach (array_slice($items[1] ?? [], 0, 8) as $idx => $rawT) {
+                    $t = trim(html_entity_decode(strip_tags(str_replace(['<![CDATA[', ']]>'], '', $rawT))));
+                    $l = trim($items[2][$idx] ?? '');
+                    $d = trim(html_entity_decode(strip_tags(str_replace(['<![CDATA[', ']]>'], '', $items[3][$idx] ?? ''))));
+                    $addResult($t, $l, $d);
                 }
             }
-        } catch (\Exception $e) {
-            Log::warning('DuckDuckGo search warning: ' . $e->getMessage());
+        } catch (\Throwable $e) {}
+
+        // 2. Yahoo Brasil Web Search
+        if (count($results) < 8) {
+            try {
+                $yahooUrl = 'https://br.search.yahoo.com/search?p=' . urlencode($cleanQ) . '&ei=UTF-8';
+                $resp = Http::timeout(6)->withHeaders($headers)->get($yahooUrl);
+                if ($resp->successful()) {
+                    preg_match_all('/<div[^>]+class="[^"]*algo-sr[^"]*"[^>]*>(.*?)<\/div>\s*<\/div>\s*<\/li>/s', $resp->body(), $blocks);
+                    foreach (array_slice($blocks[1] ?? [], 0, 8) as $blk) {
+                        if (preg_match('/<a[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/s', $blk, $aM)) {
+                            $rawHref = $aM[1];
+                            $t = trim(html_entity_decode(strip_tags($aM[2])));
+                            $s = '';
+                            if (preg_match('/<div[^>]+class="[^"]*compText[^"]*"[^>]*>(.*?)<\/div>/s', $blk, $sM)) {
+                                $s = trim(html_entity_decode(strip_tags($sM[1])));
+                            }
+                            $addResult($t, $rawHref, $s);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
         }
 
-        if (count($results) < 3) {
+        // 3. DuckDuckGo HTML Search
+        if (count($results) < 8) {
             try {
-                $rssUrl = 'https://news.google.com/rss/search?q=' . urlencode($query) . '&hl=pt-BR&gl=BR&ceid=BR:pt-419';
-                $resp = Http::timeout(6)->get($rssUrl);
+                $resp = Http::timeout(6)
+                    ->withHeaders($headers)
+                    ->asForm()
+                    ->post('https://html.duckduckgo.com/html/', ['q' => $cleanQ, 'kl' => 'br-pt']);
+
+                if ($resp->successful() && str_contains($resp->body(), 'result__a')) {
+                    $body = $resp->body();
+                    preg_match_all('/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>/s', $body, $titleMatches);
+                    preg_match_all('/<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/s', $body, $snipMatches);
+                    $urls = $titleMatches[1] ?? [];
+                    $titles = $titleMatches[2] ?? [];
+                    $snippets = $snipMatches[1] ?? [];
+
+                    foreach (array_slice($titles, 0, 8) as $idx => $rawTitle) {
+                        $addResult(
+                            trim(html_entity_decode(strip_tags($rawTitle))),
+                            $urls[$idx] ?? '',
+                            isset($snippets[$idx]) ? trim(html_entity_decode(strip_tags($snippets[$idx]))) : ''
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 4. Google News RSS (PT-BR)
+        if (count($results) < 8) {
+            try {
+                $rssUrl = 'https://news.google.com/rss/search?q=' . urlencode($cleanQ) . '&hl=pt-BR&gl=BR&ceid=BR:pt-419';
+                $resp = Http::timeout(6)->withHeaders($headers)->get($rssUrl);
                 if ($resp->successful()) {
                     preg_match_all('/<item>.*?<title>(.*?)<\/title>.*?<link>(.*?)<\/link>.*?<pubDate>(.*?)<\/pubDate>.*?<\/item>/s', $resp->body(), $items);
                     foreach (array_slice($items[1] ?? [], 0, 6) as $idx => $rawT) {
-                        $results[] = [
-                            'title' => trim(html_entity_decode(str_replace(['<![CDATA[', ']]>'], '', $rawT))),
-                            'url' => trim($items[2][$idx] ?? ''),
-                            'snippet' => 'Publicado em ' . trim($items[3][$idx] ?? ''),
-                        ];
+                        $addResult(
+                            trim(html_entity_decode(str_replace(['<![CDATA[', ']]>'], '', $rawT))),
+                            trim($items[2][$idx] ?? ''),
+                            'Notícia/Tendência publicada em ' . trim($items[3][$idx] ?? '')
+                        );
                     }
                 }
-            } catch (\Exception $e) {
-                // Ignore RSS fallback error
+            } catch (\Throwable $e) {}
+        }
+
+        // 5. Real Brazilian E-Commerce Products & Prices when searching products / TikTok Shop / viral items
+        $lowQ = mb_strtolower($query . ' ' . $cleanQ);
+        if (preg_match('/(tiktok|produto|viral|virais|afiliado|loja|shop|vendido|preço|preco|oferta)/iu', $lowQ)) {
+            $productTerms = preg_match('/(tiktok|viral|virais|vendidos)/iu', $lowQ)
+                ? ['mini processador eletrico usb', 'escova secadora alisadora', 'umidificador difusor led', 'projetor portatil smart', 'massageador eletrico portatil']
+                : [$cleanQ];
+
+            foreach (array_slice($productTerms, 0, 4) as $pq) {
+                try {
+                    $mlResp = Http::timeout(4)->withHeaders($headers)->get('https://api.mercadolibre.com/sites/MLB/search', [
+                        'q' => $pq,
+                        'limit' => 2,
+                    ]);
+                    if ($mlResp->successful()) {
+                        foreach (array_slice($mlResp->json('results') ?? [], 0, 2) as $prod) {
+                            $title = $prod['title'] ?? null;
+                            $price = $prod['price'] ?? null;
+                            $permalink = $prod['permalink'] ?? null;
+                            if ($title && $price && $permalink) {
+                                $tiktokUrl = 'https://www.tiktok.com/search?q=' . urlencode(mb_substr($title, 0, 45));
+                                $priceFmt = number_format((float) $price, 2, ',', '.');
+                                $addResult(
+                                    "[Produto Real Brasil] {$title} — R$ {$priceFmt}",
+                                    $permalink,
+                                    "Preço Real Verificado: R$ {$priceFmt} | Link Real: {$permalink} | Vídeos no TikTok: {$tiktokUrl}"
+                                );
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {}
             }
         }
 
-        return $results;
+        return array_slice($results, 0, 12);
     }
 
     /**

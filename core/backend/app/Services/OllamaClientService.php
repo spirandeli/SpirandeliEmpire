@@ -13,34 +13,46 @@ class OllamaClientService
     public function __construct()
     {
         $this->baseUrl = config('ai.ollama.base_url', env('OLLAMA_BASE_URL', 'http://ollama:11434'));
-        $this->defaultModel = config('ai.ollama.default_model', env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'qwen2.5:3b')));
+        $rawModel = config('ai.ollama.default_model', env('LLAMA_MODEL', env('DEFAULT_TEXT_MODEL', 'qwen2.5:3b')));
+        // Prevent legacy 7b/8b/14b defaults from causing OOM HTTP 500 on 8GB VPS
+        if (preg_match('/:(7b|8b|13b|14b)/i', (string) $rawModel)) {
+            $rawModel = 'qwen2.5:3b';
+        }
+        $this->defaultModel = $rawModel ?: 'qwen2.5:3b';
     }
 
     /**
-     * Resolve which model to use: if the configured model is not installed, automatically pick an installed one.
+     * Resolve which model to use: always prioritize lightweight 3b/1.5b models on 8GB VPS
+     * so Ollama never crashes with HTTP 500 unexpected EOF (OOM).
      */
     protected function resolveAvailableModel(?string $requestedModel = null): string
     {
         $target = $requestedModel ?: $this->defaultModel;
-        $installed = $this->listModels();
+        if (preg_match('/:(7b|8b|13b|14b)/i', $target)) {
+            $target = 'qwen2.5:3b';
+        }
 
+        $installed = $this->listModels();
         if (empty($installed)) {
             return $target;
         }
 
         $installedNames = array_values(array_filter(array_map(fn($m) => $m['name'] ?? null, $installed)));
+
+        // Always prefer 3b / 1.5b models first to guarantee zero OOM crashes
+        foreach (['qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:1.5b', 'llama3.2:1b'] as $preferred) {
+            if (in_array($preferred, $installedNames, true)) {
+                if ($target === $preferred || !in_array($target, $installedNames, true) || preg_match('/:(7b|8b|13b|14b)/i', $target)) {
+                    return $preferred;
+                }
+            }
+        }
+
         if (in_array($target, $installedNames, true)) {
             return $target;
         }
 
-        // Prefer qwen2.5:3b or llama3.2:3b if present, otherwise first installed model
-        foreach (['qwen2.5:3b', 'llama3.2:3b', 'llama3.2:1b', 'qwen2.5:1.5b'] as $preferred) {
-            if (in_array($preferred, $installedNames, true)) {
-                return $preferred;
-            }
-        }
-
-        return $installedNames[0] ?? $target;
+        return $installedNames[0] ?? 'qwen2.5:3b';
     }
 
     /**
@@ -68,31 +80,36 @@ class OllamaClientService
                 'keep_alive' => '30m',
                 'options' => [
                     'num_ctx' => $numCtx,
-                    'num_predict' => (int) env('OLLAMA_MAX_TOKENS', 300),
-                    'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.6),
+                    'num_predict' => (int) env('OLLAMA_MAX_TOKENS', 350),
+                    'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.5),
                 ],
             ];
 
-            $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 180));
+            $timeout = (int) env('OLLAMA_TIMEOUT_SECONDS', config('ai.ollama.timeout_seconds', 120));
             $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/chat", $payload);
 
             // If /api/chat returned 500 (typically low RAM / context allocation failure on VPS),
-            // retry with minimal context (1024) and compact system prompt via /api/generate
+            // retry with minimal context (1024) and force qwen2.5:3b via /api/generate
             if ($response->status() >= 500) {
                 $errBody = $response->json('error') ?? $response->body();
-                Log::warning("Ollama /api/chat 500 ({$errBody}). Retrying with compact context (num_ctx=1024)...");
+                Log::warning("Ollama /api/chat 500 on {$targetModel} ({$errBody}). Retrying with qwen2.5:3b & num_ctx=1024...");
 
+                $fallbackModel = 'qwen2.5:3b';
                 $compactSystem = "Você é Jeffrey, o agente executivo central do SpirandeliEmpire OS. Responda em português brasileiro de forma clara, técnica e objetiva.";
                 $retryPayload = [
-                    'model' => $targetModel,
-                    'prompt' => $prompt,
+                    'model' => $fallbackModel,
+                    'prompt' => mb_substr($prompt, -3500),
                     'system' => $compactSystem,
                     'stream' => false,
                     'options' => [
                         'num_ctx' => 1024,
+                        'num_predict' => 300,
                     ],
                 ];
                 $response = Http::timeout($timeout)->post("{$this->baseUrl}/api/generate", $retryPayload);
+                if ($response->successful()) {
+                    $targetModel = $fallbackModel;
+                }
             }
 
             $latencyMs = round((microtime(true) - $startTime) * 1000);
@@ -165,7 +182,7 @@ class OllamaClientService
                     'success' => true,
                     'message' => 'Ollama local operacional! Modelos disponíveis: ' . count($models),
                     'installed_models' => $modelNames,
-                    'target_model' => $this->defaultModel,
+                    'target_model' => $this->resolveAvailableModel(),
                 ];
             }
             return [
@@ -182,6 +199,6 @@ class OllamaClientService
 
     public function getDefaultModel(): string
     {
-        return $this->defaultModel;
+        return $this->resolveAvailableModel();
     }
 }

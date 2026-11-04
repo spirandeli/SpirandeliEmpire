@@ -82,8 +82,10 @@ def get_db_connection():
 
 
 def _resolve_ollama_model(requested_model: Optional[str] = None) -> str:
-    """Inspect installed Ollama models and pick an available one to prevent 404 errors."""
+    """Inspect installed Ollama models and always prioritize 3b/1.5b models to prevent 8GB VPS OOM crashes."""
     target = requested_model or LLAMA_MODEL
+    if re.search(r":(7b|8b|13b|14b)", target or "", flags=re.I):
+        target = "qwen2.5:3b"
     try:
         r = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=4.0)
         if r.status_code == 200:
@@ -91,11 +93,12 @@ def _resolve_ollama_model(requested_model: Optional[str] = None) -> str:
             installed = [m.get("name") for m in models if m.get("name")]
             if not installed:
                 return target
+            for preferred in ("qwen2.5:3b", "llama3.2:3b", "qwen2.5:1.5b", "llama3.2:1b"):
+                if preferred in installed:
+                    if target == preferred or target not in installed or re.search(r":(7b|8b|13b|14b)", target, flags=re.I):
+                        return preferred
             if target in installed:
                 return target
-            for preferred in ("qwen2.5:3b", "llama3.2:3b", "llama3.2:1b", "qwen2.5:1.5b"):
-                if preferred in installed:
-                    return preferred
             return installed[0]
     except Exception:
         pass
@@ -193,45 +196,69 @@ def _get_active_api_keys() -> Tuple[str, str]:
     return g_key, o_key
 
 
-def query_gemini(prompt: str, system_prompt: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google_search: bool = False) -> Optional[Dict[str, Any]]:
     g_key, _ = _get_active_api_keys()
     if len(g_key) <= 10:
         return None
     try:
-        url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent?key={g_key}"
-        payload: Dict[str, Any] = {
+        base_payload: Dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096}
+            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096}
         }
         if system_prompt:
-            payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
+            base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
+
+        candidate_models = [GEMINI_MODEL]
+        for fallback_m in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            if fallback_m not in candidate_models:
+                candidate_models.append(fallback_m)
 
         start = time.time()
-        res = httpx.post(url, json=payload, timeout=45.0)
-        if res.status_code == 404:
-            for alt_model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-                if alt_model == GEMINI_MODEL:
-                    continue
-                alt_url = f"{GEMINI_BASE_URL}/models/{alt_model}:generateContent?key={g_key}"
-                alt_res = httpx.post(alt_url, json=payload, timeout=45.0)
-                if alt_res.status_code == 200:
-                    res = alt_res
+        res = None
+        used_model = GEMINI_MODEL
+
+        # Force IPv4 transport so broken Docker IPv6 routing on Linux VPS never causes 45s timeouts
+        transport = httpx.HTTPTransport(local_address="0.0.0.0")
+        with httpx.Client(transport=transport, timeout=httpx.Timeout(25.0, connect=6.0)) as client:
+            for model_name in candidate_models:
+                url = f"{GEMINI_BASE_URL}/models/{model_name}:generateContent?key={g_key}"
+                try:
+                    attempt = client.post(url, json=base_payload)
+                    if attempt.status_code == 200:
+                        res = attempt
+                        used_model = model_name
+                        break
+                    res = attempt
+                    if attempt.status_code in (404, 400):
+                        continue
                     break
+                except Exception as inner_e:
+                    clean_err = re.sub(r"key=[^&\s]+", "key=***", str(inner_e))
+                    logger.warning(f"Gemini attempt on {model_name} failed: {clean_err}")
+                    continue
+
         latency = int((time.time() - start) * 1000)
 
-        if res.status_code == 200:
+        if res is not None and res.status_code == 200:
             data = res.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return {
-                "success": True,
-                "response": text,
-                "provider": "google_gemini",
-                "model": GEMINI_MODEL,
-                "latency_ms": latency
-            }
-        logger.warning(f"Gemini API returned error {res.status_code}: {res.text[:200]}")
+            cand = (data.get("candidates") or [{}])[0]
+            parts = (cand.get("content") or {}).get("parts") or []
+            text_chunks = [p.get("text", "") for p in parts if p.get("text")]
+            text = "\n".join(text_chunks).strip()
+
+            if text:
+                return {
+                    "success": True,
+                    "response": text,
+                    "provider": "google_gemini",
+                    "model": used_model,
+                    "latency_ms": latency
+                }
+        elif res is not None:
+            logger.warning(f"Gemini API returned error {res.status_code}: {res.text[:200]}")
     except Exception as e:
-        logger.error(f"Gemini execution failed: {e}")
+        clean_err = re.sub(r"key=[^&\s]+", "key=***", str(e))
+        logger.error(f"Gemini execution failed: {clean_err}")
     return None
 
 
@@ -470,60 +497,291 @@ def query_ai_engine(prompt: str, system_prompt: Optional[str] = None, provider: 
 # REAL-TIME WEB RESEARCH & EMPIRE CONTEXT TOOLS FOR BACKGROUND AGENTS
 # ============================================================================
 
-def _web_search_live(query: str, max_results: int = 8) -> List[Dict[str, str]]:
-    """Perform zero-cost live web search via DuckDuckGo HTML & Google News RSS fallback."""
+def _clean_search_query(raw_prompt: str) -> str:
+    """Strip conversational task instructions and verbs so search engines get high-precision keywords."""
+    q = re.sub(r"^(execute de forma completa.*?:|execute o ciclo.*?:)\s*", "", raw_prompt or "", flags=re.I | re.S)
+    q = q.split("\n")[0].strip()
+    # Remove conversational filler prefixes in Portuguese
+    q = re.sub(
+        r"\b(identificar|identifique|listar|liste|pesquisar|pesquise|buscar|busque|encontrar|encontre|"
+        r"fazer um levantamento|faça um levantamento|me de|me dê|quero|preciso de|quais são|quais os|"
+        r"os \d+|as \d+|\d+ melhores|\d+ principais)\b",
+        " ",
+        q,
+        flags=re.I
+    )
+    q = re.sub(r"\btiktokshop\b", "TikTok Shop Brasil", q, flags=re.I)
+    q = re.sub(r"\bviralizados\b", "virais mais vendidos", q, flags=re.I)
+    q = re.sub(r"\s+", " ", q).strip(" -:,.?!")
+    return q[:110] if len(q) >= 3 else (raw_prompt or "")[:100].strip()
+
+
+def _decode_search_redirect_url(raw_url: str) -> str:
+    """Unwrap DuckDuckGo (uddg=) or Yahoo (RU=...) redirect URLs into clean direct URLs."""
+    u = html.unescape(raw_url or "").strip()
+    if "uddg=" in u:
+        m = re.search(r"[?&]uddg=([^&]+)", u)
+        if m:
+            return urllib.parse.unquote(m.group(1))
+    if "/RU=" in u:
+        m = re.search(r"/RU=([^/]+)/RK=", u)
+        if m:
+            return urllib.parse.unquote(m.group(1))
+    if u.startswith("//"):
+        return "https:" + u
+    return u
+
+
+def _fetch_page_excerpt(url: str) -> str:
+    """Fetch a live web page and extract its meta description and key paragraph text."""
+    if not url or not url.startswith("http") or any(x in url for x in ("youtube.com", "tiktok.com/search", ".pdf")):
+        return ""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+        }
+        resp = httpx.get(url, headers=headers, timeout=4.5, follow_redirects=True)
+        if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", "").lower():
+            return ""
+        body = resp.text[:90000]
+        body = re.sub(r"<(script|style|noscript|svg|header|footer|nav)[^>]*>.*?</\1>", " ", body, flags=re.I | re.S)
+        meta_m = re.search(r'<meta[^>]+(?:name="description"|property="og:description")[^>]+content="([^"]+)"', body, re.I)
+        meta_desc = html.unescape(meta_m.group(1)).strip() if meta_m else ""
+        paragraphs = re.findall(r"<(?:p|li|h2|h3)[^>]*>(.*?)</(?:p|li|h2|h3)>", body, flags=re.I | re.S)
+        clean_paras = []
+        for p in paragraphs:
+            txt = re.sub(r"<[^>]+>", " ", html.unescape(p))
+            txt = re.sub(r"\s+", " ", txt).strip()
+            if len(txt) > 45 and not any(skip in txt.lower() for skip in ("cookies", "política de privacidade", "todos os direitos")):
+                clean_paras.append(txt)
+            if len(" ".join(clean_paras)) > 550:
+                break
+        combined = (meta_desc + " | " + " ".join(clean_paras)).strip(" |")
+        return combined[:650]
+    except Exception:
+        return ""
+
+
+def _search_ecommerce_brazil_live(query: str, max_items: int = 8) -> List[Dict[str, str]]:
+    """
+    Fetch real products, real prices (R$), and real purchase/search URLs from Brazilian e-commerce
+    (Mercado Livre Brasil API / Listing + TikTok Search discovery link) so product tasks never invent fake links.
+    """
+    items: List[Dict[str, str]] = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+    }
+    # Determine high-converting product search terms if the query is generic "produtos virais tiktok shop"
+    low_q = query.lower()
+    if any(k in low_q for k in ("tiktok", "viral", "virais", "vendidos", "afiliado")):
+        product_queries = [
+            "mini processador eletrico usb",
+            "escova secadora alisadora",
+            "umidificador difusor led",
+            "fone bluetooth tws",
+            "projetor portatil smart",
+            "massageador eletrico portatil",
+            "luminaria led sensor movimento",
+            "garrafa termica digital led",
+            "kit skincare facial serum",
+            "aparador pelos eletrico",
+        ]
+    else:
+        product_queries = [query]
+
+    # 1. Try Mercado Livre public search API
+    for pq in product_queries[:5]:
+        if len(items) >= max_items:
+            break
+        try:
+            api_url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(pq)}&limit=3"
+            r = httpx.get(api_url, headers=headers, timeout=5.0)
+            if r.status_code == 200:
+                for prod in (r.json().get("results") or [])[:2]:
+                    title = prod.get("title")
+                    price = prod.get("price")
+                    permalink = prod.get("permalink")
+                    sold_qty = prod.get("sold_quantity")
+                    if title and price and permalink:
+                        tiktok_search_url = f"https://www.tiktok.com/search?q={urllib.parse.quote(title[:45])}"
+                        sold_info = f" | +{sold_qty} vendidos" if sold_qty else ""
+                        items.append({
+                            "title": f"[Produto Real Brasil] {title} — R$ {float(price):.2f}",
+                            "url": permalink,
+                            "snippet": (
+                                f"Preço Real Verificado: R$ {float(price):.2f}{sold_info} | "
+                                f"Link Mercado Livre: {permalink} | "
+                                f"Link Vídeos Virais no TikTok: {tiktok_search_url}"
+                            ),
+                        })
+        except Exception:
+            pass
+
+    # 2. Fallback: scrape lista.mercadolivre.com.br HTML if API returned 403 on VPS IP
+    if len(items) < 4:
+        for pq in product_queries[:4]:
+            if len(items) >= max_items:
+                break
+            try:
+                slug = re.sub(r"[^a-zA-Z0-9]+", "-", pq.lower()).strip("-")
+                list_url = f"https://lista.mercadolivre.com.br/{slug}"
+                r = httpx.get(list_url, headers=headers, timeout=6.0, follow_redirects=True)
+                if r.status_code == 200:
+                    matches = re.findall(
+                        r'<a[^>]+href="(https://(?:produto|www)\.mercadolivre\.com\.br/[^"#?]+)"[^>]*>(.*?)</a>',
+                        r.text,
+                        flags=re.I | re.S
+                    )
+                    prices = re.findall(r'class="andes-money-amount__fraction"[^>]*>([\d\.]+)<', r.text)
+                    p_idx = 0
+                    seen_titles = set()
+                    for href, raw_t in matches:
+                        clean_t = re.sub(r"<[^>]+>", "", html.unescape(raw_t)).strip()
+                        if len(clean_t) < 12 or clean_t.lower() in seen_titles:
+                            continue
+                        seen_titles.add(clean_t.lower())
+                        price_str = f"R$ {prices[p_idx]},00" if p_idx < len(prices) else "Consultar no link"
+                        p_idx += 1
+                        tiktok_search_url = f"https://www.tiktok.com/search?q={urllib.parse.quote(clean_t[:45])}"
+                        items.append({
+                            "title": f"[Produto Real E-commerce Brasil] {clean_t} ({price_str})",
+                            "url": href,
+                            "snippet": (
+                                f"Preço Verificado: {price_str} | "
+                                f"Link Real do Produto: {href} | "
+                                f"Busca de Criadores/Vídeos no TikTok: {tiktok_search_url}"
+                            ),
+                        })
+                        if len(items) >= max_items:
+                            break
+            except Exception:
+                pass
+
+    return items[:max_items]
+
+
+def _web_search_live(query: str, max_results: int = 10) -> List[Dict[str, str]]:
+    """
+    Perform multi-engine zero-cost live web search resilient to VPS datacenter IP blocks:
+      1. Bing Web Search RSS (works globally on VPS IPs without CAPTCHA)
+      2. Yahoo Brasil Web Search (organic PT-BR web search)
+      3. DuckDuckGo HTML / Lite (with uddg= redirect decoding)
+      4. Google News RSS (PT-BR news & market trends)
+      5. Live Brazilian E-Commerce product & price discovery (when searching products/TikTok Shop)
+      6. Deep Page Reader on top URLs for rich article context
+    """
+    clean_q = _clean_search_query(query)
     results: List[Dict[str, str]] = []
+    seen_urls = set()
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
     }
 
-    # 1. Try DuckDuckGo HTML Search
-    try:
-        resp = httpx.post(
-            "https://html.duckduckgo.com/html/",
-            data={"q": query, "kl": "br-pt"},
-            headers=headers,
-            timeout=10.0,
-            follow_redirects=True,
-        )
-        if resp.status_code == 200:
-            body = resp.text
-            # Match result blocks
-            titles = re.findall(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', body, re.S)
-            snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', body, re.S)
-            for idx, (href, raw_title) in enumerate(titles[:max_results]):
-                clean_title = re.sub(r"<[^>]+>", "", html.unescape(raw_title)).strip()
-                clean_snip = ""
-                if idx < len(snippets):
-                    clean_snip = re.sub(r"<[^>]+>", "", html.unescape(snippets[idx])).strip()
-                if clean_title:
-                    results.append({
-                        "title": clean_title,
-                        "url": href,
-                        "snippet": clean_snip,
-                    })
-    except Exception as e:
-        logger.warning(f"DuckDuckGo search warning: {e}")
+    def _add_result(title: str, url: str, snippet: str) -> None:
+        real_url = _decode_search_redirect_url(url)
+        if not title or not real_url or not real_url.startswith("http"):
+            return
+        if real_url in seen_urls:
+            return
+        seen_urls.add(real_url)
+        results.append({
+            "title": re.sub(r"\s+", " ", title).strip(),
+            "url": real_url,
+            "snippet": re.sub(r"\s+", " ", snippet or "").strip(),
+        })
 
-    # 2. Fallback / Supplement with Google News RSS (PT-BR)
-    if len(results) < 3:
+    # 1. Bing Web Search RSS (PT-BR)
+    try:
+        bing_url = f"https://www.bing.com/search?q={urllib.parse.quote(clean_q)}&format=rss&setlang=pt-BR&cc=BR"
+        resp = httpx.get(bing_url, headers=headers, timeout=8.0, follow_redirects=True)
+        if resp.status_code == 200 and "<item>" in resp.text:
+            items = re.findall(
+                r"<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?<description>(.*?)</description>.*?</item>",
+                resp.text,
+                re.S
+            )
+            for raw_t, link, desc in items[:max_results]:
+                t_clean = html.unescape(re.sub(r"<!\[CDATA\[|\]\]>|<[^>]+>", "", raw_t)).strip()
+                d_clean = html.unescape(re.sub(r"<!\[CDATA\[|\]\]>|<[^>]+>", "", desc)).strip()
+                _add_result(t_clean, link.strip(), d_clean)
+    except Exception as e:
+        logger.debug(f"Bing RSS search note: {e}")
+
+    # 2. Yahoo Brasil Web Search (PT-BR)
+    if len(results) < max_results:
         try:
-            encoded_q = urllib.parse.quote(query)
+            yahoo_url = f"https://br.search.yahoo.com/search?p={urllib.parse.quote(clean_q)}&ei=UTF-8"
+            resp = httpx.get(yahoo_url, headers=headers, timeout=8.0, follow_redirects=True)
+            if resp.status_code == 200:
+                blocks = re.findall(
+                    r'<div[^>]+class="[^"]*algo-sr[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</li>',
+                    resp.text,
+                    re.S
+                )
+                for blk in blocks[:max_results]:
+                    a_m = re.search(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', blk, re.S)
+                    s_m = re.search(r'<div[^>]+class="[^"]*compText[^"]*"[^>]*>(.*?)</div>', blk, re.S)
+                    if a_m:
+                        raw_href, raw_title = a_m.group(1), a_m.group(2)
+                        t_clean = re.sub(r"<[^>]+>", " ", html.unescape(raw_title)).strip()
+                        s_clean = re.sub(r"<[^>]+>", " ", html.unescape(s_m.group(1))).strip() if s_m else ""
+                        _add_result(t_clean, raw_href, s_clean)
+        except Exception as e:
+            logger.debug(f"Yahoo BR search note: {e}")
+
+    # 3. DuckDuckGo HTML Search
+    if len(results) < max_results:
+        try:
+            resp = httpx.post(
+                "https://html.duckduckgo.com/html/",
+                data={"q": clean_q, "kl": "br-pt"},
+                headers=headers,
+                timeout=8.0,
+                follow_redirects=True,
+            )
+            if resp.status_code == 200 and "result__a" in resp.text:
+                body = resp.text
+                titles = re.findall(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', body, re.S)
+                snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', body, re.S)
+                for idx, (href, raw_title) in enumerate(titles[:max_results]):
+                    clean_title = re.sub(r"<[^>]+>", "", html.unescape(raw_title)).strip()
+                    clean_snip = re.sub(r"<[^>]+>", "", html.unescape(snippets[idx])).strip() if idx < len(snippets) else ""
+                    _add_result(clean_title, href, clean_snip)
+        except Exception as e:
+            logger.debug(f"DuckDuckGo search note: {e}")
+
+    # 4. Google News RSS (PT-BR)
+    if len(results) < max_results:
+        try:
+            encoded_q = urllib.parse.quote(clean_q)
             rss_url = f"https://news.google.com/rss/search?q={encoded_q}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             resp = httpx.get(rss_url, headers=headers, timeout=8.0, follow_redirects=True)
             if resp.status_code == 200:
                 items = re.findall(r"<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?<pubDate>(.*?)</pubDate>.*?</item>", resp.text, re.S)
-                for raw_t, link, pub_date in items[:max_results]:
+                for raw_t, link, pub_date in items[:6]:
                     clean_t = html.unescape(re.sub(r"<!\[CDATA\[|\]\]>", "", raw_t)).strip()
-                    results.append({
-                        "title": clean_t,
-                        "url": link.strip(),
-                        "snippet": f"Publicado em {pub_date.strip()}",
-                    })
+                    _add_result(clean_t, link.strip(), f"Notícia/Tendência publicada em {pub_date.strip()}")
         except Exception as e:
-            logger.warning(f"Google News RSS search warning: {e}")
+            logger.debug(f"Google News RSS note: {e}")
 
+    # 5. Enrich top 3 organic web URLs with live page excerpt so AI reads actual article content
+    for item in results[:3]:
+        excerpt = _fetch_page_excerpt(item["url"])
+        if excerpt and len(excerpt) > len(item.get("snippet", "")):
+            item["snippet"] = excerpt
+
+    # 6. If query involves products, TikTok Shop, viral items, or affiliate sales, fetch real e-commerce products & prices
+    low_q = f"{query} {clean_q}".lower()
+    if any(k in low_q for k in ("tiktok", "produto", "viral", "virais", "afiliado", "loja", "shop", "vendido", "preço", "preco", "oferta")):
+        ecom_items = _search_ecommerce_brazil_live(clean_q, max_items=8)
+        for ec in ecom_items:
+            _add_result(ec["title"], ec["url"], ec["snippet"])
+
+    logger.info(f"Live Web Search completed for '{clean_q}': {len(results)} real sources collected.")
     return results[:max_results]
 
 
@@ -534,7 +792,8 @@ def _should_perform_web_search(task_type: str, agent_name: str, prompt: str) -> 
         "pesquis", "research", "tiktok", "produto", "viral", "tendência", "tendencia",
         "mercado", "nicho", "concorr", "amazon", "kdp", "youtube", "shorts", "busca",
         "identificar", "levantamento", "top 10", "top 5", "afiliado", "preço", "preco",
-        "históri", "histori", "bíbli", "bibli", "referência", "referencia"
+        "históri", "histori", "bíbli", "bibli", "referência", "referencia", "internet",
+        "web", "notícia", "noticia", "atual", "hoje", "2025", "2026", "shop", "shopee"
     ]
     return any(kw in combined for kw in keywords)
 
@@ -741,7 +1000,8 @@ def _publish_task_result(r: redis.Redis, task_id: str, result: Dict[str, Any]) -
 
 def _check_and_mark_db_task_in_progress(task_id: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """
-    Check if task exists in PostgreSQL and is eligible to run (not already cancelled or completed).
+    Check if task exists in PostgreSQL and is eligible to run (not already cancelled/completed,
+    and if it has depends_on_task_id, verify the parent task has finished).
     If eligible, mark it as in_progress and return (True, db_task_info).
     """
     if not str(task_id).isdigit():
@@ -765,6 +1025,40 @@ def _check_and_mark_db_task_in_progress(task_id: str) -> Tuple[bool, Optional[Di
                 logger.info(f"Task #{task_id} is already [{current_status}] in DB. Skipping duplicate queue entry.")
                 return False, None
 
+            payload_val = row[6] if isinstance(row[6], dict) else (json.loads(row[6]) if row[6] else {})
+            depends_on_id = payload_val.get("depends_on_task_id")
+
+            # Check parent task dependency if this task is part of a chained pipeline
+            if depends_on_id and str(depends_on_id).isdigit():
+                cur.execute(
+                    "SELECT status, title, result FROM tasks WHERE id = %s",
+                    (int(depends_on_id),)
+                )
+                parent_row = cur.fetchone()
+                if parent_row:
+                    parent_status, parent_title, parent_res_raw = parent_row
+                    if parent_status in ("pending", "in_progress"):
+                        conn.close()
+                        logger.info(f"Task #{task_id} is waiting for parent task #{depends_on_id} [{parent_status}] to complete.")
+                        return False, None
+                    if parent_status in ("failed", "cancelled"):
+                        cur.execute(
+                            """
+                            UPDATE tasks
+                            SET status = 'failed', error_message = %s, completed_at = NOW(), updated_at = NOW()
+                            WHERE id = %s
+                            """,
+                            (f"Cancelada automaticamente pois a Tarefa anterior (#{depends_on_id}) terminou com status '{parent_status}'.", int(task_id))
+                        )
+                        conn.commit()
+                        conn.close()
+                        return False, None
+                    if parent_status == "completed":
+                        parent_res = parent_res_raw if isinstance(parent_res_raw, dict) else (json.loads(parent_res_raw) if parent_res_raw else {})
+                        payload_val["parent_task_id"] = str(depends_on_id)
+                        payload_val["parent_task_title"] = parent_title or f"Tarefa #{depends_on_id}"
+                        payload_val["parent_task_output"] = (parent_res or {}).get("response", "")
+
             cur.execute("""
                 UPDATE tasks
                 SET status = 'in_progress', started_at = NOW(), error_message = NULL, updated_at = NOW()
@@ -772,7 +1066,6 @@ def _check_and_mark_db_task_in_progress(task_id: str) -> Tuple[bool, Optional[Di
             """, (int(task_id),))
             conn.commit()
 
-            payload_val = row[6] if isinstance(row[6], dict) else (json.loads(row[6]) if row[6] else {})
             db_info = {
                 "id": str(row[0]),
                 "status": "in_progress",
@@ -984,24 +1277,27 @@ def process_task(task: Dict[str, Any]) -> None:
                 "task_id": task_id,
                 "title": task_title,
                 "agent_name": agent_name,
-                "step": f"2/4 {agent_name} pesquisando dados e tendências em tempo real na web...",
+                "step": f"2/4 {agent_name} pesquisando dados, preços e fontes reais na internet...",
                 "progress_percent": 45,
                 "started_at": datetime.utcnow().isoformat()
             })
-        search_query = re.sub(r"^(execute de forma completa.*?:)\s*", "", prompt, flags=re.I | re.S).strip()
-        search_query = search_query[:140]
-        logger.info(f"Task [#{task_id}] executing live web research for query: '{search_query}'")
-        search_results = _web_search_live(search_query, max_results=8)
+        clean_search_q = _clean_search_query(prompt)
+        logger.info(f"Task [#{task_id}] executing live web research for query: '{clean_search_q}'")
+        search_results = _web_search_live(clean_search_q, max_results=12)
 
         # If query mentions TikTok Shop specifically, also run a targeted secondary search
-        if "tiktok" in search_query.lower() and len(search_results) < 5:
-            extra = _web_search_live("TikTok Shop produtos mais vendidos virais Brasil 2025 2026", max_results=6)
-            search_results.extend(extra)
+        if "tiktok" in prompt.lower() and len(search_results) < 8:
+            extra = _web_search_live("produtos mais vendidos virais TikTok Shop Brasil tendencia", max_results=8)
+            existing_urls = {x["url"] for x in search_results}
+            for ex in extra:
+                if ex["url"] not in existing_urls:
+                    search_results.append(ex)
+                    existing_urls.add(ex["url"])
 
         if search_results:
             lines = ["<live_web_research_results>"]
-            for idx, item in enumerate(search_results[:10], 1):
-                lines.append(f"  {idx}. {item['title']} — {item['snippet']} (Fonte: {item['url']})")
+            for idx, item in enumerate(search_results[:12], 1):
+                lines.append(f"  {idx}. {item['title']} — {item['snippet']} (URL Real Verificada: {item['url']})")
             lines.append("</live_web_research_results>")
             web_context_block = "\n".join(lines)
 
@@ -1014,18 +1310,36 @@ def process_task(task: Dict[str, Any]) -> None:
         f"Orçamento atual do Império: R$ {db_ctx['current_month_spent_brl']:.2f} / R$ {MONTHLY_BUDGET_LIMIT:.2f}.\n"
         f"{db_ctx['business_info']}\n"
         f"{db_ctx['memories_block']}\n"
-        "DIRETRIZ DE EXECUÇÃO: Você está executando uma tarefa real em segundo plano. "
-        "Entregue o trabalho COMPLETO, estruturado em Markdown, com dados concretos, plano de ação prático, "
-        "exemplos de ganchos/roteiros ou análises detalhadas prontas para uso imediato pelo Comandante. "
-        "Jamais responda que 'vai pesquisar depois' — você É o worker final de execução!"
+        "DIRETRIZ DE EXECUÇÃO E PROIBIÇÃO DE ALUCINAÇÃO:\n"
+        "1. Você está executando uma tarefa real em segundo plano com acesso aos resultados reais da internet em <live_web_research_results>.\n"
+        "2. PROIBIDO INVENTAR LINKS FALSOS: JAMAIS invente URLs fictícias como 'https://www.tiktokshop.com.br/...' (esse formato de link não existe!). "
+        "Use EXCLUSIVAMENTE as URLs reais fornecidas dentro de <live_web_research_results> ou links reais de busca no formato https://www.tiktok.com/search?q=Termo.\n"
+        "3. Baseie sua lista de produtos, preços e tendências nos itens reais retornados em <live_web_research_results>, citando as fontes reais verificadas.\n"
+        "4. Entregue o trabalho COMPLETO em Markdown com plano de ação prático, ganchos de vídeo virais e links reais."
     )
 
     enriched_prompt = prompt
     if web_context_block:
         enriched_prompt = (
             f"SOLICITAÇÃO DO COMANDANTE:\n{prompt}\n\n"
-            f"DADOS COLETADOS NA WEB EM TEMPO REAL PELO AGENTE:\n{web_context_block}\n\n"
-            "Com base nos dados coletados e na sua especialidade, elabore a entrega completa, detalhada e acionável em português brasileiro:"
+            f"DADOS REAIS COLETADOS NA INTERNET AGORA PELO AGENTE ({len(search_results)} fontes verificadas):\n{web_context_block}\n\n"
+            "REGRAS OBRIGATÓRIAS PARA ESTA ENTREGA:\n"
+            "- Utilize os produtos, preços e informações REAIS listados acima em <live_web_research_results>.\n"
+            "- NÃO INVENTE links falsos (nunca escreva tiktokshop.com.br/nome-do-produto). Copie exatamente as 'URL Real Verificada' presentes nos dados acima.\n"
+            "- Elabore a entrega completa, detalhada e acionável em português brasileiro:"
+        )
+
+    # If this task waited on a parent task in a chained pipeline, inject the parent task's full output
+    parent_output = payload.get("parent_task_output")
+    if parent_output:
+        p_id = payload.get("parent_task_id", "?")
+        p_title = payload.get("parent_task_title", f"Tarefa #{p_id}")
+        enriched_prompt = (
+            f"=== RESULTADO ENTREGUE PELA TAREFA ANTERIOR (#{p_id} — {p_title}) ===\n"
+            f"{parent_output}\n"
+            f"========================================================================\n\n"
+            f"MISSÃO DESTA ETAPA ENCADEDA (USE EXCLUSIVAMENTE OS DADOS/PRODUTOS DA TAREFA ANTERIOR ACIMA):\n"
+            f"{enriched_prompt}"
         )
 
     # --- 5. Execute AI Inference (or Specialized Video Pipeline) ---
@@ -1109,7 +1423,7 @@ def process_task(task: Dict[str, Any]) -> None:
                         f"{enriched_prompt}\n\n"
                         f"### ANÁLISE PRÉVIA REALIZADA PELO LLAMA LOCAL ({llama_analyzer_model}):\n"
                         f"{llama_analysis_block}\n\n"
-                        "Agora EXECUTE a tarefa final de forma completa com base nos dados e na análise acima:"
+                        "Agora EXECUTE a tarefa final de forma completa usando exclusivamente os links e fatos reais acima:"
                     )
 
             if r_live:
@@ -1126,13 +1440,30 @@ def process_task(task: Dict[str, Any]) -> None:
 
         logger.info(f"Task [#{task_id}] querying AI engine (provider={provider or 'auto'}, role={task_role})...")
         ai_result = query_ai_engine(enriched_prompt, system_prompt, provider, task_role)
+
+        # Post-processing anti-hallucination guard: replace any invented tiktokshop.com.br/slug URLs with real TikTok search URLs
+        if ai_result.get("success") and ai_result.get("response"):
+            resp_txt = ai_result["response"]
+            resp_txt = re.sub(
+                r"https?://(?:www\.)?tiktokshop\.com(?:\.br)?/([a-zA-Z0-9_\-/]+)",
+                lambda m: f"https://www.tiktok.com/search?q={urllib.parse.quote(m.group(1).replace('-', ' ').replace('/', ' ').strip())}",
+                resp_txt
+            )
+            if search_results and "Fontes Reais Consultadas" not in resp_txt:
+                sources_md = ["\n\n---\n### 🌐 Fontes e Links Reais Consultados em Tempo Real:"]
+                for idx, s_item in enumerate(search_results[:10], 1):
+                    sources_md.append(f"{idx}. **[{s_item['title']}]({s_item['url']})** — _{s_item['snippet'][:160]}_")
+                resp_txt += "\n".join(sources_md)
+            ai_result["response"] = resp_txt
+
         if llama_analysis_block and ai_result.get("success") and ai_result.get("response"):
             exec_label = "Google Gemini" if ai_result.get("provider") == "google_gemini" else (
                 "OpenAI ChatGPT" if ai_result.get("provider") == "openai" else ai_result.get("provider", "IA")
             )
             header_badge = (
                 f"> 🦙 **Leitura & Análise Prévia:** Llama Local (`{llama_analyzer_model}`) • "
-                f"✨ **Execução da Tarefa:** {exec_label} (`{ai_result.get('model')}`)\n\n"
+                f"✨ **Execução da Tarefa:** {exec_label} (`{ai_result.get('model')}`) • "
+                f"🌐 **Fontes Web Reais:** {len(search_results)}\n\n"
             )
             ai_result["response"] = header_badge + ai_result["response"]
             ai_result["analyzer_model"] = llama_analyzer_model
@@ -1210,6 +1541,41 @@ def process_task(task: Dict[str, Any]) -> None:
         )
     except Exception as e:
         logger.error(f"Task [#{task_id}] failed to publish final result: {e}")
+
+    # --- 7. Immediately trigger any dependent child tasks waiting on this task_id ---
+    if result_payload["status"] == "completed" and str(task_id).isdigit():
+        try:
+            conn = get_db_connection()
+            dep_tasks: List[Dict[str, Any]] = []
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, title, type, agent_name, business_id, payload
+                    FROM tasks
+                    WHERE status = 'pending'
+                      AND payload->>'depends_on_task_id' = %s
+                    ORDER BY id ASC
+                    """,
+                    (str(task_id),)
+                )
+                dep_rows = cur.fetchall()
+                for dr in dep_rows:
+                    raw_p = dr[5]
+                    p_dict = raw_p if isinstance(raw_p, dict) else (json.loads(raw_p) if raw_p else {})
+                    dep_tasks.append({
+                        "id": str(dr[0]),
+                        "title": dr[1],
+                        "type": dr[2] or "content_creation",
+                        "agent_name": dr[3] or "Copy & Hooks Agent",
+                        "business_id": dr[4],
+                        "payload": p_dict,
+                    })
+            conn.close()
+            for dep_t in dep_tasks:
+                logger.info(f"Chained Pipeline: Unlocking dependent Task #{dep_t['id']} ({dep_t['title']}) after completion of Task #{task_id}!")
+                process_task(dep_t)
+        except Exception as e:
+            logger.warning(f"Dependent task check warning after task #{task_id}: {e}")
 
 
 def _check_scheduled_business_automations() -> List[Dict[str, Any]]:

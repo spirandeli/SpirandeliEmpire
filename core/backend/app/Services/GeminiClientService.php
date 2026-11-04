@@ -21,7 +21,7 @@ class GeminiClientService
         $this->apiKey = $this->resolveApiKey();
         $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-3.8-flash'));
         $this->baseUrl = config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'));
-        $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.7));
+        $this->temperature = (float) config('ai.gemini.temperature', env('GEMINI_TEMPERATURE', 0.6));
         $this->maxTokens = (int) config('ai.gemini.max_tokens', env('GEMINI_MAX_TOKENS', 4096));
         $this->freeTierMode = (bool) config('ai.gemini.free_tier_mode', env('GEMINI_FREE_TIER_MODE', true));
     }
@@ -64,7 +64,7 @@ class GeminiClientService
     }
 
     /**
-     * Generate completion via Google Gemini REST API (supports multimodal inlineData for images, audio, and PDFs).
+     * Generate completion via Google Gemini REST API (forces IPv4 to prevent Docker IPv6 cURL error 28 timeouts).
      */
     public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, array $inlineMedia = []): array
     {
@@ -79,107 +79,126 @@ class GeminiClientService
         $targetModel = $model ?: $this->defaultModel;
         $startTime = microtime(true);
 
-        try {
-            $userParts = [
-                ['text' => $prompt]
-            ];
-            foreach ($inlineMedia as $media) {
-                if (!empty($media['mime_type']) && !empty($media['data'])) {
-                    $userParts[] = [
-                        'inline_data' => [
-                            'mime_type' => $media['mime_type'],
-                            'data' => $media['data'],
-                        ],
-                    ];
-                }
+        $userParts = [
+            ['text' => $prompt]
+        ];
+        foreach ($inlineMedia as $media) {
+            if (!empty($media['mime_type']) && !empty($media['data'])) {
+                $userParts[] = [
+                    'inline_data' => [
+                        'mime_type' => $media['mime_type'],
+                        'data' => $media['data'],
+                    ],
+                ];
             }
+        }
 
-            $payload = [
-                'contents' => [
-                    [
-                        'role' => 'user',
-                        'parts' => $userParts,
-                    ]
-                ],
-                'generationConfig' => [
-                    'temperature' => $this->temperature,
-                    'maxOutputTokens' => $this->maxTokens,
+        $payload = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => $userParts,
+                ]
+            ],
+            'generationConfig' => [
+                'temperature' => $this->temperature,
+                'maxOutputTokens' => $this->maxTokens,
+            ]
+        ];
+
+        if (!empty($systemPrompt)) {
+            $payload['system_instruction'] = [
+                'parts' => [
+                    ['text' => $systemPrompt]
                 ]
             ];
+        }
 
-            if (!empty($systemPrompt)) {
-                $payload['system_instruction'] = [
-                    'parts' => [
-                        ['text' => $systemPrompt]
-                    ]
-                ];
+        $candidateModels = [$targetModel];
+        foreach (['gemini-2.5-flash', 'gemini-2.0-flash'] as $altModel) {
+            if (!in_array($altModel, $candidateModels, true)) {
+                $candidateModels[] = $altModel;
             }
+        }
 
-            $endpoint = "{$this->baseUrl}/models/{$targetModel}:generateContent?key={$this->apiKey}";
+        $response = null;
+        $usedModel = $targetModel;
+        $lastError = null;
 
-            $response = Http::timeout(45)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->post($endpoint, $payload);
+        foreach ($candidateModels as $modelName) {
+            $endpoint = "{$this->baseUrl}/models/{$modelName}:generateContent?key={$this->apiKey}";
+            try {
+                $attemptResp = Http::timeout(22)
+                    ->connectTimeout(6)
+                    ->withOptions(['force_ip_resolve' => 'v4'])
+                    ->withHeaders(['Content-Type' => 'application/json'])
+                    ->post($endpoint, $payload);
 
-            // If the requested model tag (e.g. gemini-3.8-flash) returns 404 on v1beta,
-            // automatically try fallback Flash endpoints while keeping Gemini 3.8 Flash as primary
-            if ($response->status() === 404) {
-                foreach (['gemini-2.5-flash', 'gemini-2.0-flash'] as $altModel) {
-                    if ($altModel === $targetModel) continue;
-                    $altEndpoint = "{$this->baseUrl}/models/{$altModel}:generateContent?key={$this->apiKey}";
-                    $altResp = Http::timeout(45)
-                        ->withHeaders(['Content-Type' => 'application/json'])
-                        ->post($altEndpoint, $payload);
-                    if ($altResp->successful()) {
-                        $response = $altResp;
-                        break;
-                    }
+                if ($attemptResp->successful()) {
+                    $response = $attemptResp;
+                    $usedModel = $modelName;
+                    break;
+                }
+
+                $response = $attemptResp;
+                $statusCode = $attemptResp->status();
+                $errMsg = $attemptResp->json('error.message') ?? "HTTP {$statusCode}";
+                $lastError = $errMsg;
+
+                // If 404 or 400 (model tag not recognized on v1beta), try next Flash model
+                if (in_array($statusCode, [404, 400], true)) {
+                    continue;
+                }
+                break;
+            } catch (\Throwable $e) {
+                $cleanMsg = preg_replace('/key=[^&\s]+/i', 'key=***', $e->getMessage());
+                $lastError = $cleanMsg;
+                Log::warning("Gemini attempt on {$modelName} failed: {$cleanMsg}");
+                continue;
+            }
+        }
+
+        $latencyMs = round((microtime(true) - $startTime) * 1000);
+
+        if ($response && $response->successful()) {
+            $data = $response->json();
+            $cand = $data['candidates'][0] ?? [];
+            $parts = $cand['content']['parts'] ?? [];
+            $textChunks = [];
+            foreach ($parts as $p) {
+                if (!empty($p['text'])) {
+                    $textChunks[] = $p['text'];
                 }
             }
-
-            $latencyMs = round((microtime(true) - $startTime) * 1000);
-
-            if ($response->successful()) {
-                $data = $response->json();
-                $replyText = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
-                $usage = $data['usageMetadata'] ?? [];
-
-                return [
-                    'success' => true,
-                    'response' => $replyText,
-                    'model' => $targetModel,
-                    'provider' => 'google_gemini',
-                    'latency_ms' => $latencyMs,
-                    'tokens' => [
-                        'prompt' => $usage['promptTokenCount'] ?? 0,
-                        'candidates' => $usage['candidatesTokenCount'] ?? 0,
-                        'total' => $usage['totalTokenCount'] ?? 0,
-                    ],
-                    'is_free_tier' => $this->freeTierMode,
-                ];
-            }
-
-            $statusCode = $response->status();
-            $errorJson = $response->json();
-            $errorMessage = $errorJson['error']['message'] ?? "Google API HTTP error {$statusCode}";
-
-            Log::warning("Gemini API error [{$statusCode}]: {$errorMessage}");
+            $replyText = implode("\n", $textChunks);
+            $usage = $data['usageMetadata'] ?? [];
 
             return [
-                'success' => false,
-                'status_code' => $statusCode,
-                'error' => $errorMessage,
+                'success' => true,
+                'response' => $replyText,
+                'model' => $usedModel,
                 'provider' => 'google_gemini',
-                'quota_exceeded' => in_array($statusCode, [429, 403]) || str_contains(strtolower($errorMessage), 'quota'),
-            ];
-        } catch (\Exception $e) {
-            Log::error('Gemini connection exception: ' . $e->getMessage());
-            return [
-                'success' => false,
-                'error' => 'Falha de conexão com Google Gemini: ' . $e->getMessage(),
-                'provider' => 'google_gemini',
+                'latency_ms' => $latencyMs,
+                'tokens' => [
+                    'prompt' => $usage['promptTokenCount'] ?? 0,
+                    'candidates' => $usage['candidatesTokenCount'] ?? 0,
+                    'total' => $usage['totalTokenCount'] ?? 0,
+                ],
+                'is_free_tier' => $this->freeTierMode,
             ];
         }
+
+        $statusCode = $response ? $response->status() : 500;
+        $errorMessage = $lastError ?: 'Sem resposta do servidor Google Gemini.';
+        $errorMessage = preg_replace('/key=[^&\s]+/i', 'key=***', $errorMessage);
+
+        return [
+            'success' => false,
+            'status_code' => $statusCode,
+            'error' => $errorMessage,
+            'provider' => 'google_gemini',
+            'quota_exceeded' => in_array($statusCode, [429, 403], true) || str_contains(strtolower($errorMessage), 'quota'),
+        ];
     }
 
     /**
@@ -215,4 +234,3 @@ class GeminiClientService
         return $this->defaultModel;
     }
 }
-

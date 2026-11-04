@@ -93,10 +93,17 @@ class JeffreyController extends Controller
                 }
             }
 
-            // If there are pending tasks in PostgreSQL but Redis queue is empty, re-enqueue them automatically
+            // If there are pending tasks in PostgreSQL but Redis queue is empty, re-enqueue eligible ones automatically
             $currentQueueLen = (int) Redis::llen('empire:jeffrey:tasks');
             if ($counts['pending'] > 0 && $currentQueueLen === 0) {
                 foreach ($activeTasks->where('status', 'pending') as $orphanTask) {
+                    $depId = $orphanTask->payload['depends_on_task_id'] ?? null;
+                    if ($depId) {
+                        $parentTask = Task::find($depId);
+                        if ($parentTask && in_array($parentTask->status, ['pending', 'in_progress'], true)) {
+                            continue;
+                        }
+                    }
                     $queuePayload = json_encode([
                         'id' => (string) $orphanTask->id,
                         'title' => $orphanTask->title,

@@ -7,8 +7,12 @@ set -euo pipefail
 echo "==> [1/6] Running pre-update backup..."
 ./scripts/backup.sh
 
-echo "==> [2/6] Pulling latest changes from Git..."
+echo "==> [2/7] Pulling latest changes from Git..."
 git pull origin main || git pull
+
+if [ -f .env ]; then
+    sed -i 's/qwen2.5:7b/qwen2.5:3b/g' .env || true
+fi
 
 echo "==> [3/7] Building Frontend (Vue 3 SPA) into core/frontend/dist..."
 docker run --rm -v "$(pwd)/core/frontend:/app" -w /app node:20-alpine sh -c "npm install --no-audit --no-fund && npm run build" || true
@@ -25,8 +29,9 @@ docker compose exec -T core-app php artisan route:clear || true
 echo "==> [6/7] Running database migrations..."
 docker compose exec -T core-app php artisan migrate --force
 
-echo "==> [7/7] Ensuring local lightweight AI model is present in Ollama..."
+echo "==> [7/7] Ensuring local lightweight AI model is present in Ollama (and removing heavy 7b OOM model)..."
 docker compose exec -T ollama ollama pull qwen2.5:3b || true
+docker compose exec -T ollama ollama rm qwen2.5:7b 2>/dev/null || true
 
 echo "==> Update completed successfully!"
 ./scripts/healthcheck.sh

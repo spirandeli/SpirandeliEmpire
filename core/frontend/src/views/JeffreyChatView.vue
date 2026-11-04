@@ -574,13 +574,14 @@
               class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 border"
               :class="{
                 'bg-[#0284c7] text-white border-[#0369a1] animate-pulse': t.status === 'in_progress',
-                'bg-[#d97706] text-[#1e0d04] border-[#78350f]': t.status === 'pending',
+                'bg-[#4f46e5] text-white border-[#312e81]': t.status === 'pending' && t.payload?.depends_on_task_id,
+                'bg-[#d97706] text-[#1e0d04] border-[#78350f]': t.status === 'pending' && !t.payload?.depends_on_task_id,
                 'bg-[#15803d] text-white border-[#052e16]': t.status === 'completed',
                 'bg-[#b91c1c] text-white border-[#450a0a]': t.status === 'failed',
                 'bg-[#57534e] text-white border-[#292524]': t.status === 'cancelled'
               }"
             >
-              {{ formatTaskStatus(t.status) }}
+              {{ t.status === 'pending' && t.payload?.depends_on_task_id ? `⛓️ AGUARDANDO #${t.payload.depends_on_task_id}` : formatTaskStatus(t.status) }}
             </span>
           </div>
 
@@ -598,7 +599,7 @@
                     ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.progress_percent)
                         ? jeffreyActivity.worker_state.progress_percent + '%'
                         : '65%')
-                    : '15%'
+                    : (t.payload?.depends_on_task_id ? '8%' : '15%')
                 }"
               ></div>
             </div>
@@ -608,7 +609,9 @@
                   ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.step)
                       ? jeffreyActivity.worker_state.step
                       : '⚙️ Worker processando no motor de IA...')
-                  : '⏳ Aguardando vez na fila do worker...'
+                  : (t.payload?.depends_on_task_id
+                      ? `⛓️ Aguardando o resultado da Tarefa #${t.payload.depends_on_task_id} para planejar automaticamente...`
+                      : '⏳ Aguardando vez na fila do worker...')
               }}
             </div>
           </div>
