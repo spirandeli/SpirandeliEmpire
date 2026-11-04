@@ -1,12 +1,18 @@
 <template>
-  <div class="flex h-screen bg-[#120a06] text-[#f7e6c4] overflow-hidden font-pixel-body select-none">
-    <!-- RPG Sidebar -->
-    <Sidebar />
+  <div
+    class="relative flex h-screen w-screen overflow-hidden select-none p-2.5 sm:p-3.5 gap-3 sm:gap-4 bg-[#1a2e12] bg-cover bg-center"
+    style="background-image: url('/assets/rpg-village-bg.jpg');"
+  >
+    <!-- Subtle warm vignette so UI panels pop clearly over the village -->
+    <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/25 z-0"></div>
 
-    <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-      <Header />
-      <main class="flex-1 overflow-y-auto p-6 bg-[#160c07] bg-[radial-gradient(#26140b_1px,transparent_1px)] [background-size:16px_16px]">
+    <!-- Left Column: Profile + RPG Sidebar + Bottom Jeffrey Status -->
+    <Sidebar class="relative z-20 shrink-0" />
+
+    <!-- Right Column: Top Server Bar + Main Content Area -->
+    <div class="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden gap-3">
+      <Header class="shrink-0" />
+      <main class="flex-1 overflow-y-auto pr-1 pb-6">
         <router-view />
       </main>
     </div>

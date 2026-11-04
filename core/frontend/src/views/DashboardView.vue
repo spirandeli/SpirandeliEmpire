@@ -1,235 +1,260 @@
 <template>
-  <div class="space-y-6 max-w-7xl mx-auto pb-10">
-    <!-- 1. TOP GUILD HALL BANNER & COMANDANTE PROFILE -->
-    <div class="pixel-wood p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-center space-x-4">
-        <div class="w-16 h-16 bg-[#160c07] border-4 border-[#5a381f] shadow-[inset_3px_3px_0_#0a0503,0_4px_0_#000] flex items-center justify-center text-3xl relative">
-          👑
-          <span class="absolute -bottom-2 -right-2 bg-[#d97706] text-[#1c0e05] border-2 border-[#120803] font-pixel-title text-[8px] px-1 py-0.5">
-            NV.30
-          </span>
-        </div>
+  <div class="space-y-4 max-w-[1400px]">
+    <!-- 1. TOP KPI PARCHMENT CARDS ROW (4 Cards) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+      <!-- KPI 1: Negócios no Ecossistema -->
+      <div class="rpg-kpi-frame rpg-rivets">
+        <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+              <!-- Mini bar chart icon -->
+              <span class="inline-flex items-end gap-0.5 h-3.5">
+                <span class="w-1 h-2 bg-[#2563eb] border border-[#1e0d04]"></span>
+                <span class="w-1 h-3 bg-[#3b82f6] border border-[#1e0d04]"></span>
+                <span class="w-1 h-3.5 bg-[#60a5fa] border border-[#1e0d04]"></span>
+              </span>
+              <span class="truncate">Negócios no Ecossistema</span>
+            </div>
 
-        <div>
-          <div class="flex items-center gap-2">
-            <h2 class="font-pixel-title text-sm sm:text-base text-[#fde68a] uppercase tracking-wider">
-              Feudo Central do Império
-            </h2>
-            <span class="text-[9px] font-pixel-title px-1.5 py-0.5 bg-[#15803d] text-[#dcfce7] border border-[#14532d]">
-              SISTEMA OPERACIONAL v3.0
-            </span>
+            <div class="text-3xl font-black text-[#1e0e04] leading-tight my-0.5 pl-1">
+              {{ displayBusinessesCount }}
+            </div>
+
+            <div class="text-[12px] font-extrabold text-[#4ade80] rpg-text-outline-sm tracking-wide">
+              Totalmente Isolados
+            </div>
           </div>
-          <p class="font-pixel-body text-xs text-[#d6b88d] mt-1">
-            SpirandeliEmpire OS • Comandante Soberano • Orquestração Ativa: Jeffrey AI
-          </p>
+
+          <img
+            src="/assets/sprites/kpi-businesses.png"
+            alt="Negócios"
+            class="w-14 h-12 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]"
+          />
         </div>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="flex items-center space-x-3">
-        <button
-          @click="fetchDashboardData"
-          :disabled="loading"
-          class="pixel-btn-wood py-2.5 px-3 flex items-center gap-1.5 text-xs"
-        >
-          <span :class="{'animate-spin': loading}">↻</span> ATUALIZAR TELEMETRIA
-        </button>
-        <router-link
-          to="/jeffrey"
-          class="pixel-btn-wood py-2.5 px-3 flex items-center gap-1.5 text-xs"
-        >
-          <span>🧙‍♂️</span> AUDIÊNCIA COM JEFFREY
-        </router-link>
-        <router-link
-          to="/factory"
-          class="pixel-btn-gold py-2.5 px-3 flex items-center gap-1.5 text-xs"
-        >
-          <span>⚒️</span> FORJAR NEGÓCIO
-        </router-link>
-      </div>
-    </div>
+      <!-- KPI 2: Orçamento Mensal -->
+      <div class="rpg-kpi-frame rpg-rivets">
+        <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+              <span class="w-3.5 h-3.5 rounded-full bg-[#fbbf24] border border-[#3a1e0b] inline-flex items-center justify-center text-[9px] font-black text-[#3a1e0b]">$</span>
+              <span class="truncate">Orçamento Mensal</span>
+            </div>
 
-    <!-- 2. TELEMETRY & SYSTEM HEALTH (CPU, RAM, DISK, BUDGET) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- 1. Infra HP (Status) -->
-      <div class="pixel-wood p-4">
-        <div class="flex justify-between items-center mb-1">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-sm">❤️</span>
-            <span class="font-pixel-title text-[9px] text-[#fca5a5]">HP INFRAESTRUTURA</span>
-          </div>
-          <span class="font-pixel-title text-[9px] text-[#ffffff]">100%</span>
-        </div>
-        <div class="pixel-bar-bg h-3.5 w-full">
-          <div class="pixel-bar-hp h-full w-[100%] transition-all duration-500"></div>
-        </div>
-        <div class="text-[10px] font-pixel-body text-[#d6b88d] mt-1.5 flex justify-between">
-          <span>{{ summary.active_businesses }} Negócios Ativos</span>
-          <span class="text-[#86efac]">● {{ summary.running_tasks }} Tarefas Rodando</span>
-        </div>
-      </div>
-
-      <!-- 2. CPU / RAM -->
-      <div class="pixel-wood p-4">
-        <div class="flex justify-between items-center mb-1">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-sm">⚡</span>
-            <span class="font-pixel-title text-[9px] text-[#86efac]">ENERGIA / RAM</span>
-          </div>
-          <span class="font-pixel-title text-[9px] text-[#ffffff]">{{ vps.memory?.percentage || 0 }}%</span>
-        </div>
-        <div class="pixel-bar-bg h-3.5 w-full">
-          <div class="pixel-bar-energy h-full transition-all duration-500" :style="{ width: (vps.memory?.percentage || 0) + '%' }"></div>
-        </div>
-        <div class="text-[10px] font-pixel-body text-[#d6b88d] mt-1.5 flex justify-between">
-          <span>CPU: {{ vps.cpu_percent || 0 }}%</span>
-          <span>Disco: {{ vps.disk?.percentage || 0 }}%</span>
-        </div>
-      </div>
-
-      <!-- 3. AI Gateway Status -->
-      <div class="pixel-wood p-4">
-        <div class="flex justify-between items-center mb-1">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-sm">🔮</span>
-            <span class="font-pixel-title text-[9px] text-[#67e8f9]">MANA DE IA</span>
-          </div>
-          <span class="font-pixel-title text-[9px] text-[#ffffff]">ONLINE</span>
-        </div>
-        <div class="pixel-bar-bg h-3.5 w-full">
-          <div class="pixel-bar-mana h-full w-[100%] transition-all duration-500"></div>
-        </div>
-        <div class="text-[10px] font-pixel-body text-[#d6b88d] mt-1.5 flex justify-between">
-          <span>Gemini + OpenAI + Llama</span>
-          <span class="text-[#38bdf8]">Híbrido</span>
-        </div>
-      </div>
-
-      <!-- 4. Budget Ceil R$ 200/month -->
-      <div class="pixel-wood p-4">
-        <div class="flex justify-between items-center mb-1">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-sm">🪙</span>
-            <span class="font-pixel-title text-[9px] text-[#fcd34d]">COFRE (R$ 200/MÊS)</span>
-          </div>
-          <span class="font-pixel-title text-[9px] text-[#f59e0b]">R$ {{ financials.budget?.current_spent_brl || '0.00' }}</span>
-        </div>
-        <div class="pixel-bar-bg h-3.5 w-full">
-          <div
-            class="pixel-bar-gold h-full transition-all duration-500"
-            :style="{ width: Math.min(100, financials.budget?.percentage_used || 0) + '%' }"
-          ></div>
-        </div>
-        <div class="text-[10px] font-pixel-body text-[#d6b88d] mt-1.5 flex justify-between">
-          <span>Restante: R$ {{ financials.budget?.remaining_brl || '200.00' }}</span>
-          <span :class="financials.budget?.warning_triggered ? 'text-red-400 font-bold' : 'text-[#86efac]'">
-            {{ financials.budget?.percentage_used || 0 }}% Usado
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. REAL BUSINESSES DIRECTORY -->
-    <div class="pixel-wood p-5">
-      <div class="flex justify-between items-center mb-4 border-b-2 border-[#3d2415] pb-2">
-        <div class="flex items-center space-x-2">
-          <span class="text-lg">📜</span>
-          <h3 class="font-pixel-title text-xs text-[#fde68a] uppercase">Feudos Digitais em Operação</h3>
-        </div>
-        <router-link to="/businesses" class="text-xs text-[#38bdf8] hover:underline font-pixel-body">
-          Ver Gerenciador Completo →
-        </router-link>
-      </div>
-
-      <div v-if="loading && businesses.length === 0" class="text-center py-8 text-[#d6b88d] text-xs">
-        Consultando banco de dados do Império...
-      </div>
-
-      <div v-else-if="businesses.length === 0" class="text-center py-8 text-[#d6b88d] text-xs">
-        Nenhum negócio digital cadastrado. Utilize o botão "FORJAR NEGÓCIO" para iniciar.
-      </div>
-
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div
-          v-for="biz in businesses"
-          :key="biz.id"
-          class="bg-[#120904] border-2 border-[#3d2415] p-3.5 flex flex-col justify-between shadow-[inset_2px_2px_0_#000]"
-        >
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-base">{{ getBusinessIcon(biz.category) }}</span>
-              <span
-                class="text-[8px] font-pixel-title px-1.5 py-0.5 border"
-                :class="biz.status === 'active' ? 'bg-[#14532d] text-[#86efac] border-[#22c55e]' : 'bg-[#78350f] text-[#fde68a] border-[#d97706]'"
-              >
-                {{ biz.status }}
+            <div class="leading-tight my-1 flex items-baseline gap-1 flex-wrap">
+              <span class="text-2xl sm:text-[26px] font-black text-[#fbbf24] rpg-text-outline">
+                R$ {{ formatBrl(financials.budget?.current_spent_brl ?? 0) }}
+              </span>
+              <span class="text-sm font-extrabold text-white rpg-text-outline-sm">
+                / R$ {{ financials.budget?.monthly_limit_brl ?? 200 }}
               </span>
             </div>
-            <h4 class="font-pixel-title text-[11px] text-[#fde68a]">{{ biz.name }}</h4>
-            <p class="font-pixel-body text-[11px] text-[#d6b88d] mt-1 line-clamp-2">
-              {{ biz.description }}
-            </p>
+
+            <div class="text-[11px] font-bold text-[#3b1f0b]">
+              Teto estrito de segurança
+            </div>
           </div>
 
-          <div class="mt-3 pt-2 border-t border-[#26140b] flex justify-between items-center text-[10px] font-pixel-body">
-            <span class="text-[#a16207]">Teto: R$ {{ biz.budget_limit_brl }}</span>
-            <span class="text-[#38bdf8]">{{ biz.tasks_count || 0 }} Tarefas</span>
+          <img
+            src="/assets/sprites/kpi-budget.png"
+            alt="Orçamento"
+            class="w-12 h-13 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]"
+          />
+        </div>
+      </div>
+
+      <!-- KPI 3: Receita Confirmada -->
+      <div class="rpg-kpi-frame rpg-rivets">
+        <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+              <span class="w-3.5 h-3.5 rounded-full bg-[#22c55e] border border-[#14532d] inline-flex items-center justify-center text-[9px] font-black text-white">✓</span>
+              <span class="truncate">Receita Confirmada</span>
+            </div>
+
+            <div class="text-2xl sm:text-[26px] font-black text-[#4ade80] rpg-text-outline leading-tight my-1">
+              R$ {{ formatBrl(financials.total_revenue_brl ?? 0) }}
+            </div>
+
+            <div class="text-[11px] font-bold text-[#3b1f0b]">
+              Sem projeções fictícias
+            </div>
           </div>
+
+          <img
+            src="/assets/sprites/kpi-revenue.png"
+            alt="Receita"
+            class="w-12 h-13 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]"
+          />
+        </div>
+      </div>
+
+      <!-- KPI 4: Consumo VPS -->
+      <div class="rpg-kpi-frame rpg-rivets">
+        <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+              <span class="w-3.5 h-3.5 rounded-full bg-[#38bdf8] border border-[#0c4a6e] inline-block"></span>
+              <span class="truncate">Consumo VPS</span>
+            </div>
+
+            <div class="text-2xl sm:text-[26px] font-black text-[#60a5fa] rpg-text-outline leading-tight my-1">
+              RAM {{ vps.memory?.percentage || 28 }}%
+            </div>
+
+            <div class="text-[11px] font-extrabold text-[#2b1507]">
+              CPU {{ vps.cpu_percent || 7.8 }}% • SSD {{ vps.disk?.percentage || 14 }}%
+            </div>
+          </div>
+
+          <img
+            src="/assets/sprites/kpi-vps.png"
+            alt="Consumo VPS"
+            class="w-13 h-12 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]"
+          />
         </div>
       </div>
     </div>
 
-    <!-- 4. RECENT TASKS & DECISIONS -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <!-- Recent Agent Tasks -->
-      <div class="pixel-wood p-4">
-        <div class="flex items-center space-x-2 mb-3 border-b-2 border-[#3d2415] pb-2">
-          <span class="text-base">⚔️</span>
-          <h3 class="font-pixel-title text-xs text-[#fde68a] uppercase">Tarefas Recentes dos Agentes</h3>
-        </div>
-        <div class="space-y-2 text-xs font-pixel-body">
-          <div
-            v-for="task in recentTasks"
-            :key="task.id"
-            class="p-2.5 bg-[#120904] border border-[#3d2415] flex items-center justify-between"
-          >
-            <div>
-              <div class="text-[#fde68a] font-semibold">{{ task.title }}</div>
-              <div class="text-[10px] text-[#a16207]">{{ task.agent_name }} • {{ task.type }}</div>
-            </div>
-            <span
-              class="text-[9px] px-1.5 py-0.5 border"
-              :class="task.status === 'completed' ? 'text-[#86efac] border-[#22c55e]' : 'text-[#fcd34d] border-[#d97706]'"
-            >
-              {{ task.status }}
-            </span>
-          </div>
-          <div v-if="recentTasks.length === 0" class="text-center py-4 text-[#a16207]">
-            Nenhuma tarefa executada recentemente.
-          </div>
-        </div>
+    <!-- 2. STRATEGIC BUSINESSES WOODEN BOARD -->
+    <div class="relative pt-3">
+      <!-- Raised Wooden Nameplate Tab (Top-Left) -->
+      <div class="inline-flex items-center gap-2.5 pixel-wood rpg-rivets px-4 py-1.5 ml-3 -mb-3 relative z-20">
+        <img
+          src="/assets/sprites/icon-shop.png"
+          alt="Loja"
+          class="w-7 h-6 object-contain"
+        />
+        <h2 class="font-extrabold text-sm sm:text-[15px] text-[#fff6e0] tracking-wide rpg-text-outline-sm">
+          Negócios Estratégicos Iniciais
+        </h2>
       </div>
 
-      <!-- Recent Decisions Audit -->
-      <div class="pixel-wood p-4">
-        <div class="flex items-center space-x-2 mb-3 border-b-2 border-[#3d2415] pb-2">
-          <span class="text-base">📜</span>
-          <h3 class="font-pixel-title text-xs text-[#fde68a] uppercase">Auditoria de Decisões de Jeffrey</h3>
-        </div>
-        <div class="space-y-2 text-xs font-pixel-body">
-          <div
-            v-for="dec in recentDecisions"
-            :key="dec.id"
-            class="p-2.5 bg-[#120904] border border-[#3d2415]"
-          >
-            <div class="flex justify-between items-center text-[10px] text-[#38bdf8]">
-              <span>{{ dec.agent_name }} ({{ dec.action_type }})</span>
-              <span class="text-[#a16207]">{{ dec.created_at ? new Date(dec.created_at).toLocaleTimeString() : '' }}</span>
-            </div>
-            <div class="text-[#d6b88d] mt-1">{{ dec.justification }}</div>
+      <!-- Main Wooden Container Frame -->
+      <div class="pixel-wood rpg-rivets p-3.5 pt-5">
+        <!-- Top Wooden Horizontal Beam Decoration -->
+        <div class="flex items-center justify-between mb-3 px-1">
+          <span class="text-[11px] text-[#d9bc8c] font-medium">
+            Pipelines operacionais isolados sob governança do Jeffrey AI
+          </span>
+          <div class="flex items-center gap-3">
+            <button
+              v-if="extraBusinesses.length > 0"
+              @click="showAllBusinesses = !showAllBusinesses"
+              class="text-[11px] font-bold text-[#fbbf24] hover:underline"
+            >
+              {{ showAllBusinesses ? 'Mostrar 4 Iniciais' : `+ ${extraBusinesses.length} Negócios Afiliados` }}
+            </button>
+            <router-link
+              to="/businesses"
+              class="text-[11px] font-bold text-[#fde68a] hover:text-white transition"
+            >
+              Gerenciar Todos →
+            </router-link>
           </div>
-          <div v-if="recentDecisions.length === 0" class="text-center py-4 text-[#a16207]">
-            Nenhum registro de auditoria no momento.
+        </div>
+
+        <!-- 4 Strategic Business Parchment Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div
+            v-for="card in strategicCards"
+            :key="card.slug"
+            @click="$router.push('/businesses')"
+            class="rpg-parchment-inner p-3.5 pt-3 flex flex-col justify-between cursor-pointer hover:brightness-[1.03] transition-all border-[3px] border-[#2b1507] shadow-[0_4px_0_#1c0c03]"
+          >
+            <div>
+              <!-- Top Ribbon Banner -->
+              <div class="text-center mb-3">
+                <span class="rpg-ribbon">
+                  {{ card.ribbon }}
+                </span>
+              </div>
+
+              <!-- Business Brand Icon + Name -->
+              <div class="flex items-center gap-2 mb-2">
+                <!-- Custom Brand Badge -->
+                <div
+                  v-if="card.badgeType === 'youtube'"
+                  class="w-8 h-6 rounded-[4px] bg-[#dc2626] border-2 border-[#2b1507] flex items-center justify-center text-white text-[10px] font-black shadow-sm shrink-0"
+                >
+                  ▶
+                </div>
+                <div
+                  v-else-if="card.badgeType === 'kdp'"
+                  class="w-7 h-7 rounded-[4px] bg-[#2b1507] text-[#fbbf24] flex flex-col items-center justify-center font-serif font-black text-lg leading-none shrink-0"
+                >
+                  <span>a</span>
+                </div>
+                <div
+                  v-else-if="card.badgeType === 'pdf'"
+                  class="w-7 h-8 rounded-[3px] bg-[#dc2626] border-2 border-[#2b1507] flex items-center justify-center text-white text-[9px] font-black tracking-tighter shrink-0"
+                >
+                  PDF
+                </div>
+                <div
+                  v-else
+                  class="w-8 h-7 rounded-[4px] bg-[#334155] border-2 border-[#1e293b] flex items-center justify-center text-white text-sm shrink-0"
+                >
+                  🖨️
+                </div>
+
+                <h3 class="font-extrabold text-[15px] text-[#1e0d04] leading-tight truncate">
+                  {{ card.name }}
+                </h3>
+              </div>
+
+              <!-- Business Description -->
+              <p class="text-[12px] text-[#3a1f0d] font-medium leading-snug min-h-[48px]">
+                {{ card.description }}
+              </p>
+
+              <!-- Divider Line -->
+              <div class="border-t border-[#b88746] my-2.5"></div>
+
+              <!-- Budget Ceiling & Isolated Storage Path -->
+              <div class="text-[11px] text-[#2b1507] font-semibold leading-snug">
+                <div>
+                  Teto: <span class="font-extrabold">R$ {{ formatBrl(card.budget_limit_brl) }}</span> |
+                </div>
+                <div class="text-[#4a2810] font-mono text-[10.5px] truncate">
+                  storage/{{ card.storage_path }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom Pixel-Art Scene Illustration -->
+            <div class="mt-3 pt-1 flex items-end justify-center h-14 overflow-hidden">
+              <img
+                :src="card.sprite"
+                :alt="card.name"
+                class="h-full w-auto object-contain"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Optional Expandable Row for Extra / Affiliate Businesses -->
+        <div
+          v-if="showAllBusinesses && extraBusinesses.length > 0"
+          class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3 pt-3 border-t-2 border-[#3b200e]"
+        >
+          <div
+            v-for="biz in extraBusinesses"
+            :key="biz.id || biz.slug"
+            @click="$router.push('/businesses')"
+            class="rpg-parchment-inner p-3 flex flex-col justify-between cursor-pointer hover:brightness-[1.03] transition border-2 border-[#2b1507]"
+          >
+            <div>
+              <div class="text-center mb-2">
+                <span class="rpg-ribbon">{{ biz.category || 'AFILIADOS' }}</span>
+              </div>
+              <h4 class="font-extrabold text-sm text-[#1e0d04]">{{ biz.name }}</h4>
+              <p class="text-[11px] text-[#3a1f0d] mt-1 line-clamp-2">{{ biz.description }}</p>
+            </div>
+            <div class="border-t border-[#b88746] mt-2 pt-1.5 text-[10.5px] font-semibold text-[#2b1507]">
+              Teto: R$ {{ formatBrl(biz.budget_limit_brl) }} | storage/{{ biz.storage_path }}
+            </div>
           </div>
         </div>
       </div>
@@ -238,24 +263,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const loading = ref(false)
+const showAllBusinesses = ref(false)
+
 const summary = ref({
-  total_businesses: 0,
-  active_businesses: 0,
+  total_businesses: 4,
+  active_businesses: 4,
   paused_businesses: 0,
   running_tasks: 0,
-  pending_approvals: 0,
-  total_projects: 0,
-  total_conversations: 0,
 })
 
 const financials = ref({
-  total_revenue_brl: '0.00',
-  total_expenses_brl: '0.00',
-  estimated_profit_brl: '0.00',
+  total_revenue_brl: 0,
+  total_expenses_brl: 0,
+  estimated_profit_brl: 0,
   budget: {
     monthly_limit_brl: 200,
     current_spent_brl: 0,
@@ -266,14 +290,81 @@ const financials = ref({
 })
 
 const vps = ref({
-  cpu_percent: 0,
-  memory: { percentage: 0, used_gb: 0, total_gb: 0 },
-  disk: { percentage: 0, used_gb: 0, total_gb: 0 },
+  cpu_percent: 7.8,
+  memory: { percentage: 28, used_gb: 1.1, total_gb: 4 },
+  disk: { percentage: 14, used_gb: 11, total_gb: 80 },
 })
 
 const businesses = ref([])
-const recentTasks = ref([])
-const recentDecisions = ref([])
+
+const defaultStrategicCards = [
+  {
+    slug: 'risada-exe',
+    ribbon: 'YOUTUBE DARK',
+    badgeType: 'youtube',
+    name: 'RISADA.exe',
+    description: 'Canal de histórias bíblicas com ilustrações originais, voz brasileira e roteiros fiéis.',
+    budget_limit_brl: 60,
+    storage_path: 'businesses/risada-exe',
+    sprite: '/assets/sprites/biz-youtube.png',
+  },
+  {
+    slug: 'kdp-factory',
+    ribbon: 'AMAZON KDP',
+    badgeType: 'kdp',
+    name: 'KDP Factory',
+    description: 'Pipeline automatizado de produção de eBooks, devocionais e estudos para Amazon KDP.',
+    budget_limit_brl: 50,
+    storage_path: 'businesses/kdp-factory',
+    sprite: '/assets/sprites/biz-kdp.png',
+  },
+  {
+    slug: 'digital-products',
+    ribbon: 'PDFS & PLANNERS',
+    badgeType: 'pdf',
+    name: 'Digital Products',
+    description: 'Estudos bíblicos em PDF, cronologias e materiais devocionais de alta conversão.',
+    budget_limit_brl: 60,
+    storage_path: 'businesses/digital-products',
+    sprite: '/assets/sprites/biz-pdf.png',
+  },
+  {
+    slug: 'printable-factory',
+    ribbon: 'PRINTABLES',
+    badgeType: 'printable',
+    name: 'Printable Factory',
+    description: 'Quadros, cartões e artes originais de alta resolução para impressão.',
+    budget_limit_brl: 30,
+    storage_path: 'businesses/printable-factory',
+    sprite: '/assets/sprites/biz-printable.png',
+  },
+]
+
+const strategicCards = computed(() => {
+  return defaultStrategicCards.map((def) => {
+    const found = businesses.value.find((b) => b.slug === def.slug)
+    if (!found) return def
+    return {
+      ...def,
+      budget_limit_brl: found.budget_limit_brl ?? def.budget_limit_brl,
+      storage_path: found.storage_path || def.storage_path,
+    }
+  })
+})
+
+const extraBusinesses = computed(() => {
+  const coreSlugs = new Set(defaultStrategicCards.map((c) => c.slug))
+  return businesses.value.filter((b) => !coreSlugs.has(b.slug))
+})
+
+const displayBusinessesCount = computed(() => {
+  return summary.value.total_businesses || 4
+})
+
+const formatBrl = (val) => {
+  const num = Number(val || 0)
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 const fetchDashboardData = async () => {
   loading.value = true
@@ -284,8 +375,6 @@ const fetchDashboardData = async () => {
       if (res.data.financials) financials.value = res.data.financials
       if (res.data.vps) vps.value = res.data.vps
       if (res.data.businesses) businesses.value = res.data.businesses
-      if (res.data.recent_tasks) recentTasks.value = res.data.recent_tasks
-      if (res.data.recent_decisions) recentDecisions.value = res.data.recent_decisions
     }
   } catch (err) {
     console.error('Falha ao obter telemetria do Dashboard:', err)
@@ -294,18 +383,10 @@ const fetchDashboardData = async () => {
   }
 }
 
-const getBusinessIcon = (category) => {
-  if (category?.includes('YouTube')) return '🎬'
-  if (category?.includes('KDP')) return '📖'
-  if (category?.includes('Digital')) return '🧪'
-  if (category?.includes('Printable')) return '🖼️'
-  return '📦'
-}
-
 let timer = null
 onMounted(() => {
   fetchDashboardData()
-  timer = setInterval(fetchDashboardData, 30000) // 30s auto-refresh
+  timer = setInterval(fetchDashboardData, 30000)
 })
 
 onUnmounted(() => {

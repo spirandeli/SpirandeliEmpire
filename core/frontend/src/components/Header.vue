@@ -1,73 +1,66 @@
 <template>
-  <header class="h-20 bg-[#1e1108] border-b-4 border-[#0e0704] flex items-center justify-between px-6 z-10 shadow-[0_4px_0_#080402]">
-    <!-- Left: Realm & Guild Info -->
-    <div class="flex items-center space-x-4">
-      <div class="flex items-center space-x-2 bg-[#120904] px-3 py-1.5 border-2 border-[#381e0e] shadow-[inset_2px_2px_0_#000]">
-        <span class="text-base">🏰</span>
-        <div class="leading-none">
-          <div class="text-[9px] font-pixel-title text-[#a16207]">REINO / SERVIDOR</div>
-          <div class="text-xs font-pixel-title text-[#fbbf24] mt-0.5">VPS IMPERIAL [ONLINE]</div>
+  <header class="flex items-center justify-between gap-3 z-20">
+    <!-- Left/Center: Server & Orchestration Wooden Banner -->
+    <div class="pixel-wood rpg-rivets px-3.5 py-2 flex items-center">
+      <div class="pixel-wood-inset px-3.5 py-1.5 flex flex-wrap items-center gap-3 text-xs sm:text-[13px]">
+        <!-- Server Info -->
+        <div class="flex items-center gap-2">
+          <!-- Pixel Server Rack Icon -->
+          <span class="inline-flex flex-col gap-0.5 bg-[#1e3a5f] border border-[#0b192c] px-1 py-0.5 rounded-[2px] shadow-inner">
+            <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
+            <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
+          </span>
+          <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Servidor:</span>
+          <span class="text-[#4ade80] font-extrabold rpg-text-outline-sm">VPS Ubuntu 24.04 LTS</span>
         </div>
-      </div>
 
-      <div class="hidden sm:flex items-center space-x-2 bg-[#120904] px-3 py-1.5 border-2 border-[#381e0e] shadow-[inset_2px_2px_0_#000]">
-        <span class="text-base">🧙‍♂️</span>
-        <div class="leading-none">
-          <div class="text-[9px] font-pixel-title text-[#0284c7]">MESTRE DA GUILDA</div>
-          <div class="text-xs font-pixel-title text-[#38bdf8] mt-0.5">JEFFREY AI v2.0</div>
+        <span class="text-[#85522d] font-bold hidden sm:inline">|</span>
+
+        <!-- Orchestration Info -->
+        <div class="hidden sm:flex items-center gap-2">
+          <span class="text-base leading-none drop-shadow">🐳</span>
+          <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Orquestração:</span>
+          <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">Docker Compose</span>
         </div>
       </div>
     </div>
 
-    <!-- Right: Stardew Valley Style Clock & Gold HUD -->
-    <div class="flex items-center space-x-3">
-      <!-- Stardew Clock & Season Widget -->
-      <div class="stardew-clock px-3 py-1.5 flex items-center space-x-3">
-        <div class="w-8 h-8 rounded bg-[#100804] border-2 border-[#452310] flex items-center justify-center text-lg shadow-[inset_1px_1px_0_#000]">
-          ☀️
-        </div>
-        <div class="leading-tight">
-          <div class="text-[8px] font-pixel-title text-[#fcd34d]">ANO 2026 • ESTAÇÃO 1</div>
-          <div class="text-xs font-pixel-title text-[#ffffff]">{{ currentTime }}</div>
-        </div>
-      </div>
+    <!-- Right: 3 RPG Square Control Buttons (Settings, Telemetry Chart, Power) -->
+    <div class="flex items-center gap-2">
+      <router-link
+        to="/vps"
+        class="pixel-btn-wood w-11 h-11 flex items-center justify-center text-xl"
+        title="Administração VPS & Configurações"
+      >
+        ⚙️
+      </router-link>
 
-      <!-- Gold Coin Purse (Stardew Valley / Graveyard Keeper Currency) -->
-      <div class="bg-[#100804] px-3 py-1.5 border-2 border-[#4a2810] shadow-[inset_2px_2px_0_#000] flex items-center space-x-2">
-        <span class="text-lg animate-bounce">🪙</span>
-        <div class="text-right">
-          <div class="text-[8px] font-pixel-title text-[#92400e]">BURSA REAL</div>
-          <div class="text-xs font-pixel-title text-[#f59e0b]">200 <span class="text-[9px] text-[#fde68a]">OURO/MÊS</span></div>
-        </div>
-      </div>
+      <router-link
+        to="/financial"
+        class="pixel-btn-wood w-11 h-11 flex items-center justify-center"
+        title="Métricas & Financeiro"
+      >
+        <!-- Pixel Bar Chart Icon -->
+        <span class="flex items-end gap-0.5 h-5">
+          <span class="w-1.5 h-2.5 bg-[#fcd34d] border border-[#1e0d04]"></span>
+          <span class="w-1.5 h-3.5 bg-[#fbbf24] border border-[#1e0d04]"></span>
+          <span class="w-1.5 h-5 bg-[#f59e0b] border border-[#1e0d04]"></span>
+        </span>
+      </router-link>
 
-      <!-- Player Avatar Frame -->
-      <div class="w-10 h-10 bg-[#3a2010] border-2 border-[#120803] shadow-[inset_2px_2px_0_#6d3e1e,0_2px_0_#000] flex items-center justify-center text-lg cursor-pointer hover:bg-[#4a2a16] transition" title="Comandante do Império">
-        👑
-      </div>
+      <button
+        @click="reloadApp"
+        class="pixel-btn-red w-11 h-11 flex items-center justify-center text-lg font-black"
+        title="Recarregar Sistema"
+      >
+        ⏻
+      </button>
     </div>
   </header>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-
-const currentTime = ref('14:00')
-
-const updateClock = () => {
-  const now = new Date()
-  const hours = String(now.getHours()).padStart(2, '0')
-  const minutes = String(now.getMinutes()).padStart(2, '0')
-  currentTime.value = `${hours}:${minutes}`
+const reloadApp = () => {
+  window.location.reload()
 }
-
-let timer = null
-onMounted(() => {
-  updateClock()
-  timer = setInterval(updateClock, 1000)
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
 </script>

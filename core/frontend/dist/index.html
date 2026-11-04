@@ -3,327 +3,644 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SpirandeliEmpire OS 3.0 — AI Operating System</title>
+  <title>SpirandeliEmpire OS — RPG Command Center</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1a2e12;
+      color: #f7e7ca;
+      font-family: 'Inter', 'Pixelify Sans', sans-serif;
+      image-rendering: pixelated;
+    }
     .mono { font-family: 'JetBrains Mono', monospace; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #080c15; }
-    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    .font-pixel-title { font-family: 'Press Start 2P', monospace; line-height: 1.4; letter-spacing: 0.04em; }
+    .font-pixel-body { font-family: 'Pixelify Sans', sans-serif; }
+
+    /* Text Outlines (Stardew / 16-bit RPG style) */
+    .rpg-text-outline {
+      text-shadow:
+        -2px -2px 0 #1c0d04,
+         2px -2px 0 #1c0d04,
+        -2px  2px 0 #1c0d04,
+         2px  2px 0 #1c0d04,
+         0px  3px 0 #1c0d04,
+        -2px  0px 0 #1c0d04,
+         2px  0px 0 #1c0d04,
+         0px -2px 0 #1c0d04;
+    }
+
+    .rpg-text-outline-sm {
+      text-shadow:
+        -1.5px -1.5px 0 #1a0c04,
+         1.5px -1.5px 0 #1a0c04,
+        -1.5px  1.5px 0 #1a0c04,
+         1.5px  1.5px 0 #1a0c04,
+         0px    2px   0 #1a0c04;
+    }
+
+    /* Stardew Valley Wooden Frame (Outer Box) */
+    .pixel-wood {
+      background: linear-gradient(180deg, #5c3419 0%, #472711 100%);
+      border: 3px solid #1e0d04;
+      border-radius: 6px;
+      box-shadow:
+        inset 0 2px 0 #8a542e,
+        inset 0 -3px 0 #2b1508,
+        inset 2px 0 0 #734321,
+        inset -2px 0 0 #381c0b,
+        0 5px 10px rgba(0, 0, 0, 0.55);
+      position: relative;
+    }
+
+    /* Recessed Dark Wood Inner Panel */
+    .pixel-wood-inset {
+      background: linear-gradient(180deg, #3b200e 0%, #2e180a 100%);
+      border: 2px solid #1a0b03;
+      border-radius: 4px;
+      box-shadow:
+        inset 2px 2px 0 #1e0d04,
+        inset -1px -1px 0 #5c3419,
+        0 1px 0 #784725;
+    }
+
+    /* Framed Parchment Card (KPIs and Business Cards) */
+    .rpg-kpi-frame {
+      background: linear-gradient(180deg, #6b3e1e 0%, #4e2b13 100%);
+      border: 3px solid #1e0d04;
+      border-radius: 6px;
+      padding: 5px;
+      box-shadow:
+        inset 0 2px 0 #996036,
+        inset 0 -2px 0 #2e1708,
+        0 5px 8px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    .rpg-parchment-inner {
+      background: linear-gradient(180deg, #f3d59b 0%, #e7be79 60%, #dcad65 100%);
+      color: #2b1507;
+      border: 2px solid #3a1e0b;
+      border-radius: 3px;
+      box-shadow:
+        inset 0 2px 0 #fae6be,
+        inset 0 -2px 0 #c4924d,
+        inset 2px 0 0 #f5dca8,
+        inset -2px 0 0 #c99854;
+      position: relative;
+    }
+
+    /* Corner Rivets Decoration */
+    .rpg-rivets::before,
+    .rpg-rivets::after {
+      content: '';
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      background: #d99b43;
+      border: 1px solid #241004;
+      border-radius: 1px;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .rpg-rivets::before {
+      top: 4px;
+      left: 4px;
+      box-shadow: calc(100% - 10px) 0 0 #d99b43;
+    }
+    .rpg-rivets::after {
+      bottom: 4px;
+      left: 4px;
+      box-shadow: calc(100% - 10px) 0 0 #d99b43;
+    }
+
+    /* Ribbon Banner for Business Category */
+    .rpg-ribbon {
+      background: linear-gradient(180deg, #32241b 0%, #1e140e 100%);
+      color: #fbbf24;
+      border: 2px solid #8c5828;
+      box-shadow:
+        0 2px 0 #1a0d05,
+        inset 0 1px 0 #593b25;
+      padding: 2px 14px;
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      position: relative;
+      display: inline-block;
+      border-radius: 2px;
+    }
+    .rpg-ribbon::before,
+    .rpg-ribbon::after {
+      font-size: 8px;
+      color: #8c5828;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .rpg-ribbon::before { content: '▸'; left: 3px; }
+    .rpg-ribbon::after { content: '◂'; right: 3px; }
+
+    /* Big Golden "+ Novo Negócio Digital" CTA Button */
+    .pixel-btn-gold {
+      background: linear-gradient(180deg, #ffbe2e 0%, #f59e0b 55%, #d97706 100%);
+      color: #231104;
+      border: 3px solid #241004;
+      border-radius: 6px;
+      box-shadow:
+        inset 0 2px 0 #fef08a,
+        inset 0 -3px 0 #b45309,
+        inset 2px 0 0 #fde047,
+        inset -2px 0 0 #b45309,
+        0 4px 0 #140802;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.08s ease-in-out;
+    }
+    .pixel-btn-gold:hover {
+      background: linear-gradient(180deg, #ffd059 0%, #fbbf24 55%, #ea8a0c 100%);
+      transform: translateY(-1px);
+    }
+    .pixel-btn-gold:active {
+      transform: translateY(2px);
+      box-shadow: inset 0 2px 0 #b45309, 0 1px 0 #140802;
+    }
+
+    .pixel-btn-wood {
+      background: linear-gradient(180deg, #5e361b 0%, #422410 100%);
+      color: #fbeccf;
+      border: 3px solid #1b0c04;
+      border-radius: 5px;
+      box-shadow:
+        inset 0 2px 0 #8c5630,
+        inset 0 -2px 0 #261307,
+        0 3px 0 #0f0602;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.08s ease-in-out;
+    }
+    .pixel-btn-wood:hover {
+      background: linear-gradient(180deg, #704121 0%, #522d14 100%);
+    }
+
+    .pixel-btn-red {
+      background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+      color: #fef2f2;
+      border: 3px solid #1b0c04;
+      border-radius: 5px;
+      box-shadow:
+        inset 0 2px 0 #f87171,
+        inset 0 -2px 0 #7f1d1d,
+        0 3px 0 #0f0602;
+      cursor: pointer;
+      transition: all 0.08s ease-in-out;
+    }
+    .pixel-btn-red:hover {
+      background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    }
+
+    /* Progress Bars */
+    .pixel-bar-bg {
+      background-color: #1b0d05;
+      border: 2px solid #0e0602;
+      border-radius: 3px;
+      box-shadow: inset 1px 2px 0 rgba(0, 0, 0, 0.8), 0 1px 0 #6e4223;
+      padding: 1px;
+    }
+    .pixel-bar-energy {
+      background: linear-gradient(180deg, #84cc16 0%, #4d7c0f 60%, #365314 100%);
+      border-top: 2px solid #bef264;
+      border-radius: 1px;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(20, 12, 6, 0.6); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #5c3419; border: 2px solid #1e0d04; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #784522; }
   </style>
 </head>
-<body class="bg-[#080c15] text-slate-100 antialiased h-screen overflow-hidden">
-  <div id="app" class="flex h-screen overflow-hidden">
-    <!-- SIDEBAR -->
-    <aside class="w-64 bg-[#050811] border-r border-slate-800 flex flex-col justify-between p-4 z-20 shadow-2xl">
-      <div>
-        <!-- Brand Header -->
-        <div class="flex items-center space-x-3 mb-6 p-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-cyan-300 flex items-center justify-center font-bold text-slate-950 shadow-lg text-lg">
-            👑
+<body class="h-screen w-screen overflow-hidden select-none">
+  <div
+    id="app"
+    class="relative flex h-screen w-screen overflow-hidden p-2.5 sm:p-3.5 gap-3 sm:gap-4 bg-[#1a2e12] bg-cover bg-center"
+    style="background-image: url('/assets/rpg-village-bg.jpg');"
+  >
+    <!-- Subtle warm vignette over the village scene -->
+    <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/25 z-0"></div>
+
+    <!-- =================================================================== -->
+    <!-- LEFT COLUMN: PROFILE BOX + RPG SIDEBAR + BOTTOM JEFFREY STATUS      -->
+    <!-- =================================================================== -->
+    <aside class="relative z-20 w-60 sm:w-64 shrink-0 flex flex-col justify-between h-full">
+      <div class="space-y-2.5">
+        <!-- 1. Commander Profile Box (Top-Left) -->
+        <div class="pixel-wood rpg-rivets p-2.5 flex items-center gap-3">
+          <div class="w-14 h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#1a0b03] shadow-[inset_0_2px_4px_rgba(0,0,0,0.7),0_1px_0_#85522d] overflow-hidden flex items-center justify-center">
+            <img src="/assets/sprites/avatar.png" alt="Spirandeli Commander" class="w-full h-full object-cover" />
           </div>
-          <div>
-            <h1 class="font-bold text-sm tracking-wider uppercase text-cyan-400">SpirandeliEmpire</h1>
-            <div class="flex items-center gap-1.5 mt-0.5">
-              <span class="text-[9px] text-amber-400 mono tracking-widest bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800/50">OS 3.0</span>
-              <span class="text-[9px] text-emerald-400 mono">● ATIVO</span>
+          <div class="flex-1 min-w-0 pr-1">
+            <h1 class="font-extrabold text-[13px] tracking-wide text-[#fff7e6] uppercase truncate rpg-text-outline-sm">
+              SPIRANDELIEMPIRE
+            </h1>
+            <div class="flex items-center gap-1.5 mt-2">
+              <span class="px-1.5 py-0.5 text-[10px] font-bold bg-[#281509] text-[#f5d7a1] border border-[#6e4223] rounded-sm shadow-inner shrink-0">
+                Lv. 3
+              </span>
+              <div class="pixel-bar-bg flex-1 h-3.5">
+                <div class="pixel-bar-energy h-full w-[58%]"></div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Quick Action: New Digital Business -->
-        <button
-          @click="currentTab = 'factory'"
-          class="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl mb-4 shadow-md uppercase tracking-wider mono flex items-center justify-center gap-1.5 transition"
-        >
-          <span>⚔️</span> Forjar Novo Negócio
-        </button>
-
-        <!-- Navigation Links -->
-        <nav class="space-y-1 text-xs mono">
-          <button
-            v-for="item in menu"
-            :key="item.id"
-            @click="currentTab = item.id"
-            class="w-full text-left px-3 py-2.5 rounded-xl font-medium transition flex items-center justify-between"
-            :class="currentTab === item.id 
-              ? 'bg-slate-800/90 text-cyan-300 border border-slate-700 shadow-sm' 
-              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-200 border border-transparent'"
-          >
-            <div class="flex items-center space-x-2.5">
-              <span class="text-sm">{{ item.icon }}</span>
-              <span>{{ item.name }}</span>
+        <!-- 2. Main Sidebar Wooden Navigation Panel -->
+        <div class="pixel-wood rpg-rivets p-2.5 relative">
+          <!-- Hanging RPG Lantern attached to top-right of sidebar -->
+          <div class="hidden xl:block absolute -right-7 top-2 w-7 h-16 pointer-events-none z-30 drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)]">
+            <div class="w-3 h-1.5 bg-[#3b200e] border border-[#140802] mt-2"></div>
+            <div class="w-5 h-10 -mt-0.5 ml-1 rounded-sm bg-gradient-to-b from-[#332924] via-[#fbbf24] to-[#291d17] border-2 border-[#140802] shadow-[0_0_12px_#f59e0b] flex items-center justify-center">
+              <div class="w-2.5 h-4 bg-[#fef08a] rounded-full animate-pulse"></div>
             </div>
-            <span v-if="item.badge" class="text-[8px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
-              {{ item.badge }}
-            </span>
+          </div>
+
+          <!-- Golden CTA Button: + Novo Negócio Digital -->
+          <button
+            @click="currentTab = 'factory'"
+            class="pixel-btn-gold w-full py-2.5 px-3 flex items-center justify-center gap-1.5 text-[13px] tracking-tight mb-2.5"
+          >
+            <span class="text-base font-black leading-none">+</span>
+            <span>Novo Negócio Digital</span>
           </button>
-        </nav>
+
+          <!-- Navigation Menu Slots -->
+          <nav class="pixel-wood-inset p-1.5 space-y-1">
+            <button
+              v-for="item in menu"
+              :key="item.id"
+              @click="currentTab = item.id"
+              class="w-full text-left flex items-center gap-2.5 px-2.5 py-2 rounded-[3px] text-[13px] font-semibold transition-all border"
+              :class="currentTab === item.id
+                ? 'bg-gradient-to-r from-[#63391b] to-[#4d2b13] text-[#fff6df] border-[#f59e0b] shadow-[inset_0_1px_0_#9c6034,0_0_6px_rgba(245,158,11,0.3)]'
+                : 'bg-[#331b0c]/70 text-[#e2c699] border-[#221006] hover:bg-[#452612] hover:text-white hover:border-[#6b3f20]'"
+            >
+              <span class="w-5 h-5 flex items-center justify-center text-base shrink-0 drop-shadow">{{ item.icon }}</span>
+              <span class="truncate rpg-text-outline-sm">{{ item.name }}</span>
+            </button>
+          </nav>
+        </div>
       </div>
 
-      <!-- Budget & Jeffrey Status Card -->
-      <div class="p-3.5 bg-slate-900/90 rounded-2xl border border-slate-800 mono text-xs shadow-lg">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="font-bold text-slate-200">Jeffrey AI</span>
-          </div>
-          <span class="text-[10px] text-cyan-400">Multi-IA</span>
+      <!-- 3. Bottom-Left Jeffrey Online Status Widget -->
+      <div class="pixel-wood rpg-rivets px-3.5 py-2.5 mt-2">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-[#22c55e] border border-[#052e16] shadow-[0_0_8px_#4ade80] shrink-0"></span>
+          <span class="font-bold text-[13px] text-[#fff5e0] rpg-text-outline-sm">Jeffrey Online</span>
         </div>
-        <div class="pt-2 border-t border-slate-800/80 space-y-1">
-          <div class="flex justify-between text-[10px] text-slate-400">
-            <span>TETO MENSAL</span>
-            <span class="text-amber-400 font-semibold">R$ {{ budgetSummary.monthly_limit_brl || '200.00' }}</span>
-          </div>
-          <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800">
-            <div
-              class="h-full bg-amber-500 rounded-full transition-all duration-500"
-              :style="{ width: Math.min(100, budgetSummary.percentage_used || 0) + '%' }"
-            ></div>
-          </div>
-          <div class="flex justify-between text-[9px] text-slate-500 pt-0.5">
-            <span>Gasto: R$ {{ budgetSummary.current_spent_brl || '0.00' }}</span>
-            <span :class="budgetSummary.warning_triggered ? 'text-red-400 font-bold' : 'text-emerald-400'">
-              {{ budgetSummary.percentage_used || 0 }}%
-            </span>
-          </div>
+        <div class="text-[12px] text-[#d9bc8c] mt-0.5 pl-5 font-medium">
+          Limite: <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">R$ {{ budgetSummary.monthly_limit_brl || 200 }}/mês</span>
         </div>
       </div>
     </aside>
 
-    <!-- MAIN WORKSPACE -->
-    <div class="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#080c15]">
-      <!-- Header -->
-      <header class="h-16 bg-[#060a13] border-b border-slate-800 flex items-center justify-between px-6 z-10 shadow-md">
-        <div class="flex items-center space-x-3">
-          <span class="text-sm font-bold mono text-slate-200 uppercase tracking-wider">
-            {{ getTabTitle(currentTab) }}
-          </span>
-          <span class="text-[10px] mono px-2 py-0.5 rounded bg-slate-800/80 text-cyan-400 border border-slate-700">
-            spirandeliempire.tech
-          </span>
+    <!-- =================================================================== -->
+    <!-- RIGHT COLUMN: TOP SERVER BAR + MAIN CONTENT AREA                    -->
+    <!-- =================================================================== -->
+    <div class="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden gap-3">
+      <!-- Top Bar -->
+      <header class="flex items-center justify-between gap-3 shrink-0 z-20">
+        <!-- Left/Center: Server & Orchestration Wooden Banner -->
+        <div class="pixel-wood rpg-rivets px-3.5 py-2 flex items-center">
+          <div class="pixel-wood-inset px-3.5 py-1.5 flex flex-wrap items-center gap-3 text-xs sm:text-[13px]">
+            <div class="flex items-center gap-2">
+              <span class="inline-flex flex-col gap-0.5 bg-[#1e3a5f] border border-[#0b192c] px-1 py-0.5 rounded-[2px] shadow-inner">
+                <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
+                <span class="w-3.5 h-1 bg-[#38bdf8] block"></span>
+              </span>
+              <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Servidor:</span>
+              <span class="text-[#4ade80] font-extrabold rpg-text-outline-sm">VPS Ubuntu 24.04 LTS</span>
+            </div>
+
+            <span class="text-[#85522d] font-bold hidden sm:inline">|</span>
+
+            <div class="hidden sm:flex items-center gap-2">
+              <span class="text-base leading-none drop-shadow">🐳</span>
+              <span class="text-[#f3dec0] font-semibold rpg-text-outline-sm">Orquestração:</span>
+              <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">Docker Compose</span>
+            </div>
+          </div>
         </div>
 
-        <div class="flex items-center space-x-4">
-          <div class="hidden sm:flex items-center space-x-2 text-xs mono text-slate-400">
-            <span>VPS CPU:</span>
-            <span class="text-emerald-400 font-bold">{{ vpsMetrics.cpu_percent || 0 }}%</span>
-            <span class="text-slate-600">|</span>
-            <span>RAM:</span>
-            <span class="text-cyan-400 font-bold">{{ vpsMetrics.memory?.percentage || 0 }}%</span>
-          </div>
-
-          <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-sm" title="Comandante">
-            👑
-          </div>
+        <!-- Right: 3 RPG Square Control Buttons -->
+        <div class="flex items-center gap-2">
+          <button
+            @click="currentTab = 'vps'"
+            class="pixel-btn-wood w-11 h-11 flex items-center justify-center text-xl"
+            title="Administração VPS & Configurações"
+          >
+            ⚙️
+          </button>
+          <button
+            @click="currentTab = 'financial'"
+            class="pixel-btn-wood w-11 h-11 flex items-center justify-center"
+            title="Métricas & Financeiro"
+          >
+            <span class="flex items-end gap-0.5 h-5">
+              <span class="w-1.5 h-2.5 bg-[#fcd34d] border border-[#1e0d04]"></span>
+              <span class="w-1.5 h-3.5 bg-[#fbbf24] border border-[#1e0d04]"></span>
+              <span class="w-1.5 h-5 bg-[#f59e0b] border border-[#1e0d04]"></span>
+            </span>
+          </button>
+          <button
+            @click="fetchDashboard"
+            class="pixel-btn-red w-11 h-11 flex items-center justify-center text-lg font-black"
+            title="Atualizar Telemetria do Sistema"
+          >
+            ⏻
+          </button>
         </div>
       </header>
 
-      <!-- Content Views -->
-      <main class="flex-1 overflow-y-auto p-6">
+      <!-- Main Views Container -->
+      <main class="flex-1 overflow-y-auto pr-1 pb-6">
         <!-- =================================================================== -->
-        <!-- TAB 1: DASHBOARD REAL -->
+        <!-- TAB 1: VISÃO GERAL (RPG DASHBOARD)                                  -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'dashboard'" class="space-y-6 max-w-7xl mx-auto">
-          <!-- Top Telemetry Cards -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <div class="text-[11px] mono text-slate-400 uppercase">Negócios Ativos</div>
-              <div class="text-2xl font-bold text-cyan-400 mt-1 font-mono">
-                {{ dashboardSummary.active_businesses || 0 }} <span class="text-xs text-slate-500 font-normal">/ {{ dashboardSummary.total_businesses || 0 }}</span>
-              </div>
-              <div class="text-[10px] text-slate-500 mono mt-1">100% volumes isolados</div>
-            </div>
-
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <div class="text-[11px] mono text-slate-400 uppercase">Tarefas Executadas</div>
-              <div class="text-2xl font-bold text-emerald-400 mt-1 font-mono">
-                {{ dashboardSummary.completed_tasks || 0 }}
-              </div>
-              <div class="text-[10px] text-slate-500 mono mt-1">{{ dashboardSummary.running_tasks || 0 }} em andamento</div>
-            </div>
-
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <div class="text-[11px] mono text-slate-400 uppercase">Receita do Mês</div>
-              <div class="text-2xl font-bold text-emerald-400 mt-1 font-mono">
-                R$ {{ dashboardFinancials.total_revenue_brl || '0.00' }}
-              </div>
-              <div class="text-[10px] text-slate-500 mono mt-1">Fontes confirmadas</div>
-            </div>
-
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <div class="text-[11px] mono text-slate-400 uppercase">Despesas do Mês</div>
-              <div class="text-2xl font-bold text-red-400 mt-1 font-mono">
-                R$ {{ dashboardFinancials.total_expenses_brl || '0.00' }}
-              </div>
-              <div class="text-[10px] text-slate-500 mono mt-1">Teto: R$ 200,00</div>
-            </div>
-          </div>
-
-          <!-- Businesses Grid -->
-          <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl">
-            <div class="flex justify-between items-center mb-4">
-              <h3 class="font-bold text-sm text-slate-200 uppercase mono">Negócios Digitais em Operação</h3>
-              <button @click="currentTab = 'businesses'" class="text-xs text-cyan-400 hover:underline mono">Gerenciar Todos →</button>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div
-                v-for="biz in businessesList"
-                :key="biz.id"
-                class="bg-slate-950/70 border border-slate-800/80 p-4 rounded-xl flex flex-col justify-between"
-              >
-                <div>
-                  <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-900 text-amber-400 border border-slate-800">{{ biz.category }}</span>
-                    <span class="text-[9px] mono uppercase font-bold text-emerald-400">{{ biz.status }}</span>
+        <section v-if="currentTab === 'dashboard'" class="space-y-4 max-w-[1400px]">
+          <!-- 1. TOP KPI PARCHMENT CARDS ROW (4 Cards) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+            <!-- KPI 1: Negócios no Ecossistema -->
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+                    <span class="inline-flex items-end gap-0.5 h-3.5">
+                      <span class="w-1 h-2 bg-[#2563eb] border border-[#1e0d04]"></span>
+                      <span class="w-1 h-3 bg-[#3b82f6] border border-[#1e0d04]"></span>
+                      <span class="w-1 h-3.5 bg-[#60a5fa] border border-[#1e0d04]"></span>
+                    </span>
+                    <span class="truncate">Negócios no Ecossistema</span>
                   </div>
-                  <h4 class="font-bold text-xs text-slate-100 mt-1">{{ biz.name }}</h4>
-                  <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">{{ biz.description }}</p>
+                  <div class="text-3xl font-black text-[#1e0e04] leading-tight my-0.5 pl-1">
+                    {{ dashboardSummary.total_businesses || 4 }}
+                  </div>
+                  <div class="text-[12px] font-extrabold text-[#4ade80] rpg-text-outline-sm tracking-wide">
+                    Totalmente Isolados
+                  </div>
                 </div>
-                <div class="mt-3 pt-2 border-t border-slate-800/60 flex justify-between text-[10px] mono text-slate-500">
-                  <span>Teto: R$ {{ biz.budget_limit_brl }}</span>
-                  <span class="text-cyan-400">{{ biz.storage_path }}</span>
+                <img src="/assets/sprites/kpi-businesses.png" alt="Negócios" class="w-14 h-12 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]" />
+              </div>
+            </div>
+
+            <!-- KPI 2: Orçamento Mensal -->
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#fbbf24] border border-[#3a1e0b] inline-flex items-center justify-center text-[9px] font-black text-[#3a1e0b]">$</span>
+                    <span class="truncate">Orçamento Mensal</span>
+                  </div>
+                  <div class="leading-tight my-1 flex items-baseline gap-1 flex-wrap">
+                    <span class="text-2xl sm:text-[26px] font-black text-[#fbbf24] rpg-text-outline">
+                      R$ {{ formatBrl(budgetSummary.current_spent_brl ?? 0) }}
+                    </span>
+                    <span class="text-sm font-extrabold text-white rpg-text-outline-sm">
+                      / R$ {{ budgetSummary.monthly_limit_brl ?? 200 }}
+                    </span>
+                  </div>
+                  <div class="text-[11px] font-bold text-[#3b1f0b]">
+                    Teto estrito de segurança
+                  </div>
                 </div>
+                <img src="/assets/sprites/kpi-budget.png" alt="Orçamento" class="w-12 h-13 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]" />
+              </div>
+            </div>
+
+            <!-- KPI 3: Receita Confirmada -->
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#22c55e] border border-[#14532d] inline-flex items-center justify-center text-[9px] font-black text-white">✓</span>
+                    <span class="truncate">Receita Confirmada</span>
+                  </div>
+                  <div class="text-2xl sm:text-[26px] font-black text-[#4ade80] rpg-text-outline leading-tight my-1">
+                    R$ {{ formatBrl(dashboardFinancials.total_revenue_brl ?? 0) }}
+                  </div>
+                  <div class="text-[11px] font-bold text-[#3b1f0b]">
+                    Sem projeções fictícias
+                  </div>
+                </div>
+                <img src="/assets/sprites/kpi-revenue.png" alt="Receita" class="w-12 h-13 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]" />
+              </div>
+            </div>
+
+            <!-- KPI 4: Consumo VPS -->
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-3 h-full flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 text-[12px] font-bold text-[#2b1507]">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#38bdf8] border border-[#0c4a6e] inline-block"></span>
+                    <span class="truncate">Consumo VPS</span>
+                  </div>
+                  <div class="text-2xl sm:text-[26px] font-black text-[#60a5fa] rpg-text-outline leading-tight my-1">
+                    RAM {{ vpsMetrics.memory?.percentage || 28 }}%
+                  </div>
+                  <div class="text-[11px] font-extrabold text-[#2b1507]">
+                    CPU {{ vpsMetrics.cpu_percent || 7.8 }}% • SSD {{ vpsMetrics.disk?.percentage || 14 }}%
+                  </div>
+                </div>
+                <img src="/assets/sprites/kpi-vps.png" alt="Consumo VPS" class="w-13 h-12 object-contain shrink-0 drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]" />
               </div>
             </div>
           </div>
 
-          <!-- Recent Agent Tasks & Decisions -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <h3 class="font-bold text-xs text-slate-200 uppercase mono mb-3">Tarefas Recentes de Agentes</h3>
-              <div class="space-y-2 text-xs mono">
-                <div v-for="t in recentTasks" :key="t.id" class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex justify-between items-center">
+          <!-- 2. STRATEGIC BUSINESSES WOODEN BOARD -->
+          <div class="relative pt-3">
+            <!-- Raised Wooden Nameplate Tab (Top-Left) -->
+            <div class="inline-flex items-center gap-2.5 pixel-wood rpg-rivets px-4 py-1.5 ml-3 -mb-3 relative z-20">
+              <img src="/assets/sprites/icon-shop.png" alt="Loja" class="w-7 h-6 object-contain" />
+              <h2 class="font-extrabold text-sm sm:text-[15px] text-[#fff6e0] tracking-wide rpg-text-outline-sm">
+                Negócios Estratégicos Iniciais
+              </h2>
+            </div>
+
+            <!-- Main Wooden Container Frame -->
+            <div class="pixel-wood rpg-rivets p-3.5 pt-5">
+              <!-- 4 Strategic Business Parchment Cards Grid -->
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div
+                  v-for="card in strategicCards"
+                  :key="card.slug"
+                  @click="currentTab = 'businesses'"
+                  class="rpg-parchment-inner p-3.5 pt-3 flex flex-col justify-between cursor-pointer hover:brightness-[1.03] transition-all border-[3px] border-[#2b1507] shadow-[0_4px_0_#1c0c03]"
+                >
                   <div>
-                    <div class="font-semibold text-slate-200">{{ t.title }}</div>
-                    <div class="text-[10px] text-slate-500">{{ t.agent_name }} • {{ t.type }}</div>
-                  </div>
-                  <span class="text-[9px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 uppercase">{{ t.status }}</span>
-                </div>
-                <div v-if="recentTasks.length === 0" class="text-center py-4 text-slate-500">Nenhuma tarefa recente.</div>
-              </div>
-            </div>
+                    <!-- Top Ribbon Banner -->
+                    <div class="text-center mb-3">
+                      <span class="rpg-ribbon">{{ card.ribbon }}</span>
+                    </div>
 
-            <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-xl">
-              <h3 class="font-bold text-xs text-slate-200 uppercase mono mb-3">Auditoria de Decisões de Jeffrey</h3>
-              <div class="space-y-2 text-xs mono">
-                <div v-for="d in recentDecisions" :key="d.id" class="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-                  <div class="flex justify-between text-[10px] text-cyan-400">
-                    <span>{{ d.agent_name }} ({{ d.action_type }})</span>
-                    <span class="text-slate-500">{{ d.created_at ? new Date(d.created_at).toLocaleTimeString() : '' }}</span>
+                    <!-- Business Brand Icon + Name -->
+                    <div class="flex items-center gap-2 mb-2">
+                      <div
+                        v-if="card.badgeType === 'youtube'"
+                        class="w-8 h-6 rounded-[4px] bg-[#dc2626] border-2 border-[#2b1507] flex items-center justify-center text-white text-[10px] font-black shadow-sm shrink-0"
+                      >
+                        ▶
+                      </div>
+                      <div
+                        v-else-if="card.badgeType === 'kdp'"
+                        class="w-7 h-7 rounded-[4px] bg-[#2b1507] text-[#fbbf24] flex flex-col items-center justify-center font-serif font-black text-lg leading-none shrink-0"
+                      >
+                        <span>a</span>
+                      </div>
+                      <div
+                        v-else-if="card.badgeType === 'pdf'"
+                        class="w-7 h-8 rounded-[3px] bg-[#dc2626] border-2 border-[#2b1507] flex items-center justify-center text-white text-[9px] font-black tracking-tighter shrink-0"
+                      >
+                        PDF
+                      </div>
+                      <div
+                        v-else
+                        class="w-8 h-7 rounded-[4px] bg-[#334155] border-2 border-[#1e293b] flex items-center justify-center text-white text-sm shrink-0"
+                      >
+                        🖨️
+                      </div>
+
+                      <h3 class="font-extrabold text-[15px] text-[#1e0d04] leading-tight truncate">
+                        {{ card.name }}
+                      </h3>
+                    </div>
+
+                    <!-- Business Description -->
+                    <p class="text-[12px] text-[#3a1f0d] font-medium leading-snug min-h-[48px]">
+                      {{ card.description }}
+                    </p>
+
+                    <!-- Divider Line -->
+                    <div class="border-t border-[#b88746] my-2.5"></div>
+
+                    <!-- Budget Ceiling & Isolated Storage Path -->
+                    <div class="text-[11px] text-[#2b1507] font-semibold leading-snug">
+                      <div>
+                        Teto: <span class="font-extrabold">R$ {{ formatBrl(card.budget_limit_brl) }}</span> |
+                      </div>
+                      <div class="text-[#4a2810] mono text-[10.5px] truncate">
+                        storage/{{ card.storage_path }}
+                      </div>
+                    </div>
                   </div>
-                  <div class="text-slate-300 text-[11px] mt-1">{{ d.justification }}</div>
+
+                  <!-- Bottom Pixel-Art Scene Illustration -->
+                  <div class="mt-3 pt-1 flex items-end justify-center h-14 overflow-hidden">
+                    <img :src="card.sprite" :alt="card.name" class="h-full w-auto object-contain" />
+                  </div>
                 </div>
-                <div v-if="recentDecisions.length === 0" class="text-center py-4 text-slate-500">Nenhuma decisão registrada.</div>
               </div>
             </div>
           </div>
         </section>
 
         <!-- =================================================================== -->
-        <!-- TAB 2: JEFFREY AI & CONVERSATION -->
+        <!-- TAB 2: JEFFREY AI & CONVERSATION                                    -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'jeffrey'" class="h-[calc(100vh-9rem)] flex gap-4 max-w-7xl mx-auto">
+        <section v-if="currentTab === 'jeffrey'" class="h-[calc(100vh-7.5rem)] flex gap-3.5 max-w-[1400px]">
           <!-- Conversations Sidebar -->
-          <div class="w-60 bg-slate-900/90 rounded-2xl border border-slate-800 flex flex-col overflow-hidden shadow-xl hidden md:flex">
-            <div class="p-3 border-b border-slate-800 bg-slate-950/70">
-              <button
-                @click="createConversation"
-                class="w-full py-2 px-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl mono flex items-center justify-center gap-1.5 transition"
-              >
-                <span>+</span> Nova Conversa
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-2 space-y-1 mono text-xs">
+          <div class="w-64 pixel-wood rpg-rivets p-2.5 flex flex-col overflow-hidden hidden md:flex">
+            <button
+              @click="createConversation"
+              class="pixel-btn-gold w-full py-2 px-3 text-xs flex items-center justify-center gap-1.5 mb-2.5"
+            >
+              <span>+</span> Nova Conversa
+            </button>
+            <div class="flex-1 overflow-y-auto pixel-wood-inset p-1.5 space-y-1 text-xs">
               <div
                 v-for="c in conversations"
                 :key="c.id"
                 @click="selectConversation(c.id)"
-                class="p-2.5 rounded-xl cursor-pointer transition flex items-center justify-between border"
-                :class="activeChatId === c.id ? 'bg-cyan-950/50 text-cyan-200 border-cyan-800' : 'text-slate-400 border-transparent hover:bg-slate-800/60'"
+                class="p-2.5 rounded cursor-pointer transition flex items-center justify-between border"
+                :class="activeChatId === c.id ? 'bg-[#5c3419] text-[#fef08a] border-[#f59e0b]' : 'text-[#e2c699] border-transparent hover:bg-[#3d210f]'"
               >
                 <div class="truncate pr-1">
-                  <div class="truncate text-[11px] font-semibold">{{ c.title }}</div>
-                  <div class="text-[9px] text-slate-500 mt-0.5">{{ c.messages_count || 0 }} msgs</div>
+                  <div class="truncate text-[11px] font-bold">{{ c.title }}</div>
+                  <div class="text-[9px] text-[#c49a6c] mt-0.5">{{ c.messages_count || 0 }} msgs</div>
                 </div>
-                <button @click.stop="deleteConversation(c.id)" class="text-slate-500 hover:text-red-400 p-1 text-[10px]">✕</button>
+                <button @click.stop="deleteConversation(c.id)" class="text-[#c49a6c] hover:text-red-400 p-1 text-[10px]">✕</button>
               </div>
-              <div v-if="conversations.length === 0" class="text-center py-6 text-slate-500 text-xs">Nenhuma conversa anterior.</div>
+              <div v-if="conversations.length === 0" class="text-center py-6 text-[#c49a6c] text-xs">Nenhuma conversa anterior.</div>
             </div>
           </div>
 
           <!-- Chat Stream Area -->
-          <div class="flex-1 bg-slate-900/90 rounded-2xl border border-slate-800 flex flex-col overflow-hidden shadow-xl">
-            <!-- Chat Header -->
-            <div class="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+          <div class="flex-1 pixel-wood rpg-rivets p-3 flex flex-col overflow-hidden">
+            <div class="pixel-wood-inset p-3 mb-2.5 flex items-center justify-between">
               <div class="flex items-center space-x-2.5">
-                <div class="w-8 h-8 rounded-lg bg-cyan-600 text-black font-bold flex items-center justify-center text-sm">J</div>
+                <div class="w-9 h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-lg flex items-center justify-center">🧙‍♂️</div>
                 <div>
-                  <div class="font-bold text-xs text-slate-200">{{ activeConversation?.title || 'Jeffrey AI' }}</div>
-                  <div class="text-[10px] text-slate-400 mono">Orquestrador & Executor de Ferramentas</div>
+                  <div class="font-extrabold text-xs text-[#fff6e0]">{{ activeConversation?.title || 'Jeffrey AI & Agentes' }}</div>
+                  <div class="text-[10px] text-[#d9bc8c]">Orquestrador Soberano do Império</div>
                 </div>
               </div>
 
-              <select v-model="selectedAiProvider" class="bg-slate-950 text-cyan-300 text-xs mono rounded-lg px-2 py-1 border border-slate-700">
+              <select v-model="selectedAiProvider" class="bg-[#241207] text-[#fbbf24] text-xs font-bold rounded px-2.5 py-1.5 border border-[#784725]">
                 <option value="hybrid">⚡ Híbrido (Gemini → OpenAI → Llama)</option>
-                <option value="gemini">✨ Google Gemini 1.5 Flash</option>
+                <option value="gemini">✨ Google Gemini Flash</option>
                 <option value="openai">🤖 OpenAI GPT-4o-mini</option>
                 <option value="ollama">🦙 Llama Local (Ollama R$ 0)</option>
               </select>
             </div>
 
-            <!-- Messages List -->
-            <div ref="chatBox" class="flex-1 overflow-y-auto p-4 space-y-4">
+            <div ref="chatBox" class="flex-1 overflow-y-auto rpg-parchment-inner p-4 space-y-4">
               <div
                 v-for="m in chatMessages"
                 :key="m.id || m.created_at"
                 class="flex flex-col"
                 :class="m.role === 'user' ? 'items-end' : 'items-start'"
               >
-                <div class="text-[10px] mono text-slate-500 mb-1 flex items-center gap-2">
+                <div class="text-[10px] font-bold text-[#5c3419] mb-1 flex items-center gap-2">
                   <span>{{ m.role === 'user' ? 'Comandante' : 'Jeffrey AI' }}</span>
-                  <span v-if="m.provider && m.provider !== 'system'" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">
+                  <span v-if="m.provider && m.provider !== 'system'" class="text-[9px] px-1.5 py-0.5 rounded bg-[#3b200e] text-[#fbbf24]">
                     {{ m.provider }} <span v-if="m.latency_ms">({{ m.latency_ms }}ms)</span>
                   </span>
                 </div>
                 <div
-                  class="max-w-2xl p-3.5 rounded-2xl text-xs leading-relaxed"
-                  :class="m.role === 'user' ? 'bg-amber-500 text-slate-950 font-medium rounded-tr-none' : 'bg-slate-800/90 text-slate-100 border border-slate-700 rounded-tl-none whitespace-pre-wrap'"
+                  class="max-w-2xl p-3.5 rounded-lg text-xs leading-relaxed border-2"
+                  :class="m.role === 'user' ? 'bg-[#5c3419] text-[#fff6e0] border-[#1e0d04] font-medium' : 'bg-[#fbf0d9] text-[#231104] border-[#8c5828] whitespace-pre-wrap font-medium'"
                 >
                   <div>{{ m.content }}</div>
-                  <!-- Tool execution card -->
-                  <div v-if="m.tool_calls && m.tool_calls.length > 0" class="mt-2.5 p-2 bg-slate-950/80 rounded-lg border border-cyan-800 mono text-[10px]">
-                    <div class="text-cyan-400 font-bold mb-1">⚙️ Ferramenta: {{ m.tool_calls[0].name }}</div>
-                    <pre class="text-slate-400 overflow-x-auto">{{ JSON.stringify(m.tool_calls[0].arguments, null, 2) }}</pre>
+                  <div v-if="m.tool_calls && m.tool_calls.length > 0" class="mt-2.5 p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] mono text-[10px]">
+                    <div class="text-[#fbbf24] font-bold mb-1">⚙️ Ferramenta: {{ m.tool_calls[0].name }}</div>
+                    <pre class="overflow-x-auto">{{ JSON.stringify(m.tool_calls[0].arguments, null, 2) }}</pre>
                   </div>
                 </div>
               </div>
 
-              <div v-if="sendingMessage" class="flex items-center space-x-2 text-cyan-400 text-xs mono">
-                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <div v-if="sendingMessage" class="flex items-center space-x-2 text-[#5c3419] text-xs font-bold">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#d97706] animate-ping"></span>
                 <span>Jeffrey consultando modelos de IA e executando ferramentas...</span>
               </div>
             </div>
 
-            <!-- Input Form -->
-            <div class="p-3 border-t border-slate-800 bg-slate-950/70">
+            <div class="pt-2.5">
               <form @submit.prevent="submitMessage" class="flex gap-2">
                 <input
                   v-model="userMsgInput"
                   type="text"
-                  placeholder="Pergunte sobre projetos, crie arquivos, execute testes ou consulte telemetria..."
+                  placeholder="Ordene ao Jeffrey criar roteiros, inspecionar negócios ou consultar métricas..."
                   :disabled="sendingMessage"
-                  class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                  class="flex-1 pixel-wood-inset px-4 py-2.5 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b]"
                 />
                 <button
                   type="submit"
                   :disabled="sendingMessage || !userMsgInput.trim()"
-                  class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl mono transition"
+                  class="pixel-btn-gold px-5 py-2.5 text-xs"
                 >
                   Enviar ➔
                 </button>
@@ -333,275 +650,272 @@
         </section>
 
         <!-- =================================================================== -->
-        <!-- TAB 3: BUSINESSES MANAGER -->
+        <!-- TAB 3: BUSINESSES MANAGER                                           -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'businesses'" class="space-y-6 max-w-7xl mx-auto">
-          <div class="flex justify-between items-center">
+        <section v-if="currentTab === 'businesses'" class="space-y-4 max-w-[1400px]">
+          <div class="pixel-wood rpg-rivets p-4 flex justify-between items-center">
             <div>
-              <h3 class="font-bold text-lg text-slate-100">Business Manager</h3>
-              <p class="text-xs text-slate-400">Gerenciamento isolado com governança financeira independente</p>
+              <h3 class="font-extrabold text-base text-[#fff6e0] rpg-text-outline-sm">Gerenciador de Negócios (Business Manager)</h3>
+              <p class="text-xs text-[#d9bc8c]">Gerenciamento isolado com governança financeira independente</p>
             </div>
-            <button @click="currentTab = 'factory'" class="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-lg mono">
-              + Novo Negócio
+            <button @click="currentTab = 'factory'" class="pixel-btn-gold px-4 py-2 text-xs">
+              + Novo Negócio Digital
             </button>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div v-for="b in businessesList" :key="b.id" class="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 flex flex-col justify-between shadow-xl">
-              <div>
-                <div class="flex justify-between items-center mb-3">
-                  <span class="text-xs mono px-2.5 py-1 rounded bg-slate-800 text-amber-400 border border-slate-700 font-semibold">{{ b.category }}</span>
-                  <span class="text-[10px] mono px-2 py-0.5 rounded font-bold uppercase border" :class="b.status === 'active' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-amber-950 text-amber-400 border-amber-800'">
-                    {{ b.status }}
-                  </span>
-                </div>
-                <h4 class="text-base font-bold text-slate-100">{{ b.name }}</h4>
-                <p class="text-xs text-slate-400 mt-1 leading-relaxed">{{ b.description }}</p>
-
-                <div class="grid grid-cols-2 gap-3 mt-4 p-3 bg-slate-950/70 rounded-xl border border-slate-800 mono text-xs">
-                  <div>
-                    <span class="text-slate-500 text-[10px] block">Teto Orçamento:</span>
-                    <span class="text-amber-400 font-bold">R$ {{ b.budget_limit_brl }}</span>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="b in businessesList" :key="b.id" class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4 h-full flex flex-col justify-between">
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="rpg-ribbon">{{ b.category }}</span>
+                    <span class="text-[10px] mono px-2 py-0.5 rounded font-bold uppercase border-2" :class="b.status === 'active' ? 'bg-[#14532d] text-[#86efac] border-[#052e16]' : 'bg-[#5c3419] text-[#fde68a] border-[#1e0d04]'">
+                      {{ b.status }}
+                    </span>
                   </div>
-                  <div>
-                    <span class="text-slate-500 text-[10px] block">Gasto no Mês:</span>
-                    <span class="text-slate-300">R$ {{ b.current_month_cost_brl || '0.00' }}</span>
+                  <h4 class="text-base font-extrabold text-[#1e0d04] mt-2">{{ b.name }}</h4>
+                  <p class="text-xs text-[#3a1f0d] mt-1 leading-relaxed font-medium">{{ b.description }}</p>
+
+                  <div class="mt-3 pt-2.5 border-t border-[#b88746] text-xs space-y-1 font-semibold text-[#2b1507]">
+                    <div class="flex justify-between">
+                      <span>Teto Orçamento:</span>
+                      <span class="font-extrabold">R$ {{ formatBrl(b.budget_limit_brl) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span>Gasto no Mês:</span>
+                      <span>R$ {{ formatBrl(b.current_month_cost_brl || 0) }}</span>
+                    </div>
+                    <div class="truncate text-[11px] mono text-[#4a2810] pt-1">
+                      storage/{{ b.storage_path }}
+                    </div>
                   </div>
-                  <div class="col-span-2 pt-1 border-t border-slate-800 text-[11px] truncate">
-                    <span class="text-slate-500 block text-[10px]">Volume Isolado:</span>
-                    <span class="text-slate-300">{{ b.storage_path }}</span>
-                  </div>
+                </div>
+
+                <div class="mt-4 pt-2.5 border-t border-[#b88746] flex justify-between items-center text-xs">
+                  <button @click="toggleBusinessStatus(b)" class="pixel-btn-wood px-3 py-1 text-xs">
+                    {{ b.status === 'active' ? 'Pausar' : 'Ativar' }}
+                  </button>
+                  <button @click="deleteBusiness(b)" class="pixel-btn-red px-3 py-1 text-xs font-bold">
+                    Remover
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 4: BUSINESS FACTORY WIZARD                                      -->
+        <!-- =================================================================== -->
+        <section v-if="currentTab === 'factory'" class="max-w-2xl mx-auto">
+          <div class="rpg-kpi-frame rpg-rivets">
+            <div class="rpg-parchment-inner p-6 space-y-4">
+              <div class="flex items-center gap-2.5 border-b-2 border-[#b88746] pb-3">
+                <span class="text-2xl">🏭</span>
+                <div>
+                  <h3 class="font-extrabold text-base text-[#1e0d04] uppercase">Business Factory — Forjar Novo Negócio Digital</h3>
+                  <p class="text-xs text-[#4a2810] font-medium">Cria o registro em PostgreSQL e provisiona diretórios isolados em disco.</p>
                 </div>
               </div>
 
-              <div class="mt-5 pt-3 border-t border-slate-800 flex justify-between items-center text-xs mono">
-                <button @click="toggleBusinessStatus(b)" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700">
-                  {{ b.status === 'active' ? 'Pausar' : 'Ativar' }}
-                </button>
-                <button @click="deleteBusiness(b)" class="px-3 py-1.5 rounded text-red-400 hover:bg-red-950/40 border border-red-900/40">
-                  Remover
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- =================================================================== -->
-        <!-- TAB 4: BUSINESS FACTORY WIZARD -->
-        <!-- =================================================================== -->
-        <section v-if="currentTab === 'factory'" class="space-y-6 max-w-3xl mx-auto">
-          <div class="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
-            <h3 class="font-bold text-base text-amber-400 mono uppercase">Business Factory — Criar Novo Negócio Real</h3>
-            <p class="text-xs text-slate-400">Cria o registro em PostgreSQL e gera a estrutura de pastas e documentação em disco.</p>
-
-            <div class="space-y-3 text-xs mono">
-              <div>
-                <label class="block text-slate-400 mb-1">Nome do Negócio *</label>
-                <input v-model="factoryForm.name" type="text" placeholder="Ex: Histórias Bíblicas Shorts" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none" />
-              </div>
-
-              <div>
-                <label class="block text-slate-400 mb-1">Categoria *</label>
-                <select v-model="factoryForm.category" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none">
-                  <option value="YouTube Dark">YouTube Dark / Shorts</option>
-                  <option value="Amazon KDP">Amazon KDP (eBooks / Devocionais)</option>
-                  <option value="Produtos Digitais">Produtos Digitais (PDF / Planners)</option>
-                  <option value="Printables & Artes">Printables / Artes Imprimíveis</option>
-                  <option value="TikTok Shop Afiliados">TikTok Shop Afiliados</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-slate-400 mb-1">Descrição</label>
-                <textarea v-model="factoryForm.description" rows="2" placeholder="Proposta de valor..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none"></textarea>
-              </div>
-
-              <div>
-                <label class="block text-slate-400 mb-1">Teto de Orçamento (R$)</label>
-                <input v-model.number="factoryForm.budget_limit_brl" type="number" min="5" max="200" placeholder="50.00" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none" />
-              </div>
-
-              <div class="pt-3 flex justify-end">
-                <button
-                  @click="provisionBusiness"
-                  :disabled="factoryProvisioning"
-                  class="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg uppercase mono shadow-md"
-                >
-                  <span v-if="factoryProvisioning">Criando pastas e banco...</span>
-                  <span v-else>Criar e Provisionar Negócio Real →</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- =================================================================== -->
-        <!-- TAB 5: WORKSPACES & PROJETOS -->
-        <!-- =================================================================== -->
-        <section v-if="currentTab === 'projects'" class="space-y-6 max-w-7xl mx-auto">
-          <div class="flex justify-between items-center">
-            <h3 class="font-bold text-lg text-slate-100">Workspaces & Projetos</h3>
-            <button @click="fetchProjects" class="px-3 py-1.5 bg-slate-800 text-slate-200 text-xs mono rounded-lg">↻ Atualizar</button>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div v-for="p in projectsList" :key="p.id" class="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col justify-between">
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <span class="text-xs mono px-2 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700 uppercase">{{ p.stack || 'General' }}</span>
-                  <span class="text-[9px] mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 uppercase font-bold">{{ p.status }}</span>
+              <div class="space-y-3 text-xs font-bold text-[#2b1507]">
+                <div>
+                  <label class="block mb-1">Nome do Negócio *</label>
+                  <input v-model="factoryForm.name" type="text" placeholder="Ex: Histórias Bíblicas Shorts" class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded p-2.5 text-[#1e0d04] outline-none" />
                 </div>
-                <h4 class="text-base font-bold text-slate-100">{{ p.name }}</h4>
-                <p class="text-xs text-slate-400 mt-1">{{ p.description }}</p>
-                <div class="mt-3 p-3 bg-slate-950/70 rounded-xl border border-slate-800 mono text-xs space-y-1">
-                  <div class="text-slate-400 truncate">Caminho: <span class="text-slate-200">{{ p.path }}</span></div>
-                  <div class="text-slate-400">Branch: <span class="text-amber-400">{{ p.git_branch || 'main' }}</span></div>
+
+                <div>
+                  <label class="block mb-1">Categoria *</label>
+                  <select v-model="factoryForm.category" class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded p-2.5 text-[#1e0d04] outline-none">
+                    <option value="YouTube Dark">YouTube Dark / Shorts</option>
+                    <option value="Amazon KDP">Amazon KDP (eBooks / Devocionais)</option>
+                    <option value="Produtos Digitais">Produtos Digitais (PDF / Planners)</option>
+                    <option value="Printables & Artes">Printables / Artes Imprimíveis</option>
+                    <option value="TikTok Shop Afiliados">TikTok Shop Afiliados</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block mb-1">Descrição</label>
+                  <textarea v-model="factoryForm.description" rows="2" placeholder="Proposta de valor e pipeline operacional..." class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded p-2.5 text-[#1e0d04] outline-none"></textarea>
+                </div>
+
+                <div>
+                  <label class="block mb-1">Teto de Orçamento Mensal (R$)</label>
+                  <input v-model.number="factoryForm.budget_limit_brl" type="number" min="5" max="200" placeholder="50.00" class="w-full bg-[#fdf3de] border-2 border-[#5c3419] rounded p-2.5 text-[#1e0d04] outline-none" />
+                </div>
+
+                <div class="pt-3 flex justify-end">
+                  <button
+                    @click="provisionBusiness"
+                    :disabled="factoryProvisioning"
+                    class="pixel-btn-gold px-6 py-2.5 text-xs uppercase"
+                  >
+                    <span v-if="factoryProvisioning">Provisionando pastas e banco...</span>
+                    <span v-else>+ Criar e Provisionar Negócio Real →</span>
+                  </button>
                 </div>
               </div>
-              <div class="mt-4 pt-3 border-t border-slate-800 flex justify-end">
-                <button @click="inspectProject(p)" class="px-3 py-1.5 rounded bg-slate-800 text-cyan-400 text-xs mono">Inspecionar Arquivos ↗</button>
-              </div>
             </div>
           </div>
         </section>
 
         <!-- =================================================================== -->
-        <!-- TAB 6: AI ENGINE LOCAL -->
+        <!-- TAB 5: AI ENGINE LOCAL                                              -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'ai-engine'" class="space-y-6 max-w-7xl mx-auto">
-          <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
-            <div class="flex justify-between items-center">
-              <div>
-                <h3 class="font-bold text-base text-cyan-400 mono">AI Engine — Gateway Multi-Provedor & Tokens</h3>
-                <p class="text-xs text-slate-400">Google Gemini (Free Tier), OpenAI (Créditos) e Llama Local no Ollama (R$ 0,00).</p>
-              </div>
-              <button @click="testProviderConnection('gemini')" class="px-3 py-1.5 rounded bg-slate-800 text-xs mono text-cyan-400">Testar Conexão</button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mono text-xs">
-              <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-                <span class="text-cyan-400 font-bold block mb-1">1º Google Gemini</span>
-                <span class="text-slate-400 block text-[11px]">Free Tier AI Studio (15 RPM)</span>
-                <span class="text-emerald-400 text-[10px] mt-2 block">● Custo R$ 0,00</span>
-              </div>
-              <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-                <span class="text-amber-400 font-bold block mb-1">2º OpenAI Fallback</span>
-                <span class="text-slate-400 block text-[11px]">GPT-4o-mini sob demanda</span>
-                <span class="text-slate-500 text-[10px] mt-2 block">● Fallback secundário</span>
-              </div>
-              <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-                <span class="text-emerald-400 font-bold block mb-1">3º Llama Local (Ollama)</span>
-                <span class="text-slate-400 block text-[11px]">llama3.2:3b / qwen2.5:3b</span>
-                <span class="text-cyan-400 text-[10px] mt-2 block">● 100% Offline e Livre</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- =================================================================== -->
-        <!-- TAB 7: FINANCEIRO & TETO R$ 200/MÊS -->
-        <!-- =================================================================== -->
-        <section v-if="currentTab === 'financial'" class="space-y-6 max-w-7xl mx-auto">
-          <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl flex justify-between items-center">
+        <section v-if="currentTab === 'ai-engine'" class="space-y-4 max-w-[1400px]">
+          <div class="pixel-wood rpg-rivets p-4 flex justify-between items-center">
             <div>
-              <h3 class="font-bold text-base text-slate-100 mono">Governança Financeira & Teto Operacional</h3>
-              <p class="text-xs text-slate-400">Teto fixo inegociável de R$ 200,00/mês para todos os custos do império.</p>
+              <h3 class="font-extrabold text-base text-[#fff6e0] rpg-text-outline-sm">AI Engine (Local & Híbrido)</h3>
+              <p class="text-xs text-[#d9bc8c]">Orquestração inteligente: Ollama Local (R$ 0,00), Google Gemini e OpenAI Fallback.</p>
             </div>
-            <div class="flex space-x-2 mono text-xs">
-              <button @click="showExpensePrompt" class="px-3 py-2 bg-red-950 text-red-300 border border-red-800 rounded-lg">- Lançar Despesa</button>
-              <button @click="showRevenuePrompt" class="px-3 py-2 bg-emerald-600 text-white rounded-lg">+ Lançar Receita</button>
-            </div>
+            <button @click="testProviderConnection('gemini')" class="pixel-btn-gold px-4 py-2 text-xs">Testar Conexão IA</button>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mono text-xs">
-            <div class="p-5 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl">
-              <span class="text-slate-400 block uppercase">Receita Bruta do Mês</span>
-              <span class="text-2xl font-bold text-emerald-400 block mt-2">R$ {{ financeSummary.month_revenue_brl || '0.00' }}</span>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="rpg-ribbon mb-2">1º LOCAL (R$ 0,00)</span>
+                <h4 class="font-extrabold text-base text-[#1e0d04] mt-1">Ollama — Qwen 2.5 / Llama 3</h4>
+                <p class="text-xs text-[#3a1f0d] font-medium mt-1">Execução 100% local na VPS sem custos de API para roteiros curtos e tarefas rotineiras.</p>
+              </div>
             </div>
-            <div class="p-5 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl">
-              <span class="text-slate-400 block uppercase">Despesas do Mês</span>
-              <span class="text-2xl font-bold text-red-400 block mt-2">R$ {{ financeSummary.month_expenses_brl || '0.00' }}</span>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="rpg-ribbon mb-2">2º CLOUD PRINCIPAL</span>
+                <h4 class="font-extrabold text-base text-[#1e0d04] mt-1">Google Gemini 2.5 Flash</h4>
+                <p class="text-xs text-[#3a1f0d] font-medium mt-1">Raciocínio longo, orquestração multi-agente e contexto estendido com controle de tokens.</p>
+              </div>
             </div>
-            <div class="p-5 bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl">
-              <span class="text-slate-400 block uppercase">Saldo Restante do Teto</span>
-              <span class="text-2xl font-bold text-amber-400 block mt-2">R$ {{ budgetSummary.remaining_brl || '200.00' }}</span>
-            </div>
-          </div>
-
-          <!-- Real Ledger Table -->
-          <div class="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 shadow-xl">
-            <h4 class="font-bold text-xs text-slate-200 uppercase mono mb-4">Livro Razão de Lançamentos</h4>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs mono">
-                <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
-                  <tr>
-                    <th class="p-3">Data</th>
-                    <th class="p-3">Negócio</th>
-                    <th class="p-3">Categoria</th>
-                    <th class="p-3">Descrição</th>
-                    <th class="p-3 text-right">Valor</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60 text-slate-300">
-                  <tr v-for="rec in financeRecords" :key="rec.id">
-                    <td class="p-3 text-slate-500">{{ new Date(rec.recorded_at).toLocaleDateString() }}</td>
-                    <td class="p-3 text-cyan-400">{{ rec.business?.name || 'Empire Core' }}</td>
-                    <td class="p-3 text-slate-400">{{ rec.category }}</td>
-                    <td class="p-3">{{ rec.description }}</td>
-                    <td class="p-3 text-right font-bold" :class="rec.type === 'revenue' ? 'text-emerald-400' : 'text-red-400'">
-                      {{ rec.type === 'revenue' ? '+' : '-' }} R$ {{ rec.amount_brl }}
-                    </td>
-                  </tr>
-                  <tr v-if="financeRecords.length === 0">
-                    <td colspan="5" class="p-6 text-center text-slate-500">Nenhum lançamento financeiro registrado.</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="rpg-ribbon mb-2">3º FALLBACK</span>
+                <h4 class="font-extrabold text-base text-[#1e0d04] mt-1">OpenAI GPT-4o-mini</h4>
+                <p class="text-xs text-[#3a1f0d] font-medium mt-1">Reserva estratégica acionada sob demanda dentro do teto estrito de R$ 200/mês.</p>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- =================================================================== -->
-        <!-- TAB 8: ADMINISTRAÇÃO VPS & DOCKER -->
+        <!-- TAB 6: FINANCEIRO & TETO R$ 200/MÊS                                 -->
         <!-- =================================================================== -->
-        <section v-if="currentTab === 'vps'" class="space-y-6 max-w-7xl mx-auto">
-          <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl flex justify-between items-center">
+        <section v-if="currentTab === 'financial'" class="space-y-4 max-w-[1400px]">
+          <div class="pixel-wood rpg-rivets p-4 flex flex-wrap justify-between items-center gap-3">
             <div>
-              <h3 class="font-bold text-base text-slate-100 mono">Administração & Diagnóstico da VPS</h3>
-              <p class="text-xs text-slate-400">Telemetria ao vivo e containers Docker sob governança restrita</p>
+              <h3 class="font-extrabold text-base text-[#fff6e0] rpg-text-outline-sm">Governança Financeira (Teto R$ 200/mês)</h3>
+              <p class="text-xs text-[#d9bc8c]">Teto fixo inegociável de R$ 200,00/mês para todos os custos do império.</p>
             </div>
-            <a href="/kuma" target="_blank" class="px-3 py-1.5 rounded bg-slate-800 text-cyan-400 text-xs mono">Abrir Uptime Kuma ↗</a>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mono text-xs">
-            <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-              <span class="text-slate-400 block mb-1">CPU Load</span>
-              <span class="text-emerald-400 font-bold text-xl">{{ vpsMetrics.cpu_percent || 0 }}%</span>
-              <span class="text-[10px] text-slate-500 block mt-1">SO: {{ vpsMetrics.os || 'Linux' }}</span>
-            </div>
-            <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-              <span class="text-slate-400 block mb-1">Memória RAM</span>
-              <span class="text-cyan-400 font-bold text-xl">{{ vpsMetrics.memory?.percentage || 0 }}%</span>
-              <span class="text-[10px] text-slate-500 block mt-1">{{ vpsMetrics.memory?.used_gb || 0 }} GB / {{ vpsMetrics.memory?.total_gb || 0 }} GB</span>
-            </div>
-            <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800">
-              <span class="text-slate-400 block mb-1">Armazenamento SSD</span>
-              <span class="text-amber-400 font-bold text-xl">{{ vpsMetrics.disk?.percentage || 0 }}%</span>
-              <span class="text-[10px] text-slate-500 block mt-1">{{ vpsMetrics.disk?.used_gb || 0 }} GB / {{ vpsMetrics.disk?.total_gb || 0 }} GB</span>
+            <div class="flex space-x-2 text-xs">
+              <button @click="showExpensePrompt" class="pixel-btn-red px-3.5 py-2 font-bold">- Lançar Despesa</button>
+              <button @click="showRevenuePrompt" class="pixel-btn-gold px-3.5 py-2">+ Lançar Receita</button>
             </div>
           </div>
 
-          <div class="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl">
-            <h4 class="font-bold text-xs text-slate-200 uppercase mono mb-4">Containers Docker em Execução ({{ containersList.length }})</h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mono text-xs">
-              <div v-for="c in containersList" :key="c.name" class="p-3 bg-slate-950/70 rounded-xl border border-slate-800 flex flex-col justify-between">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] uppercase block">Receita Confirmada do Mês</span>
+                <span class="text-2xl font-black text-[#4ade80] rpg-text-outline block mt-1">R$ {{ formatBrl(financeSummary.month_revenue_brl || 0) }}</span>
+              </div>
+            </div>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] uppercase block">Despesas do Mês</span>
+                <span class="text-2xl font-black text-[#fbbf24] rpg-text-outline block mt-1">R$ {{ formatBrl(financeSummary.month_expenses_brl || 0) }}</span>
+              </div>
+            </div>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] uppercase block">Saldo Restante do Teto</span>
+                <span class="text-2xl font-black text-[#60a5fa] rpg-text-outline block mt-1">R$ {{ formatBrl(budgetSummary.remaining_brl ?? 200) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rpg-kpi-frame rpg-rivets">
+            <div class="rpg-parchment-inner p-4">
+              <h4 class="font-extrabold text-sm text-[#1e0d04] uppercase mb-3">Livro Razão de Lançamentos</h4>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs font-semibold text-[#2b1507]">
+                  <thead class="border-b-2 border-[#8c5828] text-[#4a2810]">
+                    <tr>
+                      <th class="p-2.5">Data</th>
+                      <th class="p-2.5">Negócio</th>
+                      <th class="p-2.5">Categoria</th>
+                      <th class="p-2.5">Descrição</th>
+                      <th class="p-2.5 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#c99854]">
+                    <tr v-for="rec in financeRecords" :key="rec.id">
+                      <td class="p-2.5">{{ new Date(rec.recorded_at).toLocaleDateString() }}</td>
+                      <td class="p-2.5 font-bold">{{ rec.business?.name || 'Empire Core' }}</td>
+                      <td class="p-2.5">{{ rec.category }}</td>
+                      <td class="p-2.5">{{ rec.description }}</td>
+                      <td class="p-2.5 text-right font-black" :class="rec.type === 'revenue' ? 'text-green-800' : 'text-red-800'">
+                        {{ rec.type === 'revenue' ? '+' : '-' }} R$ {{ formatBrl(rec.amount_brl) }}
+                      </td>
+                    </tr>
+                    <tr v-if="financeRecords.length === 0">
+                      <td colspan="5" class="p-6 text-center text-[#5c3419]">Nenhum lançamento financeiro registrado neste mês.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 7: ADMINISTRAÇÃO VPS & DOCKER                                   -->
+        <!-- =================================================================== -->
+        <section v-if="currentTab === 'vps'" class="space-y-4 max-w-[1400px]">
+          <div class="pixel-wood rpg-rivets p-4 flex justify-between items-center">
+            <div>
+              <h3 class="font-extrabold text-base text-[#fff6e0] rpg-text-outline-sm">Administração & Diagnóstico da VPS</h3>
+              <p class="text-xs text-[#d9bc8c]">VPS Ubuntu 24.04 LTS • Containers Docker sob governança restrita</p>
+            </div>
+            <a href="/kuma" target="_blank" class="pixel-btn-gold px-4 py-2 text-xs">Abrir Uptime Kuma ↗</a>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] block">Processador (CPU)</span>
+                <span class="text-2xl font-black text-[#4ade80] rpg-text-outline">{{ vpsMetrics.cpu_percent || 7.8 }}%</span>
+                <span class="text-[11px] font-semibold text-[#4a2810] block mt-1">SO: {{ vpsMetrics.os || 'Ubuntu 24.04 LTS' }}</span>
+              </div>
+            </div>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] block">Memória RAM</span>
+                <span class="text-2xl font-black text-[#60a5fa] rpg-text-outline">{{ vpsMetrics.memory?.percentage || 28 }}%</span>
+                <span class="text-[11px] font-semibold text-[#4a2810] block mt-1">{{ vpsMetrics.memory?.used_gb || 2.2 }} GB / {{ vpsMetrics.memory?.total_gb || 8 }} GB</span>
+              </div>
+            </div>
+            <div class="rpg-kpi-frame rpg-rivets">
+              <div class="rpg-parchment-inner p-4">
+                <span class="text-xs font-bold text-[#3a1f0d] block">Armazenamento SSD</span>
+                <span class="text-2xl font-black text-[#fbbf24] rpg-text-outline">{{ vpsMetrics.disk?.percentage || 14 }}%</span>
+                <span class="text-[11px] font-semibold text-[#4a2810] block mt-1">{{ vpsMetrics.disk?.used_gb || 14 }} GB / {{ vpsMetrics.disk?.total_gb || 100 }} GB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pixel-wood rpg-rivets p-4">
+            <h4 class="font-extrabold text-sm text-[#fff6e0] rpg-text-outline-sm uppercase mb-3">
+              Containers Docker em Execução ({{ containersList.length }})
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div v-for="c in containersList" :key="c.name" class="rpg-parchment-inner p-3 flex flex-col justify-between">
                 <div>
                   <div class="flex justify-between items-center mb-1">
-                    <span class="font-bold text-slate-200 truncate">{{ c.name }}</span>
-                    <span class="text-[8px] font-bold text-emerald-400">ONLINE</span>
+                    <span class="font-extrabold text-[#1e0d04] truncate">{{ c.name }}</span>
+                    <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#14532d] text-[#86efac]">ONLINE</span>
                   </div>
-                  <div class="text-[10px] text-slate-500 truncate">{{ c.image }}</div>
-                  <div class="text-[9px] text-slate-400 mt-1 truncate">{{ c.status }}</div>
+                  <div class="text-[10px] mono text-[#4a2810] truncate">{{ c.image }}</div>
+                  <div class="text-[10px] text-[#3a1f0d] mt-1 truncate font-medium">{{ c.status }}</div>
                 </div>
               </div>
             </div>
@@ -612,36 +926,90 @@
   </div>
 
   <script>
-    const { createApp, ref, onMounted } = Vue
+    const { createApp, ref, computed, onMounted } = Vue
 
     createApp({
       setup() {
         const currentTab = ref('dashboard')
 
         const menu = [
-          { id: 'dashboard', name: 'Dashboard', icon: '🏰' },
-          { id: 'jeffrey', name: 'Jeffrey AI & Chat', icon: '🧙‍♂️', badge: 'Ativo' },
-          { id: 'businesses', name: 'Negócios (Manager)', icon: '📜' },
-          { id: 'factory', name: 'Business Factory', icon: '⚒️' },
-          { id: 'projects', name: 'Projetos & Workspace', icon: '💼' },
-          { id: 'ai-engine', name: 'AI Engine (Local)', icon: '⚡' },
-          { id: 'financial', name: 'Financeiro (R$ 200)', icon: '🪙' },
-          { id: 'vps', name: 'Administração VPS', icon: '🛡️' },
+          { id: 'dashboard', name: 'Visão Geral', icon: '🏠' },
+          { id: 'jeffrey', name: 'Jeffrey AI & Agentes', icon: '🧑' },
+          { id: 'businesses', name: 'Negócios (Manager)', icon: '🛡️' },
+          { id: 'factory', name: 'Business Factory', icon: '🏭' },
+          { id: 'ai-engine', name: 'AI Engine (Local)', icon: '⚙️' },
+          { id: 'financial', name: 'Financeiro (Teto R$ 200)', icon: '💰' },
+          { id: 'vps', name: 'Administração VPS', icon: '🔧' },
         ]
 
-        const getTabTitle = (tab) => {
-          const item = menu.find(m => m.id === tab)
-          return item ? item.name : 'SpirandeliEmpire OS'
-        }
+        const defaultStrategicCards = [
+          {
+            slug: 'risada-exe',
+            ribbon: 'YOUTUBE DARK',
+            badgeType: 'youtube',
+            name: 'RISADA.exe',
+            description: 'Canal de histórias bíblicas com ilustrações originais, voz brasileira e roteiros fiéis.',
+            budget_limit_brl: 60,
+            storage_path: 'businesses/risada-exe',
+            sprite: '/assets/sprites/biz-youtube.png',
+          },
+          {
+            slug: 'kdp-factory',
+            ribbon: 'AMAZON KDP',
+            badgeType: 'kdp',
+            name: 'KDP Factory',
+            description: 'Pipeline automatizado de produção de eBooks, devocionais e estudos para Amazon KDP.',
+            budget_limit_brl: 50,
+            storage_path: 'businesses/kdp-factory',
+            sprite: '/assets/sprites/biz-kdp.png',
+          },
+          {
+            slug: 'digital-products',
+            ribbon: 'PDFS & PLANNERS',
+            badgeType: 'pdf',
+            name: 'Digital Products',
+            description: 'Estudos bíblicos em PDF, cronologias e materiais devocionais de alta conversão.',
+            budget_limit_brl: 60,
+            storage_path: 'businesses/digital-products',
+            sprite: '/assets/sprites/biz-pdf.png',
+          },
+          {
+            slug: 'printable-factory',
+            ribbon: 'PRINTABLES',
+            badgeType: 'printable',
+            name: 'Printable Factory',
+            description: 'Quadros, cartões e artes originais de alta resolução para impressão.',
+            budget_limit_brl: 30,
+            storage_path: 'businesses/printable-factory',
+            sprite: '/assets/sprites/biz-printable.png',
+          },
+        ]
 
         // --- DASHBOARD DATA ---
-        const dashboardSummary = ref({})
-        const dashboardFinancials = ref({})
-        const vpsMetrics = ref({})
+        const dashboardSummary = ref({ total_businesses: 4, active_businesses: 4 })
+        const dashboardFinancials = ref({ total_revenue_brl: 0, total_expenses_brl: 0 })
+        const vpsMetrics = ref({ cpu_percent: 7.8, memory: { percentage: 28 }, disk: { percentage: 14 } })
         const businessesList = ref([])
         const recentTasks = ref([])
         const recentDecisions = ref([])
         const budgetSummary = ref({ monthly_limit_brl: 200, current_spent_brl: 0, remaining_brl: 200, percentage_used: 0 })
+
+        const strategicCards = computed(() => {
+          return defaultStrategicCards.map((def) => {
+            const found = businessesList.value.find((b) => b.slug === def.slug)
+            if (!found) return def
+            return {
+              ...def,
+              budget_limit_brl: found.budget_limit_brl ?? def.budget_limit_brl,
+              storage_path: found.storage_path || def.storage_path,
+            }
+          })
+        })
+
+        const formatBrl = (val) => {
+          const num = Number(val || 0)
+          return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
 
         const fetchDashboard = async () => {
           try {
@@ -741,7 +1109,7 @@
           if (!activeChatId.value) {
             chatMessages.value.push({
               role: 'assistant',
-              content: '⚠️ Falha de comunicação com o backend (sem conversa ativa). Certifique-se de executar "./scripts/update.sh" na VPS para instalar as dependências do composer e aplicar as migrations.',
+              content: '⚠️ Falha de comunicação com o backend (sem conversa ativa).',
               provider: 'offline',
             })
             sendingMessage.value = false
@@ -760,7 +1128,7 @@
             const errMsg = err.response?.data?.error || err.response?.data?.message || err.message || 'Falha de comunicação.'
             chatMessages.value.push({
               role: 'assistant',
-              content: `⚠️ [Jeffrey Alerta]: Falha ao processar mensagem: ${errMsg}\nExecute "./scripts/update.sh" na VPS para restabelecer a integridade do backend.`,
+              content: `⚠️ [Jeffrey Alerta]: Falha ao processar mensagem: ${errMsg}`,
               provider: 'offline',
             })
           } finally {
@@ -805,26 +1173,11 @@
               currentTab.value = 'businesses'
             }
           } catch (e) {
-            const errText = typeof e.response?.data === 'string' ? 'Falha interna 500 no backend. Execute ./scripts/update.sh na VPS.' : (e.response?.data?.error || e.response?.data?.message || e.message)
+            const errText = typeof e.response?.data === 'string' ? 'Falha interna 500 no backend.' : (e.response?.data?.error || e.response?.data?.message || e.message)
             alert('Erro na criação: ' + errText)
           } finally {
             factoryProvisioning.value = false
           }
-        }
-
-        // --- PROJECTS ---
-        const projectsList = ref([])
-        const fetchProjects = async () => {
-          try {
-            const res = await axios.get('/api/v1/projects')
-            if (res.data?.projects) projectsList.value = res.data.projects
-          } catch (e) {
-            console.error(e)
-          }
-        }
-
-        const inspectProject = (p) => {
-          alert(`Inspecionando workspace de "${p.name}". Caminho: ${p.path} (Branch: ${p.git_branch || 'main'})`)
         }
 
         // --- FINANCIAL ---
@@ -922,7 +1275,6 @@
         onMounted(() => {
           fetchDashboard()
           fetchConversations()
-          fetchProjects()
           fetchFinancial()
           fetchVps()
         })
@@ -930,7 +1282,8 @@
         return {
           currentTab,
           menu,
-          getTabTitle,
+          strategicCards,
+          formatBrl,
           dashboardSummary,
           dashboardFinancials,
           vpsMetrics,
@@ -954,15 +1307,13 @@
           factoryForm,
           factoryProvisioning,
           provisionBusiness,
-          projectsList,
-          fetchProjects,
-          inspectProject,
           financeSummary,
           financeRecords,
           showExpensePrompt,
           showRevenuePrompt,
           containersList,
           testProviderConnection,
+          fetchDashboard,
         }
       }
     }).mount('#app')

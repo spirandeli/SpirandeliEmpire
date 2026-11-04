@@ -1,86 +1,107 @@
 <template>
-  <aside class="w-64 bg-[#190e07] border-r-4 border-[#0c0603] flex flex-col justify-between select-none shadow-[4px_0_0_#080402] z-20">
-    <div>
-      <!-- Brand & Version -->
-      <div class="p-4 border-b-4 border-[#0e0704] bg-[#24140b] flex items-center space-x-3">
-        <div class="w-10 h-10 bg-[#f59e0b] border-2 border-[#120803] shadow-[inset_2px_2px_0_#fde68a,inset_-2px_-2px_0_#92400e,0_2px_0_#000] flex items-center justify-center text-xl">
-          👑
+  <aside class="w-60 sm:w-64 flex flex-col justify-between h-full select-none">
+    <!-- Top & Middle Section -->
+    <div class="space-y-2.5">
+      <!-- 1. Commander Profile Box (Top-Left) -->
+      <div class="pixel-wood rpg-rivets p-2.5 flex items-center gap-3">
+        <!-- Pixel Avatar Frame -->
+        <div class="w-14 h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#1a0b03] shadow-[inset_0_2px_4px_rgba(0,0,0,0.7),0_1px_0_#85522d] overflow-hidden flex items-center justify-center">
+          <img
+            src="/assets/sprites/avatar.png"
+            alt="Spirandeli Commander"
+            class="w-full h-full object-cover"
+          />
         </div>
-        <div>
-          <h1 class="font-pixel-title text-[11px] tracking-wider text-[#fde68a] uppercase leading-tight">Spirandeli</h1>
-          <div class="flex items-center gap-1.5 mt-1">
-            <span class="text-[8px] font-pixel-title text-[#140b06] bg-[#f59e0b] px-1 py-0.5 border border-[#451a03]">RPG v2.0</span>
-            <span class="text-[8px] font-pixel-title text-[#a3e635]">● ATIVO</span>
+
+        <!-- Name & Level Bar -->
+        <div class="flex-1 min-w-0 pr-1">
+          <h1 class="font-extrabold text-[13px] tracking-wide text-[#fff7e6] uppercase truncate rpg-text-outline-sm">
+            SPIRANDELIEMPIRE
+          </h1>
+          <div class="flex items-center gap-1.5 mt-2">
+            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-[#281509] text-[#f5d7a1] border border-[#6e4223] rounded-sm shadow-inner shrink-0">
+              Lv. 3
+            </span>
+            <div class="pixel-bar-bg flex-1 h-3.5">
+              <div class="pixel-bar-energy h-full w-[58%]"></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Quick Action: New Digital Business (Quest Button) -->
-      <div class="p-3">
+      <!-- 2. Main Sidebar Navigation Panel -->
+      <div class="pixel-wood rpg-rivets p-2.5 relative">
+        <!-- Hanging RPG Lantern attached to top-right of sidebar -->
+        <div
+          class="hidden xl:block absolute -right-7 top-2 w-7 h-16 pointer-events-none z-30 drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)]"
+          title="Lanterna da Vila"
+        >
+          <!-- Lantern bracket + glowing lantern -->
+          <div class="w-3 h-1.5 bg-[#3b200e] border border-[#140802] mt-2"></div>
+          <div class="w-5 h-10 -mt-0.5 ml-1 rounded-sm bg-gradient-to-b from-[#332924] via-[#fbbf24] to-[#291d17] border-2 border-[#140802] shadow-[0_0_12px_#f59e0b] flex items-center justify-center">
+            <div class="w-2.5 h-4 bg-[#fef08a] rounded-full animate-pulse"></div>
+          </div>
+        </div>
+
+        <!-- Golden CTA Button: + Novo Negócio Digital -->
         <router-link
           to="/factory"
-          class="pixel-btn-gold w-full py-3 px-3 flex items-center justify-center text-center uppercase tracking-wider block"
+          class="pixel-btn-gold w-full py-2.5 px-3 flex items-center justify-center gap-1.5 text-[13px] tracking-tight mb-2.5"
         >
-          <span class="mr-1.5 text-sm">⚔️</span> FORJAR NEGÓCIO
+          <span class="text-base font-black leading-none">+</span>
+          <span>Novo Negócio Digital</span>
         </router-link>
-      </div>
 
-      <!-- Main Navigation -->
-      <nav class="px-2 space-y-1">
-        <router-link
-          v-for="item in menu"
-          :key="item.path"
-          :to="item.path"
-          class="flex items-center px-3 py-2 text-xs font-pixel-body transition-all border-2"
-          :class="$route.path === item.path 
-            ? 'bg-[#3b2314] text-[#fde68a] border-[#f59e0b] shadow-[inset_2px_2px_0_#6e4326]' 
-            : 'text-[#d6b88d] border-transparent hover:bg-[#25150c] hover:border-[#3d2415] hover:text-[#fff]'"
-        >
-          <span class="text-sm mr-2.5">{{ item.icon }}</span>
-          <span class="text-xs font-semibold">{{ item.name }}</span>
-          <span v-if="item.badge" class="ml-auto text-[8px] font-pixel-title px-1.5 py-0.5 bg-[#0e7490] text-[#cffafe] border border-[#083344]">
-            {{ item.badge }}
-          </span>
-        </router-link>
-      </nav>
+        <!-- Navigation Menu Slots -->
+        <nav class="pixel-wood-inset p-1.5 space-y-1">
+          <router-link
+            v-for="item in menu"
+            :key="item.path"
+            :to="item.path"
+            class="flex items-center gap-2.5 px-2.5 py-2 rounded-[3px] text-[13px] font-semibold transition-all border"
+            :class="isActive(item.path)
+              ? 'bg-gradient-to-r from-[#63391b] to-[#4d2b13] text-[#fff6df] border-[#f59e0b] shadow-[inset_0_1px_0_#9c6034,0_0_6px_rgba(245,158,11,0.3)]'
+              : 'bg-[#331b0c]/70 text-[#e2c699] border-[#221006] hover:bg-[#452612] hover:text-white hover:border-[#6b3f20]'"
+          >
+            <span class="w-5 h-5 flex items-center justify-center text-base shrink-0 drop-shadow">
+              {{ item.icon }}
+            </span>
+            <span class="truncate rpg-text-outline-sm">{{ item.name }}</span>
+          </router-link>
+        </nav>
+      </div>
     </div>
 
-    <!-- Tavern NPC / Jeffrey Companion Card -->
-    <div class="p-3 m-2 pixel-wood">
-      <div class="flex items-center space-x-2.5 mb-2">
-        <div class="w-9 h-9 bg-[#100804] border-2 border-[#5a381f] flex items-center justify-center text-lg shadow-[inset_1px_1px_0_#000]">
-          🧙‍♂️
-        </div>
-        <div>
-          <div class="font-pixel-title text-[9px] text-[#fcd34d]">JEFFREY AI</div>
-          <div class="text-[10px] font-pixel-body text-[#38bdf8]">Mestre do Reino</div>
-        </div>
+    <!-- 3. Bottom-Left Jeffrey Online Status Widget -->
+    <div class="pixel-wood rpg-rivets px-3.5 py-2.5 mt-2">
+      <div class="flex items-center gap-2">
+        <span class="w-3 h-3 rounded-full bg-[#22c55e] border border-[#052e16] shadow-[0_0_8px_#4ade80] shrink-0"></span>
+        <span class="font-bold text-[13px] text-[#fff5e0] rpg-text-outline-sm">Jeffrey Online</span>
       </div>
-
-      <!-- Mini Stamina / Budget Bar -->
-      <div class="space-y-1 pt-1 border-t border-[#452814]">
-        <div class="flex justify-between text-[8px] font-pixel-title text-[#d6b88d]">
-          <span>OURO DISP.</span>
-          <span class="text-[#f59e0b]">200 G</span>
-        </div>
-        <div class="pixel-bar-bg h-2 w-full">
-          <div class="pixel-bar-gold h-full w-[100%]"></div>
-        </div>
+      <div class="text-[12px] text-[#d9bc8c] mt-0.5 pl-5 font-medium">
+        Limite: <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">R$ 200/mês</span>
       </div>
     </div>
   </aside>
 </template>
 
 <script setup>
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+
+const isActive = (path) => {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
+
 const menu = [
-  { name: 'Feudo Central (Dashboard)', path: '/', icon: '🏰' },
-  { name: 'Mestre Jeffrey (Chat & IA)', path: '/jeffrey', icon: '🧙‍♂️', badge: 'Active' },
-  { name: 'Feudos Ativos (Businesses)', path: '/businesses', icon: '📜' },
-  { name: 'Forja Mágica (Factory)', path: '/factory', icon: '⚒️' },
-  { name: 'Projetos & Workspace', path: '/projects', icon: '💼' },
-  { name: 'Motor de Magia (AI Engine)', path: '/ai-engine', icon: '⚡' },
-  { name: 'Quadro de Missões (Approvals)', path: '/approvals', icon: '📌' },
-  { name: 'Cofre do Tesouro (Analytics)', path: '/analytics', icon: '🪙' },
-  { name: 'Muralhas da VPS (Admin)', path: '/vps', icon: '🛡️' },
+  { name: 'Visão Geral', path: '/', icon: '🏠' },
+  { name: 'Jeffrey AI & Agentes', path: '/jeffrey', icon: '🧑' },
+  { name: 'Negócios (Manager)', path: '/businesses', icon: '🛡️' },
+  { name: 'Business Factory', path: '/factory', icon: '🏭' },
+  { name: 'AI Engine (Local)', path: '/ai-engine', icon: '⚙️' },
+  { name: 'Financeiro (Teto R$ 200)', path: '/financial', icon: '💰' },
+  { name: 'Administração VPS', path: '/vps', icon: '🔧' },
 ]
 </script>
