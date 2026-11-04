@@ -64,8 +64,11 @@ if [ ! -f .env ]; then
     fi
 fi
 
-# Load environment variables
-export $(grep -v '^#' .env | xargs)
+# Load environment variables (set -a / source handles values with spaces correctly)
+set -a
+# shellcheck source=.env
+source .env
+set +a
 
 echo -e "${GREEN}[3/8] Setting Up Directory Permissions & Storage...${NC}"
 mkdir -p storage/logs storage/backups storage/businesses storage/framework/{cache,sessions,views}

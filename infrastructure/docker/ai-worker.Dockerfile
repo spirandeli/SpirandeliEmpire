@@ -15,9 +15,12 @@ RUN curl -L https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linu
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY jeffrey/core/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Install Python dependencies (core orchestrator + telegram bot)
+COPY jeffrey/core/requirements.txt /tmp/core_requirements.txt
+COPY jeffrey/telegram/requirements.txt /tmp/telegram_requirements.txt
+RUN pip install --no-cache-dir \
+    -r /tmp/core_requirements.txt \
+    -r /tmp/telegram_requirements.txt
 
 # Create models directory
 RUN mkdir -p /opt/ai-engine/models

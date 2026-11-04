@@ -86,8 +86,15 @@ services:
     command: php artisan queue:work redis --queue=default,high,low --tries=3 --timeout=120
     environment:
       - APP_ENV=${APP_ENV:-production}
+      - APP_KEY=${APP_KEY}
+      - DB_CONNECTION=pgsql
       - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
+      - DB_USERNAME=${DB_USERNAME:-empire_admin}
+      - DB_PASSWORD=${DB_PASSWORD:-secret_postgres_password_replace_me}
       - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-secret_redis_password_replace_me}
     volumes:
       - ./core/backend:/var/www/backend
