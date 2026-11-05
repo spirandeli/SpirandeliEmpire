@@ -23,6 +23,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # --- Configurações (via variáveis de ambiente) ---
 OLLAMA_URL       = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 OLLAMA_MODEL     = os.getenv("LLAMA_MODEL", os.getenv("DEFAULT_TEXT_MODEL", "qwen2.5:3b"))
+GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL     = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+raw_gemini_url   = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").strip().rstrip("/")
+if "generativelanguage" not in raw_gemini_url:
+    raw_gemini_url = "https://generativelanguage.googleapis.com/v1beta"
+elif not raw_gemini_url.endswith("/v1beta") and not raw_gemini_url.endswith("/v1"):
+    raw_gemini_url += "/v1beta"
+GEMINI_BASE_URL  = raw_gemini_url
+
 XTTS_URL         = os.getenv("XTTS_API_URL", "http://xtts-api:5021/tts")
 XTTS_REF_AUDIO   = os.getenv("XTTS_REFERENCE_AUDIO", "/var/spirandeli/businesses/tiktok-shop-afiliados/assets/voice_reference.wav")
 RENDER_SCRIPT    = os.getenv("TIKTOK_RENDER_SCRIPT", "/opt/ai-engine/video-processing/render_tiktok_video.py")
@@ -69,22 +78,46 @@ SCRIPT_PROMPT_TEMPLATE = (
 
 
 def generate_script(product_name: str, product_price: str) -> str | None:
-    """Gera roteiro de venda via Ollama (Llama 3 8B)."""
+    """Gera roteiro de venda usando Google Gemini como motor principal, com fallback para Ollama."""
     prompt = SCRIPT_PROMPT_TEMPLATE.format(
         product_name=product_name,
         product_price=product_price
     )
+
+    # 1. Tenta gerar via Google Gemini 3.8 Flash (Qualidade máxima de copywriting e retenção)
+    if GEMINI_API_KEY and len(GEMINI_API_KEY) > 10:
+        endpoint = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.75, "maxOutputTokens": 2048}
+        }
+        try:
+            transport = httpx.HTTPTransport(local_address="0.0.0.0")
+            with httpx.Client(transport=transport, timeout=httpx.Timeout(25.0, connect=6.0)) as client:
+                resp = client.post(endpoint, json=payload)
+                if resp.status_code == 200:
+                    cand = (resp.json().get("candidates") or [{}])[0]
+                    parts = (cand.get("content") or {}).get("parts") or []
+                    text = "\n".join([p.get("text", "") for p in parts if p.get("text")]).strip()
+                    if text:
+                        logger.info(f"Roteiro gerado via Google Gemini ({len(text)} chars) para '{product_name}'")
+                        return text
+                logger.warning(f"Gemini script generation HTTP {resp.status_code}, tentando Ollama...")
+        except Exception as e:
+            logger.warning(f"Falha ao gerar roteiro via Gemini: {e}. Tentando Ollama...")
+
+    # 2. Fallback para Ollama Local
     payload = {
         "model": OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.85, "num_predict": 300}
+        "options": {"temperature": 0.85, "num_predict": 500}
     }
     try:
         resp = httpx.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=120.0)
         resp.raise_for_status()
         script = resp.json().get("response", "").strip()
-        logger.info(f"Roteiro gerado ({len(script)} chars) para '{product_name}'")
+        logger.info(f"Roteiro gerado via Ollama ({len(script)} chars) para '{product_name}'")
         return script
     except Exception as e:
         logger.error(f"Falha ao gerar roteiro via Ollama: {e}")

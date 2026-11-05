@@ -198,11 +198,54 @@ class ToolRegistryService
             ],
             [
                 'name' => 'web_search',
-                'description' => 'Pesquisa informações, tendências, produtos virais (ex: TikTok Shop) e notícias em tempo real na internet.',
+                'description' => 'Pesquisa na internet em tempo real quando você necessitar de dados atualizados do mercado, tendências, preços reais ou produtos virais (ex: TikTok Shop Brasil). Use queries objetivas.',
                 'parameters' => [
                     'query' => ['type' => 'string', 'required' => true, 'description' => 'Termo de busca na web'],
                 ],
                 'category' => 'A',
+            ],
+            [
+                'name' => 'create_business',
+                'description' => 'Cadastra um novo negócio digital no império (ex: canais dark, programas de afiliados, infoprodutos), configurando metas e contas vinculadas.',
+                'parameters' => [
+                    'name' => ['type' => 'string', 'required' => true, 'description' => 'Nome do negócio'],
+                    'category' => ['type' => 'string', 'required' => true, 'description' => 'Categoria (ex: Affiliate Marketing, YouTube Dark Channel, E-commerce)'],
+                    'description' => ['type' => 'string', 'required' => false, 'description' => 'Descrição do modelo de negócio'],
+                    'budget_limit_brl' => ['type' => 'number', 'required' => false, 'description' => 'Teto orçamentário mensal em BRL (padrão: 30.00)'],
+                    'automation_params' => ['type' => 'object', 'required' => false, 'description' => 'Parâmetros (niche, target_audience, daily_deliverables_goal, min_commission_percent, cta_template)'],
+                    'accounts' => ['type' => 'array', 'required' => false, 'description' => 'Contas vinculadas [{platform, handle, account_id, affiliate_showcase_url}]'],
+                ],
+                'category' => 'B',
+            ],
+            [
+                'name' => 'save_memory',
+                'description' => 'Registra uma memória operacional persistente no sistema (regras estratégicas, preferências do Comandante ou diretrizes operacionais).',
+                'parameters' => [
+                    'content' => ['type' => 'string', 'required' => true, 'description' => 'Fato, preferência ou diretriz a ser memorizada'],
+                    'category' => ['type' => 'string', 'required' => false, 'description' => 'Categoria (preferencia, regra_negocio, estrategia, aprendizado)'],
+                    'business_id' => ['type' => 'integer', 'required' => false, 'description' => 'ID opcional do negócio associado'],
+                ],
+                'category' => 'A',
+            ],
+            [
+                'name' => 'trigger_video_generation',
+                'description' => 'Dispara a geração completa de vídeo (roteiro persuasivo via Gemini 3.8 Flash, síntese de voz neural e renderização de vídeo vertical 9:16 anti-ban).',
+                'parameters' => [
+                    'product_name' => ['type' => 'string', 'required' => true, 'description' => 'Nome do produto ou tema do vídeo'],
+                    'product_price' => ['type' => 'string', 'required' => false, 'description' => 'Preço ou oferta (ex: R$ 49,90)'],
+                    'category' => ['type' => 'string', 'required' => false, 'description' => 'Nicho/categoria do produto'],
+                    'business_id' => ['type' => 'integer', 'required' => false, 'description' => 'ID do negócio associado'],
+                ],
+                'category' => 'B',
+            ],
+            [
+                'name' => 'manage_docker_service',
+                'description' => 'Gerencia ou reinicia um container da infraestrutura (ex: reiniciar o worker de tarefas ou o serviço ollama).',
+                'parameters' => [
+                    'action' => ['type' => 'string', 'required' => true, 'description' => 'Ação a executar (restart, status)'],
+                    'service' => ['type' => 'string', 'required' => true, 'description' => 'Nome do serviço (worker, backend, frontend, redis, ollama)'],
+                ],
+                'category' => 'B',
             ],
         ];
     }
@@ -708,6 +751,132 @@ PROMPT;
                     'success' => true,
                     'query' => $query,
                     'results' => $this->performWebSearch($query),
+                ];
+
+            case 'create_business':
+                $name = trim((string) ($arguments['name'] ?? ''));
+                if ($name === '') return ['success' => false, 'error' => 'Nome do negócio é obrigatório.'];
+                $slug = \Illuminate\Support\Str::slug($name);
+                $category = $arguments['category'] ?? 'General Digital Business';
+                $budget = (float) ($arguments['budget_limit_brl'] ?? 30.00);
+                $params = $arguments['automation_params'] ?? [];
+                $accounts = $arguments['accounts'] ?? [];
+
+                $business = Business::create([
+                    'name' => $name,
+                    'slug' => $slug,
+                    'category' => $category,
+                    'description' => $arguments['description'] ?? "Negócio digital criado autonomamente por Jeffrey.",
+                    'status' => 'active',
+                    'template_used' => 'autonomous-business',
+                    'storage_path' => "businesses/{$slug}",
+                    'budget_limit_brl' => $budget,
+                    'settings' => [
+                        'accounts' => $accounts,
+                        'automation_params' => $params,
+                    ],
+                    'accounts' => $accounts,
+                    'automation_params' => $params,
+                ]);
+
+                return [
+                    'success' => true,
+                    'business' => [
+                        'id' => $business->id,
+                        'name' => $business->name,
+                        'slug' => $business->slug,
+                        'category' => $business->category,
+                        'budget_limit_brl' => $business->budget_limit_brl,
+                    ],
+                    'message' => "Negócio '{$business->name}' (ID #{$business->id}) criado e ativado com sucesso!",
+                ];
+
+            case 'save_memory':
+                $content = trim((string) ($arguments['content'] ?? ''));
+                if ($content === '') return ['success' => false, 'error' => 'Conteúdo da memória não pode ser vazio.'];
+                $category = $arguments['category'] ?? 'aprendizado';
+                $bizId = $arguments['business_id'] ?? null;
+
+                $mem = JeffreyMemory::create([
+                    'business_id' => $bizId,
+                    'category' => $category,
+                    'content' => $content,
+                    'confidence_score' => 1.0,
+                    'is_active' => true,
+                ]);
+
+                return [
+                    'success' => true,
+                    'memory_id' => $mem->id,
+                    'message' => "Diretriz memorizada com sucesso: \"{$content}\"",
+                ];
+
+            case 'trigger_video_generation':
+                $productName = trim((string) ($arguments['product_name'] ?? ''));
+                if ($productName === '') return ['success' => false, 'error' => 'Nome do produto/vídeo é obrigatório.'];
+                $price = $arguments['product_price'] ?? 'Oferta Especial';
+                $cat = $arguments['category'] ?? 'generic';
+                $bizId = $arguments['business_id'] ?? null;
+
+                $task = Task::create([
+                    'business_id' => $bizId,
+                    'agent_name' => 'Video Agent',
+                    'title' => "Geração de Vídeo: {$productName}",
+                    'type' => 'tiktok_video_pipeline',
+                    'status' => 'pending',
+                    'payload' => [
+                        'product_name' => $productName,
+                        'product_price' => $price,
+                        'category' => $cat,
+                        'allow_gemini' => true,
+                    ],
+                    'estimated_cost_brl' => 0.00,
+                ]);
+
+                try {
+                    Redis::lpush('empire:jeffrey:tasks', json_encode([
+                        'id' => (string) $task->id,
+                        'title' => $task->title,
+                        'type' => $task->type,
+                        'agent_name' => $task->agent_name,
+                        'business_id' => $bizId,
+                        'payload' => $task->payload,
+                        'created_at' => now()->toIso8601String(),
+                    ]));
+                } catch (\Throwable $e) {
+                    Log::warning("Redis push deferred for video task #{$task->id}: " . $e->getMessage());
+                }
+
+                return [
+                    'success' => true,
+                    'task_id' => $task->id,
+                    'message' => "Pipeline de vídeo disparado (Tarefa #{$task->id}) para o produto '{$productName}'. O worker executará o roteiro via Gemini e renderização de vídeo vertical.",
+                ];
+
+            case 'manage_docker_service':
+                $action = strtolower(trim((string) ($arguments['action'] ?? 'status')));
+                $service = strtolower(trim((string) ($arguments['service'] ?? '')));
+                $allowedServices = ['worker', 'backend', 'frontend', 'redis', 'ollama'];
+                if (!in_array($service, $allowedServices, true)) {
+                    return ['success' => false, 'error' => "Serviço não autorizado. Permitidos: " . implode(', ', $allowedServices)];
+                }
+
+                if ($action === 'restart') {
+                    $cmd = "docker compose restart {$service} 2>&1";
+                    $out = shell_exec($cmd);
+                    return [
+                        'success' => true,
+                        'message' => "Comando de reinicialização disparado para '{$service}'.",
+                        'output' => trim((string) $out),
+                    ];
+                }
+
+                $cmd = "docker compose ps {$service} 2>&1";
+                $out = shell_exec($cmd);
+                return [
+                    'success' => true,
+                    'service' => $service,
+                    'status_output' => trim((string) $out),
                 ];
 
             default:

@@ -240,9 +240,12 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
     if len(g_key) <= 10:
         return None
     try:
+        max_tokens_cfg = int(os.getenv("GEMINI_MAX_TOKENS", 65536))
+        safe_max_tokens = min(max(max_tokens_cfg, 4096), 65536)
+        temp_cfg = float(os.getenv("GEMINI_TEMPERATURE", 0.6))
         base_payload: Dict[str, Any] = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096}
+            "generationConfig": {"temperature": temp_cfg, "maxOutputTokens": safe_max_tokens}
         }
         if system_prompt:
             base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
