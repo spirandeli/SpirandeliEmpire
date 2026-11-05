@@ -47,7 +47,7 @@ return [
         'default_model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
         'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
         'temperature' => (float) env('GEMINI_TEMPERATURE', 0.7),
-        'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 8192),
+        'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 65536),
         'free_tier_mode' => (bool) env('GEMINI_FREE_TIER_MODE', true),
     ],
 

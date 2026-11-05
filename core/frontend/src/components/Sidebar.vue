@@ -2,48 +2,48 @@
   <aside
     class="flex flex-col justify-between h-full select-none transition-all duration-300"
     :class="[
-      isMobile ? 'w-72 max-w-[85vw] p-3 bg-[#241207] border-r-2 border-[#5c3419] shadow-2xl' : (isCollapsed ? 'w-20' : 'w-60 sm:w-64'),
+      isMobile ? 'w-72 max-w-[85vw] p-3.5 bg-slate-900 border-r border-slate-800 shadow-2xl' : (isCollapsed ? 'w-20' : 'w-60 sm:w-64'),
     ]"
   >
     <!-- Top & Middle Section -->
-    <div class="space-y-2.5 overflow-y-auto no-scrollbar">
+    <div class="space-y-3 overflow-y-auto no-scrollbar">
       <!-- 1. Commander Profile Box (Top-Left) -->
       <div
-        class="pixel-wood rpg-rivets p-2.5 flex items-center justify-between gap-2.5 cursor-pointer hover:brightness-110 transition group relative"
+        class="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2.5 cursor-pointer hover:border-slate-700 hover:bg-slate-850 transition group"
         title="Clique para editar seu Perfil ou gerenciar Cadastros"
       >
         <div
           @click="$emit('open-profile')"
           class="flex items-center gap-2.5 min-w-0 flex-1"
         >
-          <!-- Pixel Avatar Frame -->
-          <div class="w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded bg-[#3b200e] border-2 border-[#1a0b03] group-hover:border-[#f59e0b] shadow-[inset_0_2px_4px_rgba(0,0,0,0.7),0_1px_0_#85522d] overflow-hidden flex items-center justify-center relative">
+          <!-- Avatar Frame -->
+          <div class="w-11 h-11 shrink-0 rounded-xl bg-slate-950 border border-amber-500/40 group-hover:border-amber-400 overflow-hidden flex items-center justify-center relative shadow-sm transition">
             <img
               src="/assets/sprites/avatar.png"
               alt="Spirandeli Commander"
               class="w-full h-full object-cover"
             />
-            <span class="absolute bottom-0 right-0 bg-[#f59e0b] text-[#1e0d04] text-[8px] font-black px-1 rounded-tl">
+            <span class="absolute bottom-0 right-0 bg-amber-500 text-slate-950 text-[8px] font-black px-1 rounded-tl">
               ✎
             </span>
           </div>
 
-          <!-- Name & Level Bar (Hidden in desktop collapsed mode) -->
+          <!-- Name & Level Bar -->
           <div v-if="!isCollapsed" class="flex-1 min-w-0 pr-1">
             <div class="flex items-center justify-between gap-1">
-              <h1 class="font-extrabold text-[12px] sm:text-[12.5px] tracking-wide text-[#fff7e6] uppercase truncate rpg-text-outline-sm">
-                {{ user?.name || 'SPIRANDELIEMPIRE' }}
+              <h1 class="font-bold text-xs sm:text-[13px] tracking-tight text-white uppercase truncate">
+                {{ user?.name || 'SPIRANDELI' }}
               </h1>
             </div>
-            <p class="text-[9.5px] sm:text-[10px] text-[#fde68a] truncate font-semibold">
+            <p class="text-[11px] text-amber-400 truncate font-medium">
               {{ user?.profile_data?.title || 'Comandante Soberano' }}
             </p>
             <div class="flex items-center gap-1.5 mt-1">
-              <span class="px-1.5 py-0.5 text-[9.5px] font-bold bg-[#281509] text-[#f5d7a1] border border-[#6e4223] rounded-sm shadow-inner shrink-0">
+              <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-slate-950 text-slate-300 border border-slate-800 rounded shrink-0">
                 Lv. {{ user?.profile_data?.level || 3 }}
               </span>
-              <div class="pixel-bar-bg flex-1 h-2.5 sm:h-3">
-                <div class="pixel-bar-energy h-full w-[72%]"></div>
+              <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800/80">
+                <div class="bg-emerald-500 h-full rounded-full w-[72%]"></div>
               </div>
             </div>
           </div>
@@ -53,92 +53,80 @@
         <button
           v-if="isMobile"
           @click.stop="$emit('close-mobile')"
-          class="pixel-btn-red px-2 py-1 text-xs font-black shrink-0"
+          class="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition shrink-0"
           title="Fechar Menu"
         >
           ✕
         </button>
       </div>
 
-      <!-- 2. Main Sidebar Navigation Panel -->
-      <div class="pixel-wood rpg-rivets p-2.5 relative">
-        <!-- Hanging RPG Lantern attached to top-right of sidebar -->
-        <div
-          v-if="!isMobile && !isCollapsed"
-          class="hidden xl:block absolute -right-7 top-2 w-7 h-16 pointer-events-none z-30 drop-shadow-[0_4px_6px_rgba(0,0,0,0.7)]"
-          title="Lanterna da Vila"
-        >
-          <div class="w-3 h-1.5 bg-[#3b200e] border border-[#140802] mt-2"></div>
-          <div class="w-5 h-10 -mt-0.5 ml-1 rounded-sm bg-gradient-to-b from-[#332924] via-[#fbbf24] to-[#291d17] border-2 border-[#140802] shadow-[0_0_12px_#f59e0b] flex items-center justify-center">
-            <div class="w-2.5 h-4 bg-[#fef08a] rounded-full animate-pulse"></div>
-          </div>
-        </div>
-
+      <!-- 2. Main Navigation Panel -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-2.5">
         <!-- Golden CTA Button: + Novo Negócio Digital -->
         <router-link
           to="/factory"
           @click="onNavClick"
-          class="pixel-btn-gold w-full py-2 sm:py-2.5 px-3 flex items-center justify-center gap-1.5 text-[12.5px] sm:text-[13px] tracking-tight mb-2.5"
+          class="w-full py-2.5 px-3 flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-tight transition shadow-md shadow-amber-500/20 mb-2.5"
           :title="isCollapsed ? 'Novo Negócio Digital' : ''"
         >
           <span class="text-base font-black leading-none">+</span>
           <span v-if="!isCollapsed">Novo Negócio Digital</span>
         </router-link>
 
-        <!-- Navigation Menu Slots -->
-        <nav class="pixel-wood-inset p-1.5 space-y-1">
+        <!-- Navigation Menu Links -->
+        <nav class="space-y-1">
           <router-link
             v-for="item in menu"
             :key="item.path"
             :to="item.path"
             @click="onNavClick"
-            class="flex items-center gap-2.5 px-2.5 py-2 rounded-[3px] text-[12.5px] sm:text-[13px] font-semibold transition-all border"
+            class="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all"
             :class="[
               isActive(item.path)
-                ? 'bg-gradient-to-r from-[#63391b] to-[#4d2b13] text-[#fff6df] border-[#f59e0b] shadow-[inset_0_1px_0_#9c6034,0_0_6px_rgba(245,158,11,0.3)]'
-                : 'bg-[#331b0c]/70 text-[#e2c699] border-[#221006] hover:bg-[#452612] hover:text-white hover:border-[#6b3f20]',
+                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold shadow-sm'
+                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 border border-transparent',
               isCollapsed ? 'justify-center px-1' : ''
             ]"
             :title="isCollapsed ? item.name : ''"
           >
-            <span class="w-5 h-5 flex items-center justify-center text-base shrink-0 drop-shadow">
+            <span class="w-5 h-5 flex items-center justify-center text-sm shrink-0">
               {{ item.icon }}
             </span>
-            <span v-if="!isCollapsed" class="truncate rpg-text-outline-sm">{{ item.name }}</span>
+            <span v-if="!isCollapsed" class="truncate">{{ item.name }}</span>
           </router-link>
         </nav>
       </div>
     </div>
 
-    <!-- 3. Bottom-Left Jeffrey Online Status Widget -->
+    <!-- 3. Bottom Jeffrey Online Status Widget -->
     <router-link
       to="/jeffrey"
       @click="onNavClick"
-      class="pixel-wood rpg-rivets px-3 py-2 sm:px-3.5 sm:py-2.5 mt-2 block hover:brightness-110 transition shrink-0"
+      class="bg-slate-900 border border-slate-800 rounded-2xl p-3 block hover:border-slate-700 transition shrink-0"
       title="Clique para abrir o Monitor de Trabalhos e Progresso do Jeffrey"
     >
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0">
           <span
-            class="w-3 h-3 rounded-full shrink-0"
+            class="w-2.5 h-2.5 rounded-full shrink-0"
             :class="jeffreyWorking
-              ? 'bg-[#fbbf24] border border-[#451a03] shadow-[0_0_8px_#f59e0b] animate-ping'
-              : 'bg-[#22c55e] border border-[#052e16] shadow-[0_0_8px_#4ade80]'"
+              ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b] animate-ping'
+              : 'bg-emerald-400 shadow-[0_0_8px_#34d399]'"
           ></span>
-          <span v-if="!isCollapsed" class="font-bold text-[12px] sm:text-[12.5px] text-[#fff5e0] rpg-text-outline-sm truncate">
+          <span v-if="!isCollapsed" class="font-semibold text-xs text-slate-200 truncate">
             {{ jeffreyWorking ? 'Jeffrey Trabalhando' : 'Jeffrey Online (Ocioso)' }}
           </span>
         </div>
         <span
           v-if="activeTasksCount > 0 && !isCollapsed"
-          class="px-1.5 py-0.5 text-[10px] font-black rounded bg-[#f59e0b] text-[#1e0d04]"
+          class="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-amber-500 text-slate-950"
         >
           {{ activeTasksCount }}
         </span>
       </div>
-      <div v-if="!isCollapsed" class="text-[10.5px] sm:text-[11px] text-[#d9bc8c] mt-0.5 pl-5 font-medium truncate">
-        <span v-if="jeffreyWorking" class="text-[#fde68a]">{{ workerStep }}</span>
-        <span v-else>Limite: <span class="text-[#fbbf24] font-extrabold rpg-text-outline-sm">R$ 200/mês</span></span>
+      <div v-if="!isCollapsed" class="text-[11px] text-slate-400 mt-1 pl-4.5 truncate font-mono">
+        <span v-if="jeffreyWorking" class="text-amber-300">{{ workerStep }}</span>
+        <span v-else>Teto: <span class="text-slate-300 font-semibold">R$ 200/mês</span></span>
       </div>
     </router-link>
   </aside>

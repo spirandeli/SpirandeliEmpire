@@ -39,10 +39,7 @@ MONTHLY_BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT_BRL", 200.00))
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
 
 def normalize_gemini_model(model: Optional[str]) -> str:
-    m = (model or "").strip()
-    if not m or m.lower() in ("default", "gemini", "gemini-flash"):
-        return "gemini-3.8-flash"
-    return m
+    return "gemini-3.8-flash"
 
 # --- AI PROVIDERS CONFIGURATION ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -250,60 +247,40 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
         if system_prompt:
             base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
-        norm_target = normalize_gemini_model(GEMINI_MODEL)
-        candidate_models = [norm_target]
-        for fallback_m in ("gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
-            if fallback_m not in candidate_models:
-                candidate_models.append(fallback_m)
+        used_model = "gemini-3.8-flash"
+        url = f"{GEMINI_BASE_URL}/models/{used_model}:generateContent?key={g_key}"
+        model_retries = 4
 
         start = time.time()
         res = None
-        used_model = norm_target
 
         # Force IPv4 transport so broken Docker IPv6 routing on Linux VPS never causes 45s timeouts
         transport = httpx.HTTPTransport(local_address="0.0.0.0")
-        with httpx.Client(transport=transport, timeout=httpx.Timeout(35.0, connect=8.0)) as client:
-            for model_name in candidate_models:
-                url = f"{GEMINI_BASE_URL}/models/{model_name}:generateContent?key={g_key}"
-                model_retries = 3 if model_name == norm_target else 1
-
-                for attempt_idx in range(1, model_retries + 1):
-                    try:
-                        attempt = client.post(url, json=base_payload)
-                        if attempt.status_code == 200:
-                            res = attempt
-                            used_model = model_name
-                            break
+        with httpx.Client(transport=transport, timeout=httpx.Timeout(45.0, connect=10.0)) as client:
+            for attempt_idx in range(1, model_retries + 1):
+                try:
+                    attempt = client.post(url, json=base_payload)
+                    if attempt.status_code == 200:
                         res = attempt
-                        err_text = attempt.text
-
-                        # If 404 or 400 (unrecognized model tag on this API endpoint), immediately try next model!
-                        if attempt.status_code in (404, 400):
-                            logger.info(f"Gemini model {model_name} unavailable on endpoint ({attempt.status_code}). Trying next model...")
-                            break
-
-                        is_retryable = attempt.status_code in (429, 500, 502, 503, 504) or any(
-                            term in err_text.lower() for term in ("high demand", "overloaded", "temporary", "quota", "rate")
-                        )
-                        if is_retryable:
-                            if attempt_idx < model_retries:
-                                wait_sec = attempt_idx * 1.4
-                                logger.info(f"Gemini {model_name} pico temporario de demanda ({attempt.status_code}). Tentativa {attempt_idx}/{model_retries}. Aguardando {wait_sec}s...")
-                                time.sleep(wait_sec)
-                                continue
-                            else:
-                                logger.warning(f"Gemini {model_name} persistiu em alta demanda apos {model_retries} tentativas. Testando proximo modelo...")
-                                time.sleep(0.4)
-                                break
                         break
-                    except Exception as inner_e:
-                        clean_err = re.sub(r"key=[^&\s]+", "key=***", str(inner_e))
-                        logger.warning(f"Gemini attempt on {model_name} failed: {clean_err}")
-                        if attempt_idx < model_retries:
-                            time.sleep(1.2)
-                            continue
-                        break
-                if res is not None and res.status_code == 200:
+                    res = attempt
+                    err_text = attempt.text
+
+                    is_retryable = attempt.status_code in (429, 500, 502, 503, 504) or any(
+                        term in err_text.lower() for term in ("high demand", "overloaded", "temporary", "quota", "rate", "spikes")
+                    )
+                    if is_retryable and attempt_idx < model_retries:
+                        wait_sec = attempt_idx * 1.6
+                        logger.info(f"Gemini 3.8 Flash pico temporario de demanda ({attempt.status_code}). Tentativa {attempt_idx}/{model_retries}. Aguardando {wait_sec}s...")
+                        time.sleep(wait_sec)
+                        continue
+                    break
+                except Exception as inner_e:
+                    clean_err = re.sub(r"key=[^&\s]+", "key=***", str(inner_e))
+                    logger.warning(f"Gemini 3.8 Flash attempt {attempt_idx}/{model_retries} failed: {clean_err}")
+                    if attempt_idx < model_retries:
+                        time.sleep(1.5)
+                        continue
                     break
 
         latency = int((time.time() - start) * 1000)

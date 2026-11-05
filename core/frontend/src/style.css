@@ -6,205 +6,119 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #1a2e12;
-    color: #f7e7ca;
-    font-family: 'Inter', 'Pixelify Sans', sans-serif;
-    image-rendering: pixelated;
+    background-color: #020617;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Custom Pixel Fonts */
+/* Modern Typography Utilities */
 .font-pixel-title {
-  font-family: 'Press Start 2P', monospace;
-  line-height: 1.4;
-  letter-spacing: 0.04em;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .font-pixel-body {
-  font-family: 'Pixelify Sans', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 .font-pixel-retro {
-  font-family: 'VT323', monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
-/* Text Outlines (Stardew / 16-bit RPG style) */
-.rpg-text-outline {
-  text-shadow:
-    -2px -2px 0 #1c0d04,
-     2px -2px 0 #1c0d04,
-    -2px  2px 0 #1c0d04,
-     2px  2px 0 #1c0d04,
-     0px  3px 0 #1c0d04,
-    -2px  0px 0 #1c0d04,
-     2px  0px 0 #1c0d04,
-     0px -2px 0 #1c0d04;
-}
-
+/* Clean up any legacy text shadows for high contrast and readability */
+.rpg-text-outline,
 .rpg-text-outline-sm {
-  text-shadow:
-    -1.5px -1.5px 0 #1a0c04,
-     1.5px -1.5px 0 #1a0c04,
-    -1.5px  1.5px 0 #1a0c04,
-     1.5px  1.5px 0 #1a0c04,
-     0px    2px   0 #1a0c04;
+  text-shadow: none !important;
 }
 
-/* Stardew Valley Wooden Frame (Outer Box) */
+/* Modern Executive Slate Frames (Clean Command Center) */
 .pixel-wood {
-  background: linear-gradient(180deg, #5c3419 0%, #472711 100%);
-  border: 3px solid #1e0d04;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 2px 0 #8a542e,
-    inset 0 -3px 0 #2b1508,
-    inset 2px 0 0 #734321,
-    inset -2px 0 0 #381c0b,
-    0 5px 10px rgba(0, 0, 0, 0.55);
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   position: relative;
 }
 
-/* Recessed Dark Wood Inner Panel */
 .pixel-wood-inset {
-  background: linear-gradient(180deg, #3b200e 0%, #2e180a 100%);
-  border: 2px solid #1a0b03;
-  border-radius: 4px;
-  box-shadow:
-    inset 2px 2px 0 #1e0d04,
-    inset -1px -1px 0 #5c3419,
-    0 1px 0 #784725;
+  background: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
 }
 
-/* Framed Parchment Card (KPIs and Business Cards) */
 .rpg-kpi-frame {
-  background: linear-gradient(180deg, #6b3e1e 0%, #4e2b13 100%);
-  border: 3px solid #1e0d04;
-  border-radius: 6px;
-  padding: 5px;
-  box-shadow:
-    inset 0 2px 0 #996036,
-    inset 0 -2px 0 #2e1708,
-    0 5px 8px rgba(0, 0, 0, 0.5);
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   position: relative;
 }
 
 .rpg-parchment-inner {
-  background: linear-gradient(180deg, #f3d59b 0%, #e7be79 60%, #dcad65 100%);
-  color: #2b1507;
-  border: 2px solid #3a1e0b;
-  border-radius: 3px;
-  box-shadow:
-    inset 0 2px 0 #fae6be,
-    inset 0 -2px 0 #c4924d,
-    inset 2px 0 0 #f5dca8,
-    inset -2px 0 0 #c99854;
+  background: #0b1120;
+  color: #f1f5f9;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
   position: relative;
 }
 
-/* Corner Rivets Decoration */
+/* Hide legacy rivets */
 .rpg-rivets::before,
 .rpg-rivets::after {
-  content: '';
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  background: #d99b43;
-  border: 1px solid #241004;
-  border-radius: 1px;
-  z-index: 5;
-  pointer-events: none;
-}
-.rpg-rivets::before {
-  top: 4px;
-  left: 4px;
-  box-shadow: calc(100% - 10px) 0 0 #d99b43;
-}
-.rpg-rivets::after {
-  bottom: 4px;
-  left: 4px;
-  box-shadow: calc(100% - 10px) 0 0 #d99b43;
+  display: none !important;
 }
 
-/* Ribbon Banner for Business Category */
+/* Clean Category Badge */
 .rpg-ribbon {
-  background: linear-gradient(180deg, #32241b 0%, #1e140e 100%);
+  background: rgba(245, 158, 11, 0.12);
   color: #fbbf24;
-  border: 2px solid #8c5828;
-  box-shadow:
-    0 2px 0 #1a0d05,
-    inset 0 1px 0 #593b25;
-  padding: 2px 14px;
-  font-weight: 800;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 3px 10px;
+  font-weight: 700;
   font-size: 11px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   position: relative;
   display: inline-block;
-  border-radius: 2px;
+  border-radius: 6px;
 }
-
 .rpg-ribbon::before,
 .rpg-ribbon::after {
-  content: '◀';
-  font-size: 8px;
-  color: #8c5828;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.rpg-ribbon::before {
-  content: '▸';
-  left: 3px;
-}
-.rpg-ribbon::after {
-  content: '◂';
-  right: 3px;
+  display: none !important;
 }
 
-/* Raised Wood Section Header Beam */
 .rpg-wood-beam {
-  background: linear-gradient(180deg, #6e3f1f 0%, #522d14 50%, #3d200d 100%);
-  border: 3px solid #1c0c03;
-  border-radius: 5px;
-  box-shadow:
-    inset 0 2px 0 #9c6137,
-    inset 0 -3px 0 #261206,
-    0 4px 6px rgba(0, 0, 0, 0.45);
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
 }
 
-/* Parchment / Quest Scroll Panel */
 .pixel-parchment {
-  background: linear-gradient(180deg, #f3d59b 0%, #e5bb76 100%);
-  color: #2b180d;
-  border: 3px solid #3d2413;
-  border-radius: 4px;
-  box-shadow:
-    inset 3px 3px 0 #fae6be,
-    inset -3px -3px 0 #b38f54,
-    0 4px 0 #140b06;
+  background: #0b1120;
+  color: #f1f5f9;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
   position: relative;
 }
 
-/* Graveyard Keeper Stone Panel */
 .pixel-stone {
-  background-color: #23272e;
-  border: 4px solid #101216;
-  box-shadow:
-    inset 4px 4px 0 #434c59,
-    inset -4px -4px 0 #15181d,
-    0 4px 0 #08090b;
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   position: relative;
 }
 
-/* RPG Inventory Item Slot */
 .pixel-slot {
-  background-color: #261409;
-  border: 2px solid #4a2a14;
-  border-radius: 4px;
-  box-shadow:
-    inset 2px 2px 0 #140903,
-    inset -1px -1px 0 #5e371c;
-  transition: transform 0.1s, border-color 0.1s;
+  background-color: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  transition: all 0.15s ease-in-out;
 }
 
 .pixel-slot:hover {
@@ -212,137 +126,120 @@
   transform: translateY(-1px);
 }
 
-/* Big Golden "+ Novo Negócio Digital" CTA Button */
+/* Modern Primary Button: Amber Glow */
 .pixel-btn-gold {
-  background: linear-gradient(180deg, #ffbe2e 0%, #f59e0b 55%, #d97706 100%);
-  color: #231104;
-  border: 3px solid #241004;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 2px 0 #fef08a,
-    inset 0 -3px 0 #b45309,
-    inset 2px 0 0 #fde047,
-    inset -2px 0 0 #b45309,
-    0 4px 0 #140802;
-  font-weight: 800;
+  background: #f59e0b;
+  color: #020617;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.08s ease-in-out;
+  transition: all 0.15s ease-in-out;
 }
 
 .pixel-btn-gold:hover {
-  background: linear-gradient(180deg, #ffd059 0%, #fbbf24 55%, #ea8a0c 100%);
+  background: #fbbf24;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
   transform: translateY(-1px);
 }
 
 .pixel-btn-gold:active {
-  transform: translateY(2px);
-  box-shadow:
-    inset 0 2px 0 #b45309,
-    0 1px 0 #140802;
+  transform: translateY(0);
 }
 
+/* Modern Secondary Button: Dark Slate */
 .pixel-btn-wood {
-  background: linear-gradient(180deg, #5e361b 0%, #422410 100%);
-  color: #fbeccf;
-  border: 3px solid #1b0c04;
-  border-radius: 5px;
-  box-shadow:
-    inset 0 2px 0 #8c5630,
-    inset 0 -2px 0 #261307,
-    0 3px 0 #0f0602;
-  font-weight: 700;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.08s ease-in-out;
+  transition: all 0.15s ease-in-out;
 }
 
 .pixel-btn-wood:hover {
-  background: linear-gradient(180deg, #704121 0%, #522d14 100%);
+  background: #334155;
+  color: #ffffff;
+  border-color: #475569;
 }
 
 .pixel-btn-wood:active {
-  transform: translateY(2px);
-  box-shadow:
-    inset 0 2px 0 #261307,
-    0 1px 0 #0f0602;
+  transform: translateY(0);
 }
 
+/* Modern Danger Button */
 .pixel-btn-red {
-  background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
-  color: #fef2f2;
-  border: 3px solid #1b0c04;
-  border-radius: 5px;
-  box-shadow:
-    inset 0 2px 0 #f87171,
-    inset 0 -2px 0 #7f1d1d,
-    0 3px 0 #0f0602;
+  background: rgba(220, 38, 38, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.08s ease-in-out;
+  transition: all 0.15s ease-in-out;
 }
 
 .pixel-btn-red:hover {
-  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+  background: rgba(220, 38, 38, 0.3);
+  color: #ffffff;
+  border-color: #ef4444;
 }
 
-/* Health / Mana / Energy Bars */
+/* Modern Telemetry & Status Bars */
 .pixel-bar-bg {
-  background-color: #1b0d05;
-  border: 2px solid #0e0602;
-  border-radius: 3px;
-  box-shadow: inset 1px 2px 0 rgba(0, 0, 0, 0.8), 0 1px 0 #6e4223;
+  background-color: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 9999px;
   padding: 1px;
+  overflow: hidden;
 }
 
 .pixel-bar-hp {
-  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 50%, #7f1d1d 100%);
-  border-top: 2px solid #fca5a5;
+  background: #ef4444;
+  border-radius: 9999px;
 }
 
 .pixel-bar-energy {
-  background: linear-gradient(180deg, #84cc16 0%, #4d7c0f 60%, #365314 100%);
-  border-top: 2px solid #bef264;
-  border-radius: 1px;
+  background: #10b981;
+  border-radius: 9999px;
 }
 
 .pixel-bar-mana {
-  background: linear-gradient(180deg, #06b6d4 0%, #0e7490 50%, #164e63 100%);
-  border-top: 2px solid #67e8f9;
+  background: #06b6d4;
+  border-radius: 9999px;
 }
 
 .pixel-bar-gold {
-  background: linear-gradient(180deg, #f59e0b 0%, #b45309 50%, #78350f 100%);
-  border-top: 2px solid #fde68a;
+  background: #f59e0b;
+  border-radius: 9999px;
 }
 
-/* Custom Pixel Scrollbars */
+/* Modern Dark Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(20, 12, 6, 0.6);
-  border-radius: 4px;
+  background: #020617;
 }
 ::-webkit-scrollbar-thumb {
-  background: #5c3419;
-  border: 2px solid #1e0d04;
-  border-radius: 4px;
+  background: #1e293b;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #784522;
+  background: #334155;
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
+/* Hide scrollbar helpers */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-/* Hide scrollbar for IE, Edge and Firefox */
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* Safe area inset helper for iOS notch & home bar */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0.75rem);
 }
-

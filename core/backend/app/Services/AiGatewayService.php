@@ -377,14 +377,23 @@ class AiGatewayService
         // Direct Provider: Gemini (only if user login is authorized)
         if ($strategy === 'gemini') {
             if (!$this->canUserAccessGemini($user)) {
-                return $this->fallbackToLocal($prompt, $systemPrompt, 'Acesso ao Google Gemini restrito ao login do Comandante Principal.');
+                return [
+                    'success' => false,
+                    'error' => 'Acesso ao Google Gemini restrito ao login do Comandante Principal.',
+                    'provider' => 'google_gemini',
+                ];
             }
             $res = $this->gemini->generate($prompt, $systemPrompt, $model, $inlineMedia, $conversationTurns);
             if ($res['success']) {
                 $res['provider_name'] = 'Google Gemini 3.8 Flash';
                 return $res;
             }
-            return $this->fallbackToLocal($prompt, $systemPrompt, 'Google Gemini falhou: ' . ($res['error'] ?? 'desconhecido'));
+            return [
+                'success' => false,
+                'error' => 'Google Gemini 3.8 Flash: ' . ($res['error'] ?? 'falha na comunicação com a API do Google.'),
+                'provider' => 'google_gemini',
+                'fallback_used' => false,
+            ];
         }
 
         // Direct Provider: OpenAI

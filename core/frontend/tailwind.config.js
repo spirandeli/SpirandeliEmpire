@@ -7,9 +7,11 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        'pixel-title': ['"Press Start 2P"', 'monospace'],
-        'pixel-body': ['"Pixelify Sans"', 'sans-serif'],
-        'pixel-retro': ['"VT323"', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
+        'pixel-title': ['Inter', 'sans-serif'],
+        'pixel-body': ['Inter', 'sans-serif'],
+        'pixel-retro': ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         rpg: {

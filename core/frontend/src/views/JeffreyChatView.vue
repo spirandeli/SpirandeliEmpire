@@ -6,37 +6,37 @@
     @drop.prevent="handleDropFiles"
   >
     <!-- MOBILE VIEW TABS (< md) -->
-    <div class="md:hidden flex items-center justify-between gap-1 pixel-wood rpg-rivets p-1 shrink-0 select-none">
+    <div class="md:hidden flex items-center justify-between gap-1.5 bg-slate-900 border border-slate-800 rounded-xl p-1.5 shrink-0 select-none shadow-md">
       <button
         type="button"
         @click="mobileTab = 'chat'"
-        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5"
+        class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5"
         :class="mobileTab === 'chat'
-          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
-          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+          ? 'bg-amber-500 text-slate-950 shadow-sm'
+          : 'bg-slate-800 text-slate-400 hover:text-white'"
       >
         <span>💬 Chat</span>
       </button>
       <button
         type="button"
         @click="mobileTab = 'history'"
-        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5"
+        class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5"
         :class="mobileTab === 'history'
-          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
-          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+          ? 'bg-amber-500 text-slate-950 shadow-sm'
+          : 'bg-slate-800 text-slate-400 hover:text-white'"
       >
         <span>🗂️ Histórico</span>
-        <span class="text-[10px] px-1 py-0.5 rounded bg-[#3b200e] text-[#fde68a]">
+        <span class="text-[10px] px-1.5 py-0.2 rounded font-mono bg-slate-900 text-amber-400">
           {{ conversations.length }}
         </span>
       </button>
       <button
         type="button"
         @click="mobileTab = 'monitor'"
-        class="flex-1 py-1.5 px-2 rounded text-xs font-black uppercase transition-all flex items-center justify-center gap-1.5 relative"
+        class="flex-1 py-1.5 px-2 rounded-lg text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 relative"
         :class="mobileTab === 'monitor'
-          ? 'bg-[#f59e0b] text-[#1e0d04] border border-[#fef08a] shadow'
-          : 'bg-[#2b1507] text-[#d9bc8c] border border-[#5c3419]'"
+          ? 'bg-amber-500 text-slate-950 shadow-sm'
+          : 'bg-slate-800 text-slate-400 hover:text-white'"
       >
         <span class="relative">
           📡 Monitor
@@ -47,7 +47,7 @@
         </span>
         <span
           v-if="jeffreyActivity.counts?.in_progress || jeffreyActivity.counts?.pending"
-          class="text-[10px] px-1 py-0.5 rounded bg-amber-800 text-amber-100 font-mono"
+          class="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 font-mono"
         >
           {{ (jeffreyActivity.counts?.in_progress || 0) + (jeffreyActivity.counts?.pending || 0) }}
         </span>
@@ -57,41 +57,41 @@
     <!-- 1. LEFT SIDEBAR: Persistent Conversations History -->
     <div
       v-if="(!isMobile && showConversationsPanel) || (isMobile && mobileTab === 'history')"
-      class="pixel-wood rpg-rivets p-2 sm:p-2.5 flex flex-col overflow-hidden shrink-0"
+      class="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex flex-col overflow-hidden shrink-0 shadow-xl"
       :class="isMobile ? 'w-full flex-1 h-full' : 'w-56 lg:w-60 h-full'"
     >
       <button
         @click="createNewConversationMobile"
         :disabled="creatingChat"
-        class="pixel-btn-gold w-full py-2 px-3 text-xs flex items-center justify-center gap-1.5 mb-2.5 shrink-0"
+        class="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 mb-3 shrink-0 shadow-sm transition"
       >
         <span>+</span> Nova Conversa
       </button>
 
-      <div class="flex-1 overflow-y-auto pixel-wood-inset p-1.5 space-y-1 text-xs">
+      <div class="flex-1 overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl p-1.5 space-y-1 text-xs">
         <div
           v-for="conv in conversations"
           :key="conv.id"
           @click="selectConversationMobile(conv.id)"
-          class="p-2 rounded cursor-pointer transition flex items-center justify-between border"
+          class="p-2 rounded-lg cursor-pointer transition flex items-center justify-between border"
           :class="activeConversationId === conv.id
-            ? 'bg-[#5c3419] text-[#fef08a] border-[#f59e0b]'
-            : 'text-[#e2c699] border-transparent hover:bg-[#3d210f]'"
+            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 font-semibold'
+            : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/60'"
         >
           <div class="truncate pr-1">
-            <div class="truncate text-[11px] font-bold">{{ conv.title }}</div>
-            <div class="text-[9px] text-[#c49a6c] mt-0.5">{{ conv.messages_count || 0 }} msgs</div>
+            <div class="truncate text-xs font-medium">{{ conv.title }}</div>
+            <div class="text-[10px] text-slate-500 font-mono mt-0.5">{{ conv.messages_count || 0 }} msgs</div>
           </div>
           <button
             @click.stop="deleteConversation(conv.id)"
-            class="text-[#c49a6c] hover:text-red-400 p-1 text-[10px]"
+            class="text-slate-500 hover:text-red-400 p-1 text-xs transition"
             title="Excluir conversa"
           >
             ✕
           </button>
         </div>
 
-        <div v-if="!loadingConversations && conversations.length === 0" class="text-center py-6 text-[#c49a6c] text-xs">
+        <div v-if="!loadingConversations && conversations.length === 0" class="text-center py-6 text-slate-500 text-xs">
           Nenhuma conversa anterior.
         </div>
       </div>
@@ -100,70 +100,71 @@
     <!-- 2. CENTER AREA: Chat Messages Stream, Attachments, Voice & Rich Editor -->
     <div
       v-if="!isMobile || mobileTab === 'chat'"
-      class="flex-1 min-w-0 pixel-wood rpg-rivets p-2.5 sm:p-3 flex flex-col overflow-hidden relative h-full"
+      class="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 flex flex-col overflow-hidden relative h-full shadow-xl"
     >
       <!-- Drag & Drop Overlay -->
       <div
         v-if="isDraggingOver"
-        class="absolute inset-2 z-40 rounded-xl bg-black/80 border-4 border-dashed border-[#f59e0b] flex flex-col items-center justify-center text-[#fef08a] pointer-events-none"
+        class="absolute inset-2 z-40 rounded-xl bg-slate-950/90 border-2 border-dashed border-amber-400 flex flex-col items-center justify-center text-amber-300 pointer-events-none"
       >
         <span class="text-4xl mb-2">📎</span>
-        <span class="font-extrabold text-sm uppercase">Solte arquivos, imagens ou áudios aqui para enviar ao Jeffrey</span>
+        <span class="font-bold text-sm uppercase">Solte arquivos, imagens ou áudios aqui para enviar ao Jeffrey</span>
       </div>
 
       <!-- Top Header Bar -->
-      <div class="pixel-wood-inset p-2 sm:p-2.5 mb-2 sm:mb-2.5 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-        <div class="flex items-center space-x-2 min-w-0 flex-1">
+      <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 sm:p-3 mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center space-x-2.5 min-w-0 flex-1">
           <!-- Toggle Conversations Button on Desktop/Tablet -->
           <button
             type="button"
             @click="showConversationsPanel = !showConversationsPanel"
-            class="hidden md:flex pixel-btn-wood h-8 px-2 items-center justify-center text-xs shrink-0"
+            class="hidden md:flex h-8 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 items-center justify-center text-xs shrink-0 transition"
             :title="showConversationsPanel ? 'Ocultar Histórico' : 'Mostrar Histórico'"
           >
             <span>🗂️</span>
-            <span class="hidden xl:inline ml-1 text-[10px]">{{ showConversationsPanel ? 'Ocultar' : 'Histórico' }}</span>
+            <span class="hidden xl:inline ml-1.5 text-[11px]">{{ showConversationsPanel ? 'Ocultar' : 'Histórico' }}</span>
           </button>
 
-          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded bg-[#5c3419] border-2 border-[#f59e0b] text-base sm:text-lg flex items-center justify-center shrink-0">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-800 border border-amber-500/40 text-base sm:text-lg flex items-center justify-center shrink-0">
             🧙‍♂️
           </div>
+
           <div class="min-w-0 flex-1">
-            <div class="font-extrabold text-[11.5px] sm:text-xs text-[#fff6e0] flex items-center gap-1.5 flex-wrap">
+            <div class="font-bold text-xs sm:text-sm text-slate-100 flex items-center gap-2 flex-wrap">
               <span class="truncate max-w-[140px] sm:max-w-[220px]">{{ currentConversation?.title || 'Jeffrey AI' }}</span>
               <span
                 v-if="jeffreyActivity.is_working"
-                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#78350f] text-[#fef08a] border border-[#f59e0b] flex items-center gap-1 animate-pulse"
+                class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1 animate-pulse"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-[#fbbf24]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                 <span>TRABALHANDO</span>
               </span>
               <span
                 v-else-if="jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0"
-                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#d97706] flex items-center gap-1"
+                class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-slate-800 text-amber-400 border border-slate-700 flex items-center gap-1"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-[#f59e0b]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                 <span>NA FILA</span>
               </span>
               <span
                 v-else
-                class="text-[9.5px] sm:text-[10px] px-1.5 py-0.5 rounded bg-[#14532d] text-[#86efac] border border-[#22c55e] hidden sm:flex items-center gap-1"
+                class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 hidden sm:flex items-center gap-1"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-[#4ade80]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 OCIOSO
               </span>
             </div>
-            <div class="text-[9.5px] sm:text-[10px] text-[#d9bc8c] truncate hidden sm:block">
+            <div class="text-[11px] text-slate-400 truncate hidden sm:block">
               Suporte a Texto, Prints, Documentos e Voz
             </div>
           </div>
         </div>
 
-        <div class="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap">
+        <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
           <select
             v-model="chosenProvider"
             @change="onProviderChange"
-            class="bg-[#241207] text-[#fbbf24] text-[10.5px] sm:text-[11px] font-bold rounded px-1.5 sm:px-2 py-1 sm:py-1.5 border border-[#784725] max-w-[130px] sm:max-w-[200px] truncate"
+            class="bg-slate-900 text-slate-200 text-xs font-medium rounded-lg px-2.5 py-1.5 border border-slate-700 max-w-[140px] sm:max-w-[220px] truncate outline-none focus:border-amber-500 transition"
           >
             <option
               v-for="opt in availableAiOptions"
@@ -176,7 +177,7 @@
 
           <button
             @click="promptNewBackgroundTask"
-            class="pixel-btn-gold px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-[11px] flex items-center gap-1"
+            class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1 transition shadow-sm"
             title="Criar Tarefa Real em Segundo Plano"
           >
             <span>⚡</span>
@@ -185,12 +186,12 @@
 
           <button
             @click="isMobile ? (mobileTab = 'monitor') : (showActivityPanel = !showActivityPanel)"
-            class="pixel-btn-wood px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-[11px] flex items-center gap-1"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center gap-1 transition"
             :title="showActivityPanel ? 'Ocultar Monitor' : 'Abrir Monitor ao Vivo'"
           >
             <span>📋</span>
             <span class="hidden sm:inline">Progresso</span>
-            <span>({{ jeffreyActivity.counts?.total || 0 }})</span>
+            <span class="font-mono text-amber-400">({{ jeffreyActivity.counts?.total || 0 }})</span>
           </button>
         </div>
       </div>
@@ -198,47 +199,47 @@
       <!-- LIVE WORKER PROGRESS BANNER -->
       <div
         v-if="jeffreyActivity.is_working"
-        class="mb-2.5 p-2.5 rounded bg-[#2b1507] border-2 border-[#f59e0b] text-xs text-[#fff6e0] shadow-md"
+        class="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-200 shadow-md"
       >
         <div class="flex items-center justify-between gap-2 mb-1.5">
-          <div class="font-extrabold text-[#fbbf24] flex items-center gap-2 truncate">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#fbbf24] animate-ping"></span>
+          <div class="font-bold text-amber-300 flex items-center gap-2 truncate">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
             <span>
               Trabalhando agora:
-              <strong class="text-white">#{{ jeffreyActivity.worker_state?.task_id || '?' }}</strong>
+              <strong class="text-white font-mono">#{{ jeffreyActivity.worker_state?.task_id || '?' }}</strong>
               — {{ jeffreyActivity.worker_state?.title || 'Executando pesquisa/tarefa...' }}
             </span>
           </div>
-          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#451a03] text-[#fde68a] border border-[#8c5828] shrink-0">
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-amber-300 border border-slate-700 shrink-0">
             {{ jeffreyActivity.worker_state?.agent_name || 'Jeffrey' }}
           </span>
         </div>
-        <div class="text-[11px] text-[#e2c699] mb-1.5 flex justify-between">
+        <div class="text-xs text-slate-300 mb-1.5 flex justify-between">
           <span>{{ jeffreyActivity.worker_state?.step || 'Processando no worker assíncrono...' }}</span>
-          <span class="font-bold text-[#fbbf24]">{{ jeffreyActivity.worker_state?.progress_percent || 50 }}%</span>
+          <span class="font-mono font-bold text-amber-400">{{ jeffreyActivity.worker_state?.progress_percent || 50 }}%</span>
         </div>
-        <div class="pixel-bar-bg w-full h-3">
+        <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
           <div
-            class="pixel-bar-energy h-full transition-all duration-500"
+            class="bg-amber-500 h-full rounded-full transition-all duration-500"
             :style="{ width: (jeffreyActivity.worker_state?.progress_percent || 50) + '%' }"
           ></div>
         </div>
       </div>
 
       <!-- Messages Stream (Selectable & Copyable) -->
-      <div ref="chatContainer" class="flex-1 overflow-y-auto rpg-parchment-inner p-4 space-y-4 select-text">
+      <div ref="chatContainer" class="flex-1 overflow-y-auto bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 space-y-4 select-text">
         <div
           v-for="(msg, msgIdx) in messages"
           :key="msg.id || msgIdx"
           class="flex flex-col"
           :class="msg.role === 'user' ? 'items-end' : 'items-start'"
         >
-          <!-- Message Header + Action Buttons (Copy / Speak / Quote) -->
-          <div class="text-[10px] font-bold text-[#5c3419] mb-1 flex items-center gap-2 flex-wrap">
-            <span>{{ msg.role === 'user' ? '👑 Comandante' : '🧙‍♂️ Jeffrey AI' }}</span>
+          <!-- Message Header + Action Buttons -->
+          <div class="text-[11px] text-slate-400 mb-1 flex items-center gap-2 flex-wrap">
+            <span class="font-semibold">{{ msg.role === 'user' ? '👤 Você' : '🧙‍♂️ Jeffrey AI' }}</span>
             <span
               v-if="msg.provider && msg.provider !== 'system'"
-              class="text-[9px] px-1.5 py-0.5 rounded bg-[#3b200e] text-[#fbbf24]"
+              class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-amber-400 border border-slate-700"
             >
               {{ msg.provider }} <span v-if="msg.model">({{ msg.model }})</span> <span v-if="msg.latency_ms">• {{ msg.latency_ms }}ms</span>
             </span>
@@ -247,10 +248,8 @@
             <button
               type="button"
               @click="copyText(msg.content, `msg_${msg.id || msgIdx}`)"
-              class="px-2 py-0.5 rounded border text-[9.5px] font-extrabold transition flex items-center gap-1"
-              :class="copiedId === `msg_${msg.id || msgIdx}`
-                ? 'bg-emerald-700 text-white border-emerald-900'
-                : 'bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] border-[#8c5828]'"
+              class="px-2 py-0.5 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition flex items-center gap-1"
+              :class="copiedId === `msg_${msg.id || msgIdx}` ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : ''"
               title="Copiar texto desta mensagem"
             >
               <span>{{ copiedId === `msg_${msg.id || msgIdx}` ? '✓ Copiado!' : '📋 Copiar' }}</span>
@@ -261,30 +260,29 @@
               v-if="msg.role !== 'user' && msg.content"
               type="button"
               @click="toggleSpeakMessage(msg.content, `tts_${msg.id || msgIdx}`)"
-              class="px-2 py-0.5 rounded border border-[#8c5828] bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] text-[9.5px] font-extrabold transition"
+              class="px-2 py-0.5 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition"
               title="Ouvir resposta em voz alta"
             >
-              {{ speakingId === `tts_${msg.id || msgIdx}` ? '⏹️ Parar Voz' : '🔊 Ouvir' }}
+              {{ speakingId === `tts_${msg.id || msgIdx}` ? '⏹️ Parar' : '🔊 Ouvir' }}
             </button>
           </div>
 
           <!-- Message Content Bubble -->
           <div
-            class="w-full sm:max-w-3xl p-2.5 sm:p-3.5 rounded-lg text-xs leading-relaxed border-2 select-text"
+            class="w-full sm:max-w-3xl p-3.5 sm:p-4 rounded-2xl text-xs sm:text-[13px] leading-relaxed border select-text shadow-sm"
             :class="msg.role === 'user'
-              ? 'bg-[#5c3419] text-[#fff6e0] border-[#1e0d04] font-medium whitespace-pre-wrap'
-              : 'bg-[#fbf0d9] text-[#231104] border-[#8c5828] whitespace-pre-wrap font-medium'"
+              ? 'bg-slate-800/90 text-slate-100 border-slate-700 font-normal whitespace-pre-wrap'
+              : 'bg-slate-900 border-slate-800 text-slate-100 font-normal'"
           >
             <!-- Attached Files / Images / Voice Audio inside Message -->
             <div
               v-if="msg.attachments && msg.attachments.length > 0"
-              class="mb-2.5 space-y-2"
+              class="mb-3 space-y-2"
             >
               <div
                 v-for="(att, aIdx) in msg.attachments"
                 :key="aIdx"
-                class="p-2 rounded border"
-                :class="msg.role === 'user' ? 'bg-[#3b200e] border-[#8c5828]' : 'bg-[#f3e1be] border-[#b88746]'"
+                class="p-2.5 rounded-xl border border-slate-800 bg-slate-950/80"
               >
                 <!-- Image Attachment Preview -->
                 <div v-if="att.is_image || (att.mime_type && att.mime_type.startsWith('image/'))" class="space-y-1">
@@ -292,18 +290,18 @@
                     <img
                       :src="att.url || att.preview_url"
                       :alt="att.name"
-                      class="max-h-60 rounded border border-[#1e0d04] object-contain"
+                      class="max-h-60 rounded-lg border border-slate-800 object-contain"
                     />
                   </a>
-                  <div class="text-[10px] opacity-80 flex items-center justify-between">
+                  <div class="text-[10px] text-slate-400 font-mono flex items-center justify-between">
                     <span>🖼️ {{ att.name }}</span>
-                    <a v-if="att.url" :href="att.url" download class="underline">Baixar</a>
+                    <a v-if="att.url" :href="att.url" download class="underline text-amber-400">Baixar</a>
                   </div>
                 </div>
 
                 <!-- Voice / Audio Attachment Player -->
                 <div v-else-if="att.is_voice || (att.mime_type && att.mime_type.startsWith('audio/'))" class="space-y-1">
-                  <div class="text-[10px] font-bold flex items-center gap-1.5">
+                  <div class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <span>🎙️ Mensagem de Voz ({{ att.name }})</span>
                   </div>
                   <audio
@@ -314,14 +312,14 @@
                 </div>
 
                 <!-- Document / Code / Spreadsheet Attachment -->
-                <div v-else class="flex items-center justify-between gap-3 text-[11px]">
-                  <span class="truncate font-bold">📄 {{ att.name }} ({{ formatBytes(att.size) }})</span>
+                <div v-else class="flex items-center justify-between gap-3 text-xs">
+                  <span class="truncate font-medium text-slate-200">📄 {{ att.name }} ({{ formatBytes(att.size) }})</span>
                   <a
                     v-if="att.url"
                     :href="att.url"
                     target="_blank"
                     download
-                    class="px-2 py-0.5 rounded bg-[#f59e0b] text-[#1e0d04] text-[10px] font-extrabold shrink-0"
+                    class="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition"
                   >
                     Baixar ⬇
                   </a>
@@ -332,53 +330,53 @@
             <!-- Text Content: Rich Markdown for Assistant, Clean Pre-wrap for User -->
             <div
               v-if="msg.role === 'assistant'"
-              class="select-text break-words leading-relaxed space-y-1"
+              class="select-text break-words leading-relaxed space-y-2 prose prose-invert max-w-none text-slate-100"
               v-html="renderMarkdown(stripActionsTag(msg.content))"
             ></div>
             <div
               v-else
-              class="select-text break-words whitespace-pre-wrap leading-relaxed font-medium"
+              class="select-text break-words whitespace-pre-wrap leading-relaxed"
             >{{ msg.content }}</div>
 
             <!-- Tool Execution Cards -->
             <div
               v-if="msg.tool_calls && msg.tool_calls.length > 0"
-              class="mt-2.5 space-y-1.5"
+              class="mt-3 space-y-2"
             >
               <div
                 v-for="(tc, tcIdx) in msg.tool_calls"
                 :key="tcIdx"
-                class="p-2 bg-[#2b1507] text-[#fde68a] rounded border border-[#8c5828] text-[10px] select-text shadow-sm"
+                class="p-2.5 bg-slate-950/90 text-slate-200 rounded-xl border border-slate-800 text-xs select-text shadow-sm"
               >
-                <div class="flex items-center justify-between mb-1">
-                  <div class="flex items-center gap-1.5">
-                    <span class="px-1.5 py-0.5 rounded bg-[#451a03] text-[#fbbf24] font-black border border-[#8c5828]">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded font-mono font-bold bg-slate-800 text-amber-400 border border-slate-700 text-[10px]">
                       ⚙️ {{ formatToolName(tc.name) }}
                     </span>
-                    <span class="text-[9px] text-[#86efac] font-bold">✓ Executado com Sucesso</span>
+                    <span class="text-[10px] text-emerald-400 font-semibold">✓ Concluído</span>
                   </div>
                   <button
                     v-if="tc.name === 'create_task' || tc.name === 'create_task_pipeline'"
                     type="button"
                     @click="openActivityMonitor"
-                    class="text-[9px] px-2 py-0.5 rounded bg-[#f59e0b] text-[#1e0d04] font-black hover:brightness-110 transition flex items-center gap-1"
+                    class="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 transition flex items-center gap-1"
                   >
                     📡 Ver no Monitor
                   </button>
                 </div>
                 <!-- Tool Arguments Summary -->
-                <div v-if="tc.arguments?.title" class="text-[10.5px] text-[#fff6e0] font-semibold mt-1">
-                  Missão: <span class="italic text-[#fbbf24]">"{{ tc.arguments.title }}"</span>
+                <div v-if="tc.arguments?.title" class="text-xs text-slate-200 font-medium mt-1">
+                  Missão: <span class="italic text-amber-300">"{{ tc.arguments.title }}"</span>
                 </div>
-                <div v-if="tc.arguments?.steps" class="text-[10px] text-[#d9bc8c] mt-0.5">
+                <div v-if="tc.arguments?.steps" class="text-[11px] text-slate-400 mt-0.5 font-mono">
                   Pipeline: {{ tc.arguments.steps.length }} etapas encadeadas
                 </div>
                 <!-- Collapsible Details -->
-                <details class="mt-1">
-                  <summary class="cursor-pointer text-[9px] text-[#c49a6c] hover:text-[#fde68a]">
+                <details class="mt-1.5">
+                  <summary class="cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
                     Ver parâmetros técnicos (JSON)
                   </summary>
-                  <pre class="mt-1 p-1.5 bg-[#1e0d04] rounded text-[9px] font-mono text-[#d9bc8c] overflow-x-auto max-h-32">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                  <pre class="mt-1 p-2 bg-black/60 rounded-lg text-[10px] font-mono text-slate-300 overflow-x-auto max-h-32 border border-slate-800">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
                 </details>
               </div>
             </div>
@@ -386,9 +384,9 @@
             <!-- Suggested Follow-up Actions -->
             <div
               v-if="msg.role !== 'user' && getSuggestedActions(msg).length > 0"
-              class="mt-3 pt-2 border-t border-[#8c5828]/30 flex flex-wrap items-center gap-1.5"
+              class="mt-3.5 pt-2.5 border-t border-slate-800 flex flex-wrap items-center gap-2"
             >
-              <div class="w-full text-[9.5px] font-black uppercase text-[#8c5828] flex items-center gap-1">
+              <div class="w-full text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 font-mono">
                 <span>⚡ Próximos Passos Sugeridos:</span>
               </div>
               <button
@@ -396,7 +394,7 @@
                 :key="aIdx"
                 type="button"
                 @click="sendQuickPrompt(action)"
-                class="px-2 py-1 rounded bg-[#e9d5b0] hover:bg-[#d8bc8a] text-[#2b1507] text-[10px] font-bold border border-[#8c5828] transition flex items-center gap-1 shadow-sm active:scale-95"
+                class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm active:scale-95"
               >
                 <span>👉</span> {{ action }}
               </button>
@@ -404,8 +402,8 @@
           </div>
         </div>
 
-        <div v-if="loading" class="flex items-center space-x-2 text-[#5c3419] text-xs font-bold p-2 bg-[#fbf0d9] rounded border border-[#8c5828] animate-pulse">
-          <span class="w-2.5 h-2.5 rounded-full bg-[#d97706] animate-ping"></span>
+        <div v-if="loading" class="flex items-center space-x-2.5 text-amber-300 text-xs font-medium p-3 bg-slate-900 rounded-xl border border-slate-800 animate-pulse">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
           <span>{{ loadingStepText }}</span>
         </div>
       </div>
@@ -413,42 +411,43 @@
       <!-- ===================================================================== -->
       <!-- RICH COMPOSER: ATTACHMENTS PREVIEW + VOICE RECORDER + MULTILINE EDITOR -->
       <!-- ===================================================================== -->
-      <div class="pt-2.5 space-y-2">
+      <div class="pt-3 space-y-2">
         <!-- Quick Action Contextual Chips -->
-        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10.5px] scrollbar-none select-none">
-          <span class="text-[#8c5828] font-black shrink-0 text-[10px] uppercase">Ações Rápidas:</span>
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar select-none">
+          <span class="text-slate-500 font-bold shrink-0 text-[10px] uppercase font-mono">Ações Rápidas:</span>
           <button
             v-for="(qp, qIdx) in quickActionPrompts"
             :key="qIdx"
             type="button"
             @click="sendQuickPrompt(qp.prompt)"
-            class="px-2 py-0.5 rounded bg-[#3b200e] hover:bg-[#5c3419] text-[#fef08a] border border-[#784725] shrink-0 font-bold transition flex items-center gap-1 active:scale-95 shadow-sm"
+            class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shrink-0 font-medium transition flex items-center gap-1.5 active:scale-95 shadow-sm text-xs"
           >
             <span>{{ qp.icon }}</span>
             <span>{{ qp.label }}</span>
           </button>
         </div>
+
         <!-- 1. Pending Attachments Preview Bar -->
         <div
           v-if="pendingAttachments.length > 0"
-          class="p-2 rounded bg-[#241207] border border-[#f59e0b] flex items-center gap-2 overflow-x-auto"
+          class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2 overflow-x-auto"
         >
           <div
             v-for="(att, idx) in pendingAttachments"
             :key="idx"
-            class="flex items-center gap-2 bg-[#3b200e] border border-[#8c5828] rounded px-2.5 py-1.5 text-xs text-[#fff6e0] shrink-0"
+            class="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 shrink-0"
           >
             <img
               v-if="att.is_image && att.preview_url"
               :src="att.preview_url"
-              class="w-8 h-8 rounded object-cover border border-[#f59e0b]"
+              class="w-8 h-8 rounded object-cover border border-amber-500"
             />
             <span v-else-if="att.is_voice" class="text-base">🎙️</span>
             <span v-else class="text-base">📄</span>
 
             <div class="max-w-[160px]">
-              <div class="truncate text-[11px] font-bold">{{ att.name }}</div>
-              <div class="text-[9px] text-[#d9bc8c]">{{ formatBytes(att.size) }}</div>
+              <div class="truncate text-xs font-medium">{{ att.name }}</div>
+              <div class="text-[10px] text-slate-400 font-mono">{{ formatBytes(att.size) }}</div>
             </div>
 
             <audio
@@ -461,7 +460,7 @@
             <button
               type="button"
               @click="removePendingAttachment(idx)"
-              class="text-red-400 hover:text-red-200 font-black px-1"
+              class="text-slate-400 hover:text-red-400 font-bold px-1"
               title="Remover anexo"
             >
               ✕
@@ -472,11 +471,11 @@
         <!-- 2. Active Voice Recording Banner -->
         <div
           v-if="isRecordingVoice"
-          class="p-2.5 rounded bg-[#450a0a] border-2 border-red-500 text-xs text-white flex items-center justify-between gap-3 animate-pulse"
+          class="p-3 rounded-xl bg-red-950/80 border border-red-700 text-xs text-white flex items-center justify-between gap-3 animate-pulse"
         >
           <div class="flex items-center gap-2.5 min-w-0">
             <span class="w-3 h-3 rounded-full bg-red-500 animate-ping shrink-0"></span>
-            <span class="font-extrabold">
+            <span class="font-bold">
               🎙️ Gravando Voz ({{ formatRecordingDuration(recordingSeconds) }})
             </span>
             <span v-if="liveSpeechTranscript" class="text-amber-200 truncate italic">
@@ -491,21 +490,21 @@
             <button
               type="button"
               @click="stopVoiceRecording(false)"
-              class="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px]"
+              class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
             >
               ⏹️ Parar & Revisar
             </button>
             <button
               type="button"
               @click="stopVoiceRecording(true)"
-              class="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-[11px]"
+              class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
             >
-              🚀 Parar & Enviar Agora
+              🚀 Enviar Agora
             </button>
             <button
               type="button"
               @click="cancelVoiceRecording"
-              class="px-2 py-1 rounded bg-red-800 hover:bg-red-700 text-white font-bold text-[11px]"
+              class="px-2 py-1 rounded-lg bg-red-850 hover:bg-red-800 text-white font-bold text-xs"
             >
               ✕
             </button>
@@ -520,13 +519,13 @@
               :key="chip.label"
               type="button"
               @click="applyQuickChip(chip.prompt)"
-              class="px-2 py-1 rounded bg-[#2b1507] hover:bg-[#452612] text-[#fde68a] border border-[#6b3f20] text-[10px] font-bold shrink-0 transition"
+              class="px-2.5 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium shrink-0 transition"
             >
               {{ chip.label }}
             </button>
           </div>
-          <span class="text-[10px] text-[#d9bc8c] hidden xl:inline shrink-0">
-            💡 <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Enter</kbd> envia • <kbd class="px-1 py-0.5 bg-[#241207] rounded border border-[#5c3419]">Shift+Enter</kbd> quebra linha
+          <span class="text-[11px] text-slate-500 hidden xl:inline shrink-0 font-mono">
+            Enter envia • Shift+Enter quebra linha
           </span>
         </div>
 
@@ -539,33 +538,33 @@
           @change="handleFileSelect"
         />
 
-        <!-- 4. Main Multiline Editor + Attachment + Voice + Send Buttons -->
-        <div class="flex items-end gap-1.5 sm:gap-2">
-          <!-- Attach File / Image Button -->
+        <!-- 4. Main Multiline Editor + Buttons -->
+        <div class="flex items-end gap-2">
+          <!-- Attach File Button -->
           <button
             type="button"
             @click="triggerFilePicker"
             :disabled="loading"
-            class="pixel-btn-wood h-10 sm:h-11 px-2.5 sm:px-3 flex items-center justify-center gap-1 text-xs shrink-0"
+            class="h-10 sm:h-11 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center gap-1.5 text-xs shrink-0 transition"
             title="Anexar imagens, prints, roteiros, PDFs, CSVs ou áudios"
           >
-            <span class="text-sm sm:text-base">📎</span>
-            <span class="hidden sm:inline font-bold">Anexar</span>
+            <span class="text-sm">📎</span>
+            <span class="hidden sm:inline font-medium">Anexar</span>
           </button>
 
-          <!-- Voice Message / Microphone Button -->
+          <!-- Voice Recording Button -->
           <button
             type="button"
             @click="toggleVoiceRecording"
             :disabled="loading"
-            class="h-10 sm:h-11 px-2.5 sm:px-3 rounded flex items-center justify-center gap-1 text-xs font-extrabold border-2 transition shrink-0"
+            class="h-10 sm:h-11 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium border transition shrink-0"
             :class="isRecordingVoice
-              ? 'bg-red-600 text-white border-red-300 animate-pulse'
-              : 'pixel-btn-wood'"
+              ? 'bg-red-600 text-white border-red-500 animate-pulse'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'"
             title="Gravar mensagem de voz e transcrever fala em português"
           >
-            <span class="text-sm sm:text-base">🎙️</span>
-            <span class="hidden sm:inline font-bold">{{ isRecordingVoice ? 'Gravando...' : 'Voz' }}</span>
+            <span class="text-sm">🎙️</span>
+            <span class="hidden sm:inline font-medium">{{ isRecordingVoice ? 'Gravando...' : 'Voz' }}</span>
           </button>
 
           <!-- Multiline Textarea -->
@@ -577,7 +576,7 @@
             :disabled="loading"
             @keydown="handleEditorKeydown"
             @paste="handleEditorPaste"
-            class="flex-1 pixel-wood-inset px-2.5 sm:px-3.5 py-2 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b] resize-y min-h-[40px] sm:min-h-[44px] max-h-32 sm:max-h-36 select-text leading-relaxed"
+            class="flex-1 bg-slate-950/80 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-y min-h-[44px] max-h-36 leading-relaxed select-text transition"
           ></textarea>
 
           <!-- Send Button -->
@@ -585,7 +584,7 @@
             type="button"
             @click="sendMessage"
             :disabled="loading || (!inputMessage.trim() && pendingAttachments.length === 0)"
-            class="pixel-btn-gold h-10 sm:h-11 px-3.5 sm:px-5 text-xs font-extrabold shrink-0 flex items-center gap-1"
+            class="h-10 sm:h-11 px-4 sm:px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider shrink-0 flex items-center gap-1.5 transition shadow-sm shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span class="hidden sm:inline">Enviar</span>
             <span>➔</span>
@@ -597,27 +596,30 @@
     <!-- 3. RIGHT SIDEBAR: LIVE JEFFREY ACTIVITY, TASKS & PROGRESS MONITOR -->
     <div
       v-if="(!isMobile && showActivityPanel) || (isMobile && mobileTab === 'monitor')"
-      class="pixel-wood rpg-rivets p-2 sm:p-2.5 flex flex-col overflow-hidden shrink-0 select-text"
+      class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shrink-0 select-text shadow-xl"
       :class="isMobile ? 'w-full flex-1 h-full' : 'w-72 lg:w-80 xl:w-96 h-full'"
     >
-      <div class="pixel-wood-inset p-2 sm:p-2.5 mb-2 flex items-center justify-between gap-2">
+      <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 mb-3 flex items-center justify-between gap-2">
         <div class="min-w-0">
-          <div class="font-extrabold text-xs text-[#fef08a] flex items-center gap-1.5 truncate">
+          <div class="font-bold text-xs text-slate-100 flex items-center gap-1.5 truncate">
             <span>📡</span>
             <span class="truncate">Monitor do Jeffrey (Ao Vivo)</span>
           </div>
-          <div class="text-[9.5px] sm:text-[10px] text-[#d9bc8c] truncate">
+          <div class="text-[11px] text-slate-400 truncate font-mono">
             Atualiza a cada 4s • Fila: {{ jeffreyActivity.queue_length || 0 }}
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <button @click="fetchJeffreyActivity" class="pixel-btn-wood px-2 py-1 text-[10px]">
+          <button
+            @click="fetchJeffreyActivity"
+            class="h-7 w-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center justify-center transition"
+          >
             ↻
           </button>
           <button
             v-if="isMobile"
             @click="mobileTab = 'chat'"
-            class="pixel-btn-gold px-2 py-1 text-[10px] font-black"
+            class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs"
             title="Voltar ao Chat"
           >
             💬 Chat
@@ -625,7 +627,7 @@
           <button
             v-else
             @click="showActivityPanel = false"
-            class="pixel-btn-wood px-2 py-1 text-[10px] font-bold"
+            class="h-7 w-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center justify-center transition"
             title="Fechar Monitor"
           >
             ✕
@@ -633,90 +635,90 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-4 gap-1.5 mb-2 text-center">
-        <div class="pixel-wood-inset p-1.5">
-          <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Na Fila</div>
-          <div class="text-sm font-black text-[#fbbf24]">{{ jeffreyActivity.counts?.pending || 0 }}</div>
+      <div class="grid grid-cols-4 gap-2 mb-3 text-center">
+        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400 font-medium uppercase font-mono">Fila</div>
+          <div class="text-sm font-bold font-mono text-amber-400">{{ jeffreyActivity.counts?.pending || 0 }}</div>
         </div>
-        <div class="pixel-wood-inset p-1.5">
-          <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Fazendo</div>
-          <div class="text-sm font-black text-[#38bdf8]">{{ jeffreyActivity.counts?.in_progress || 0 }}</div>
+        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400 font-medium uppercase font-mono">Fazendo</div>
+          <div class="text-sm font-bold font-mono text-cyan-400">{{ jeffreyActivity.counts?.in_progress || 0 }}</div>
         </div>
-        <div class="pixel-wood-inset p-1.5">
-          <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Prontas</div>
-          <div class="text-sm font-black text-[#4ade80]">{{ jeffreyActivity.counts?.completed || 0 }}</div>
+        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400 font-medium uppercase font-mono">Prontas</div>
+          <div class="text-sm font-bold font-mono text-emerald-400">{{ jeffreyActivity.counts?.completed || 0 }}</div>
         </div>
-        <div class="pixel-wood-inset p-1.5">
-          <div class="text-[9px] text-[#d9bc8c] font-bold uppercase">Falhas</div>
-          <div class="text-sm font-black text-[#f87171]">{{ jeffreyActivity.counts?.failed || 0 }}</div>
+        <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2">
+          <div class="text-[10px] text-slate-400 font-medium uppercase font-mono">Falhas</div>
+          <div class="text-sm font-bold font-mono text-red-400">{{ jeffreyActivity.counts?.failed || 0 }}</div>
         </div>
       </div>
 
-      <div class="flex gap-1.5 mb-2">
+      <div class="flex gap-2 mb-3">
         <button
           @click="activitySubTab = 'tasks'"
-          class="flex-1 py-1.5 px-2 rounded text-[11px] font-extrabold border transition"
+          class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition border"
           :class="activitySubTab === 'tasks'
-            ? 'bg-[#63391b] text-[#fef08a] border-[#f59e0b]'
-            : 'bg-[#2b1507] text-[#c49a6c] border-[#1a0b03] hover:text-white'"
+            ? 'bg-amber-500 text-slate-950 border-amber-400'
+            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'"
         >
           📋 Trabalhos ({{ jeffreyActivity.recent_tasks?.length || 0 }})
         </button>
         <button
           @click="activitySubTab = 'decisions'"
-          class="flex-1 py-1.5 px-2 rounded text-[11px] font-extrabold border transition"
+          class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition border"
           :class="activitySubTab === 'decisions'
-            ? 'bg-[#63391b] text-[#fef08a] border-[#f59e0b]'
-            : 'bg-[#2b1507] text-[#c49a6c] border-[#1a0b03] hover:text-white'"
+            ? 'bg-amber-500 text-slate-950 border-amber-400'
+            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'"
         >
           🔍 Log de Ações ({{ jeffreyActivity.recent_decisions?.length || 0 }})
         </button>
       </div>
 
       <!-- SUB-TAB 1: TASKS -->
-      <div v-if="activitySubTab === 'tasks'" class="flex-1 overflow-y-auto pixel-wood-inset p-2 space-y-2 text-xs">
+      <div v-if="activitySubTab === 'tasks'" class="flex-1 overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl p-2 space-y-2 text-xs">
         <div
-          class="p-2.5 rounded border-2"
+          class="p-3 rounded-xl border"
           :class="jeffreyActivity.is_working
-            ? 'bg-[#3b200e] border-[#f59e0b]'
+            ? 'bg-amber-500/10 border-amber-500/30'
             : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
-              ? 'bg-[#2b1507] border-[#d97706]'
-              : 'bg-[#241207] border-[#4a2810]'"
+              ? 'bg-slate-900 border-slate-700'
+              : 'bg-slate-900/60 border-slate-800'"
         >
-          <div class="flex items-center justify-between text-[11px] font-bold">
-            <span class="text-[#fef08a]">Estado Real do Worker:</span>
+          <div class="flex items-center justify-between text-xs font-medium">
+            <span class="text-slate-300">Estado Real do Worker:</span>
             <span
-              class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase"
               :class="jeffreyActivity.is_working
-                ? 'bg-[#0284c7] text-white'
+                ? 'bg-cyan-950 text-cyan-400 border border-cyan-800'
                 : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
-                  ? 'bg-[#f59e0b] text-[#1e0d04]'
-                  : 'bg-[#14532d] text-[#86efac]'"
+                  ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                  : 'bg-emerald-950 text-emerald-400 border border-emerald-800'"
             >
               {{
                 jeffreyActivity.is_working
                   ? 'EM EXECUÇÃO'
                   : (jeffreyActivity.has_queued || (jeffreyActivity.counts?.pending || 0) > 0)
                     ? 'NA FILA'
-                    : 'OCIOSO / LIVRE'
+                    : 'OCIOSO'
               }}
             </span>
           </div>
-          <div class="text-[11px] text-[#e2c699] mt-1 leading-snug">
+          <div class="text-xs text-slate-400 mt-1 leading-snug">
             {{ jeffreyActivity.worker_state?.step || 'Nenhuma tarefa rodando em background no momento.' }}
           </div>
         </div>
 
         <div
           v-if="!jeffreyActivity.recent_tasks || jeffreyActivity.recent_tasks.length === 0"
-          class="rpg-parchment-inner p-4 text-center space-y-2"
+          class="p-5 text-center space-y-2 text-slate-400"
         >
-          <div class="text-base">📭</div>
-          <div class="font-extrabold text-[#2b1507] text-xs">Nenhuma tarefa registrada</div>
-          <p class="text-[11px] text-[#4a2810]">
+          <div class="text-2xl">📭</div>
+          <div class="font-bold text-slate-200 text-xs">Nenhuma tarefa registrada</div>
+          <p class="text-xs text-slate-400">
             Clique abaixo para disparar uma pesquisa ou trabalho real em segundo plano!
           </p>
-          <button @click="promptNewBackgroundTask" class="pixel-btn-gold px-3 py-1.5 text-[11px] w-full">
+          <button @click="promptNewBackgroundTask" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs w-full transition shadow-sm">
             + Criar Tarefa Real para o Jeffrey
           </button>
         </div>
@@ -724,36 +726,36 @@
         <div
           v-for="t in jeffreyActivity.recent_tasks"
           :key="t.id"
-          class="rpg-parchment-inner p-2.5 space-y-1.5 border-2 border-[#3a1e0b] select-text"
+          class="p-3 space-y-2 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition select-text"
         >
-          <div class="flex items-start justify-between gap-1.5">
-            <div class="font-extrabold text-[11.5px] text-[#1e0d04] leading-snug">
-              <span class="font-mono text-[#78350f]">#{{ t.id }}</span> {{ t.title }}
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-bold text-xs text-slate-100 leading-snug">
+              <span class="font-mono text-amber-400">#{{ t.id }}</span> {{ t.title }}
             </div>
             <span
-              class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 border"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase shrink-0 border"
               :class="{
-                'bg-[#0284c7] text-white border-[#0369a1] animate-pulse': t.status === 'in_progress',
-                'bg-[#4f46e5] text-white border-[#312e81]': t.status === 'pending' && t.payload?.depends_on_task_id,
-                'bg-[#d97706] text-[#1e0d04] border-[#78350f]': t.status === 'pending' && !t.payload?.depends_on_task_id,
-                'bg-[#15803d] text-white border-[#052e16]': t.status === 'completed',
-                'bg-[#b91c1c] text-white border-[#450a0a]': t.status === 'failed',
-                'bg-[#57534e] text-white border-[#292524]': t.status === 'cancelled'
+                'bg-blue-950 text-blue-300 border-blue-800 animate-pulse': t.status === 'in_progress',
+                'bg-indigo-950 text-indigo-300 border-indigo-800': t.status === 'pending' && t.payload?.depends_on_task_id,
+                'bg-amber-950 text-amber-300 border-amber-800': t.status === 'pending' && !t.payload?.depends_on_task_id,
+                'bg-emerald-950 text-emerald-300 border-emerald-800': t.status === 'completed',
+                'bg-red-950 text-red-300 border-red-800': t.status === 'failed',
+                'bg-slate-800 text-slate-400 border-slate-700': t.status === 'cancelled'
               }"
             >
               {{ t.status === 'pending' && t.payload?.depends_on_task_id ? `⛓️ AGUARDANDO #${t.payload.depends_on_task_id}` : formatTaskStatus(t.status) }}
             </span>
           </div>
 
-          <div class="flex items-center justify-between text-[10px] text-[#4a2810] font-semibold">
+          <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono">
             <span>🤖 {{ t.agent_name || 'Jeffrey' }} ({{ t.type }})</span>
             <span>{{ formatTimeShort(t.completed_at || t.started_at || t.created_at) }}</span>
           </div>
 
           <div v-if="t.status === 'in_progress' || t.status === 'pending'" class="pt-1 space-y-1">
-            <div class="pixel-bar-bg w-full h-2.5">
+            <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
               <div
-                class="pixel-bar-energy h-full transition-all"
+                class="bg-amber-500 h-full rounded-full transition-all"
                 :style="{
                   width: t.status === 'in_progress'
                     ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.progress_percent)
@@ -763,61 +765,61 @@
                 }"
               ></div>
             </div>
-            <div class="text-[10px] text-[#5c3419] font-semibold">
+            <div class="text-[11px] text-slate-400">
               {{
                 t.status === 'in_progress'
                   ? ((String(jeffreyActivity.worker_state?.task_id) === String(t.id) && jeffreyActivity.worker_state?.step)
                       ? jeffreyActivity.worker_state.step
                       : '⚙️ Worker processando no motor de IA...')
                   : (t.payload?.depends_on_task_id
-                      ? `⛓️ Aguardando o resultado da Tarefa #${t.payload.depends_on_task_id} para planejar automaticamente...`
-                      : '⏳ Aguardando vez na fila do worker...')
+                      ? `⛓️ Aguardando Tarefa #${t.payload.depends_on_task_id}...`
+                      : '⏳ Aguardando vez na fila...')
               }}
             </div>
           </div>
 
-          <div v-if="t.error_message" class="p-1.5 rounded bg-red-100 border border-red-400 text-[10px] text-red-900 font-semibold">
+          <div v-if="t.error_message" class="p-2 rounded-lg bg-red-950/80 border border-red-800 text-xs text-red-200">
             ⚠️ {{ t.error_message }}
           </div>
 
-          <div class="pt-1 flex flex-wrap items-center justify-between gap-1 border-t border-[#c4924d]">
+          <div class="pt-2 flex flex-wrap items-center justify-between gap-1 border-t border-slate-800">
             <button
               v-if="t.result?.response"
               @click="expandedTaskId = (expandedTaskId === t.id ? null : t.id)"
-              class="text-[10.5px] font-extrabold text-[#78350f] hover:underline"
+              class="text-xs font-semibold text-amber-400 hover:underline"
             >
-              {{ expandedTaskId === t.id ? '▲ Ocultar Resultado' : '👁️ Ver Entrega Completa' }}
+              {{ expandedTaskId === t.id ? '▲ Ocultar Entrega' : '👁️ Ver Entrega Completa' }}
             </button>
-            <span v-else class="text-[10px] text-[#5c3419] italic">
+            <span v-else class="text-xs text-slate-500 italic">
               {{ t.status === 'completed' ? 'Concluído' : 'Sem resultado ainda' }}
             </span>
 
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1.5">
               <button
                 v-if="t.result?.response"
                 @click="copyText(t.result.response, `task_${t.id}`)"
-                class="px-2 py-0.5 rounded bg-[#3b200e] text-[#fbbf24] text-[9.5px] font-bold hover:brightness-110"
+                class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
               >
                 {{ copiedId === `task_${t.id}` ? '✓ Copiado' : '📋 Copiar' }}
               </button>
               <button
                 v-if="t.result?.response"
                 @click="sendTaskResultToChat(t)"
-                class="px-2 py-0.5 rounded bg-[#5c3419] text-[#fef08a] text-[9.5px] font-bold hover:brightness-110"
+                class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold transition"
               >
                 📥 No Chat
               </button>
               <button
                 v-if="t.status === 'failed' || t.status === 'cancelled' || t.status === 'pending'"
                 @click="retryTask(t.id)"
-                class="px-2 py-0.5 rounded bg-[#d97706] text-[#1e0d04] text-[9.5px] font-bold hover:brightness-110"
+                class="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition"
               >
                 🔄 Rodar
               </button>
               <button
                 v-if="t.status === 'pending' || t.status === 'in_progress'"
                 @click="cancelTask(t.id)"
-                class="px-1.5 py-0.5 rounded bg-[#991b1b] text-white text-[9.5px] font-bold"
+                class="px-2 py-1 rounded-lg bg-red-900 hover:bg-red-800 text-white text-xs font-bold transition"
               >
                 ✕
               </button>
@@ -826,7 +828,7 @@
 
           <div
             v-if="expandedTaskId === t.id && t.result?.response"
-            class="mt-1.5 p-2 rounded bg-[#fbf0d9] border border-[#8c5828] text-[11px] text-[#1e0d04] whitespace-pre-wrap max-h-60 overflow-y-auto font-medium select-text"
+            class="mt-2 p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono select-text"
           >
             {{ t.result.response }}
           </div>
@@ -834,20 +836,20 @@
       </div>
 
       <!-- SUB-TAB 2: DECISIONS -->
-      <div v-else class="flex-1 overflow-y-auto pixel-wood-inset p-2 space-y-2 text-xs">
+      <div v-else class="flex-1 overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl p-2 space-y-2 text-xs">
         <div
           v-for="d in jeffreyActivity.recent_decisions"
           :key="d.id"
-          class="rpg-parchment-inner p-2.5 space-y-1 border border-[#3a1e0b] select-text"
+          class="p-3 space-y-1.5 rounded-xl bg-slate-900 border border-slate-800 select-text"
         >
           <div class="flex items-center justify-between">
-            <span class="font-extrabold text-[11px] text-[#1e0d04]">⚡ {{ d.agent_name }}</span>
-            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#3b200e] text-[#fbbf24]">
+            <span class="font-bold text-xs text-slate-200">⚡ {{ d.agent_name }}</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
               {{ d.action_type }}
             </span>
           </div>
-          <div class="text-[10.5px] text-[#3a1f0d] font-medium">{{ d.justification }}</div>
-          <div class="flex justify-between text-[9.5px] text-[#5c3419] font-semibold pt-0.5">
+          <div class="text-xs text-slate-300 leading-relaxed">{{ d.justification }}</div>
+          <div class="flex justify-between text-[11px] text-slate-500 font-mono pt-1 border-t border-slate-800/80">
             <span>Motor: {{ d.input_payload?.provider || 'system' }} ({{ d.input_payload?.latency_ms || 0 }}ms)</span>
             <span>{{ formatTimeShort(d.created_at) }}</span>
           </div>
@@ -855,40 +857,40 @@
       </div>
     </div>
 
-    <!-- MODAL DE DISPARO DE TAREFA EM 2º PLANO (AGENTES AUTÔNOMOS) -->
+    <!-- MODAL DE DISPARO DE TAREFA EM 2º PLANO -->
     <div
       v-if="showNewTaskModal"
-      class="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+      class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50"
     >
-      <div class="pixel-wood rpg-rivets p-4 max-w-md w-full space-y-3">
-        <div class="flex items-center justify-between border-b border-[#784725] pb-2">
-          <div class="font-extrabold text-sm text-[#fef08a] flex items-center gap-2">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="font-bold text-sm sm:text-base text-slate-100 flex items-center gap-2">
             <span>⚡</span>
-            <span>Delegar Tarefa em 2º Plano ao Agente</span>
+            <span>Delegar Tarefa ao Jeffrey</span>
           </div>
-          <button @click="showNewTaskModal = false" class="text-[#c49a6c] hover:text-white text-xs font-bold">✕</button>
+          <button @click="showNewTaskModal = false" class="text-slate-400 hover:text-white text-xs font-bold transition">✕</button>
         </div>
 
-        <div class="space-y-2.5 text-xs">
+        <div class="space-y-3 text-xs">
           <div>
-            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Agente Especialista</label>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Agente Especialista</label>
             <select
               v-model="newTaskForm.agent_name"
-              class="w-full bg-[#241207] text-[#fef08a] text-xs font-bold rounded px-2.5 py-2 border border-[#784725]"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:border-amber-500 outline-none"
             >
               <option value="TikTok Shop Strategist">🔥 TikTok Shop Strategist (Produtos Virais, Hooks & Conversão)</option>
-              <option value="Research Agent">🔎 Research Agent (Pesquisa Web, TikTok Shop, Bíblia & Tendências)</option>
-              <option value="Content Creator">✍️ Content Creator (Roteiros Shorts, Vídeos Longos & Livros KDP)</option>
+              <option value="Research Agent">🔎 Research Agent (Pesquisa Web, TikTok Shop & Tendências)</option>
+              <option value="Content Creator">✍️ Content Creator (Roteiros Shorts, Vídeos & Livros KDP)</option>
               <option value="Business Analyst">📊 Business Analyst (Viabilidade, Nichos & Monetização)</option>
               <option value="Jeffrey">🧙‍♂️ Jeffrey (Orquestrador & Arquiteto Geral)</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Tipo de Operação</label>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Tipo de Operação</label>
             <select
               v-model="newTaskForm.type"
-              class="w-full bg-[#241207] text-[#fef08a] text-xs font-bold rounded px-2.5 py-2 border border-[#784725]"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:border-amber-500 outline-none"
             >
               <option value="research_and_execution">🌐 Pesquisa Web Ao Vivo + Relatório Prático</option>
               <option value="content_creation">🎬 Criação de Roteiro / Copywriting / Manuscrito KDP</option>
@@ -898,21 +900,21 @@
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-[#e2c699] mb-1">Missão / Prompt Detalhado</label>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Missão / Prompt Detalhado</label>
             <textarea
               v-model="newTaskForm.prompt"
               rows="4"
               placeholder="Ex: Identificar 10 produtos viralizados na TikTok Shop Brasil com alta margem de comissão e criar 3 ganchos de vídeo para os melhores..."
-              class="w-full pixel-wood-inset p-2.5 text-xs text-[#fff6e0] placeholder-[#a8865e] focus:outline-none focus:border-[#f59e0b]"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 outline-none transition"
             ></textarea>
           </div>
         </div>
 
-        <div class="flex justify-end gap-2 pt-2">
+        <div class="flex justify-end gap-2.5 pt-2">
           <button
             type="button"
             @click="showNewTaskModal = false"
-            class="pixel-btn-wood px-3 py-1.5 text-xs"
+            class="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition text-xs"
           >
             Cancelar
           </button>
@@ -920,7 +922,7 @@
             type="button"
             @click="submitNewBackgroundTask"
             :disabled="submittingTask || !newTaskForm.prompt.trim()"
-            class="pixel-btn-gold px-4 py-1.5 text-xs"
+            class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition shadow-sm"
           >
             {{ submittingTask ? 'Enfileirando...' : '🚀 Disparar no Worker' }}
           </button>
