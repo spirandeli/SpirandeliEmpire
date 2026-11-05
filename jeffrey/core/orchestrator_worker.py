@@ -36,11 +36,17 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 MONTHLY_BUDGET_LIMIT = float(os.getenv("MONTHLY_BUDGET_LIMIT_BRL", 200.00))
-AI_PROVIDER = os.getenv("AI_PROVIDER", "hybrid")
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
+
+def normalize_gemini_model(model: Optional[str]) -> str:
+    m = (model or "").strip()
+    if not m or m.lower() in ("default", "gemini", "gemini-flash"):
+        return "gemini-3.8-flash"
+    return m
 
 # --- AI PROVIDERS CONFIGURATION ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = normalize_gemini_model(os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
 raw_gemini_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").strip().rstrip("/")
 if "generativelanguage" not in raw_gemini_url:
     raw_gemini_url = "https://generativelanguage.googleapis.com/v1beta"
@@ -210,8 +216,8 @@ def _get_ai_availability_config() -> Dict[str, Any]:
             "openai": True,
             "hybrid": True,
         },
-        "gemini_access_policy": "owner_only",
-        "default_provider_for_others": "ollama",
+        "gemini_access_policy": "all_users",
+        "default_provider_for_others": "gemini",
     }
     try:
         r = get_redis_client()
@@ -241,23 +247,22 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
         if system_prompt:
             base_payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
-        candidate_models = []
-        if GEMINI_MODEL:
-            candidate_models.append(GEMINI_MODEL)
-        for fallback_m in ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview", "gemini-2.5-flash"):
+        norm_target = normalize_gemini_model(GEMINI_MODEL)
+        candidate_models = [norm_target]
+        for fallback_m in ("gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
             if fallback_m not in candidate_models:
                 candidate_models.append(fallback_m)
 
         start = time.time()
         res = None
-        used_model = GEMINI_MODEL
+        used_model = norm_target
 
         # Force IPv4 transport so broken Docker IPv6 routing on Linux VPS never causes 45s timeouts
         transport = httpx.HTTPTransport(local_address="0.0.0.0")
         with httpx.Client(transport=transport, timeout=httpx.Timeout(35.0, connect=8.0)) as client:
             for model_name in candidate_models:
                 url = f"{GEMINI_BASE_URL}/models/{model_name}:generateContent?key={g_key}"
-                model_retries = 3 if model_name == (GEMINI_MODEL or "gemini-3.8-flash") else 1
+                model_retries = 3 if model_name == norm_target else 1
 
                 for attempt_idx in range(1, model_retries + 1):
                     try:
@@ -268,7 +273,13 @@ def query_gemini(prompt: str, system_prompt: Optional[str] = None, enable_google
                             break
                         res = attempt
                         err_text = attempt.text
-                        is_retryable = attempt.status_code in (404, 400, 429, 500, 502, 503, 504) or any(
+
+                        # If 404 or 400 (unrecognized model tag on this API endpoint), immediately try next model!
+                        if attempt.status_code in (404, 400):
+                            logger.info(f"Gemini model {model_name} unavailable on endpoint ({attempt.status_code}). Trying next model...")
+                            break
+
+                        is_retryable = attempt.status_code in (429, 500, 502, 503, 504) or any(
                             term in err_text.lower() for term in ("high demand", "overloaded", "temporary", "quota", "rate")
                         )
                         if is_retryable:
@@ -471,15 +482,13 @@ def determine_optimal_provider(
             return "gemini", f"Contexto de {estimated_tokens} tokens excede janela segura do Llama local. Delegado ao Gemini."
         return requested_provider, f"Provedor {requested_provider} requisitado explicitamente."
 
-    # Cooperative Division when Gemini or OpenAI API Key is configured and permitted:
-    # - Llama Local (Ollama) -> Read & Analyze ('read_analyze')
-    # - Gemini or OpenAI Chat -> Execute Tasks ('execute_task')
+    # When Gemini or OpenAI API Key is configured and permitted:
+    # Gemini is the PRIMARY AI of the system for all tasks and analyses.
+    # Llama Local (Ollama) is used ONLY when explicitly requested.
     if has_gemini or has_openai:
-        if task_role == "read_analyze" and estimated_tokens <= 6000:
-            return "ollama", f"Modo Cooperativo: Tarefa de Leitura & Análise (~{estimated_tokens} tokens) atribuída ao Llama Local (Ollama)."
         if has_gemini:
-            return "gemini", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao Google Gemini (após leitura/análise do Llama)."
-        return "openai", f"Modo Cooperativo: Execução de Tarefa (~{estimated_tokens} tokens) atribuída ao OpenAI Chat (após leitura/análise do Llama)."
+            return "gemini", f"Motor Principal: Processamento direto no Google Gemini (~{estimated_tokens} tokens)."
+        return "openai", f"Motor Principal: Processamento no OpenAI Chat (~{estimated_tokens} tokens)."
 
     return "ollama", f"Provedores cloud não disponíveis para este login; executando localmente no Ollama (~{estimated_tokens} tokens)."
 
@@ -574,7 +583,7 @@ def query_ai_engine(
 # ============================================================================
 
 def _clean_search_query(raw_prompt: str) -> str:
-    """Strip conversational task instructions and verbs so search engines get high-precision keywords."""
+    """Strip conversational task instructions, prepositions and verbs so search engines get high-precision keywords."""
     q = re.sub(r"^(execute de forma completa.*?:|execute o ciclo.*?:)\s*", "", raw_prompt or "", flags=re.I | re.S)
     q = q.split("\n")[0].strip()
     # Remove conversational filler prefixes in Portuguese
@@ -588,8 +597,20 @@ def _clean_search_query(raw_prompt: str) -> str:
     )
     q = re.sub(r"\btiktokshop\b", "TikTok Shop Brasil", q, flags=re.I)
     q = re.sub(r"\bviralizados\b", "virais mais vendidos", q, flags=re.I)
+
+    # Strip standalone prepositions / short noise words (e.g. "na", "no", "em", "de", "da")
+    q = re.sub(r"\b(na|no|em|de|da|do|dos|das|para|pra|pro|com|um|uma|uns|umas|o|a|os|as)\b", " ", q, flags=re.I)
     q = re.sub(r"\s+", " ", q).strip(" -:,.?!")
-    return q[:110] if len(q) >= 3 else (raw_prompt or "")[:100].strip()
+
+    if len(q) < 4:
+        if re.search(r"(tiktok|shop|produto|viral|afiliad|achadinho)", raw_prompt or "", flags=re.I):
+            return "produtos virais mais vendidos TikTok Shop Brasil achadinhos"
+        return "produtos em alta e tendencias de mercado brasil"
+
+    if re.search(r"(tiktok|shop|achadinho|afiliad|shopee)", raw_prompt or "", flags=re.I) and "tiktok shop" not in q.lower():
+        q = f"TikTok Shop Brasil {q}"
+
+    return q[:110]
 
 
 def _decode_search_redirect_url(raw_url: str) -> str:
@@ -761,6 +782,18 @@ def _web_search_live(query: str, max_results: int = 10) -> List[Dict[str, str]]:
         real_url = _decode_search_redirect_url(url)
         if not title or not real_url or not real_url.startswith("http"):
             return
+
+        low_url = real_url.lower()
+        low_text = f"{title} {snippet}".lower()
+
+        # Discard irrelevant noise (Narcotics Anonymous, dictionaries, chemistry)
+        noise_domains = ("na.org.br", "na.org", "virtual-na.org", "na-pt.org", "dicio.com.br", "priberam.pt", "significados.com.br")
+        if any(nd in low_url for nd in noise_domains):
+            return
+
+        if re.search(r"(narcóticos anônimos|narcotics anonymous|tabela periódica|chemical element sodium|significado de na\b)", low_text):
+            return
+
         if real_url in seen_urls:
             return
         seen_urls.add(real_url)
@@ -1482,7 +1515,8 @@ def process_task(task: Dict[str, Any]) -> None:
 
         llama_analysis_block = ""
         llama_analyzer_model = None
-        if cloud_executor_ready and task_role == "execute_task":
+        # Only run Llama pre-analysis if explicitly commanded via cooperative_mode flag
+        if payload.get("cooperative_mode") is True and task_role == "execute_task":
             raw_for_llama = "\n".join(filter(None, [db_ctx.get("business_info", ""), web_context_block]))
             if raw_for_llama.strip():
                 if r_live:
@@ -1495,7 +1529,7 @@ def process_task(task: Dict[str, Any]) -> None:
                         "progress_percent": 62,
                         "started_at": datetime.utcnow().isoformat()
                     })
-                logger.info(f"Task [#{task_id}] Stage 1: Llama Local reading and analyzing context...")
+                logger.info(f"Task [#{task_id}] Cooperative stage: Llama Local analyzing context...")
                 llama_res = _llama_read_and_analyze(raw_for_llama, prompt)
                 if llama_res and llama_res.get("success") and llama_res.get("response"):
                     llama_analysis_block = llama_res["response"].strip()

@@ -337,19 +337,10 @@ PROMPT;
         }
         $fullPrompt .= "\n\nJeffrey:";
 
-        // 5. Query AI Gateway with Role Division (Llama = Read/Analyze, Gemini/OpenAI = Execute Tasks) & User Login Restriction
+        // 5. Query AI Gateway. Gemini is the PRIMARY AI for all tasks, direct multimodal, and live web search.
+        // Llama Local (Ollama) is invoked ONLY when explicitly commanded by the operator.
         $taskRole = $this->aiGateway->getTokenManager()->classifyTaskRole($userMessage);
-        if (!empty($inlineMedia)) {
-            // Multimodal (Voice message, Image screenshot, or PDF) -> Gemini 3.8 Flash (if authorized for user)
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, 'execute_task', $inlineMedia, $user, $conversationTurns);
-        } elseif ($cloudConfigured && !$forceLocal && (!empty($attachedTextsForLlama) || preg_match('/\b(analis|leia|ler|inspecion|resum).*?(e\s+depois|e\s+execut|e\s+crie|e\s+gere|e\s+rode)/iu', $userMessage))) {
-            $rawContextForLlama = !empty($attachedTextsForLlama)
-                ? implode("\n\n", $attachedTextsForLlama)
-                : "{$projectContext}\n{$businessContext}\nTarefas: {$tasksContext}\nMemórias:\n{$formattedMemories}";
-            $response = $this->aiGateway->analyzeWithLlamaThenExecute($rawContextForLlama, $fullPrompt, $systemPrompt, $provider, $user);
-        } else {
-            $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole, [], $user, $conversationTurns);
-        }
+        $response = $this->aiGateway->generate($fullPrompt, $systemPrompt, $provider, null, $taskRole, $inlineMedia, $user, $conversationTurns);
 
         if ($response['success']) {
             $replyText = $response['response'];

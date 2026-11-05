@@ -104,28 +104,17 @@ class TokenBudgetManagerService
         }
 
         // WHEN GEMINI OR OPENAI API KEY IS CONFIGURED:
-        // Rule requested by Commander:
-        // - Llama Local (Ollama) -> Read & Analyze things (leitura, triagem, análise de dados/arquivos/logs)
-        // - Gemini or Chat (OpenAI) -> Execute tasks (execução de tarefas, roteiros, ferramentas, planos de ação)
+        // Directive: Google Gemini is the PRIMARY AI of the system.
+        // Llama Local (Ollama) is used ONLY when explicitly requested by the operator.
         if ($geminiConfigured || $openaiConfigured) {
             $cloudExecutor = $geminiConfigured ? 'gemini' : 'openai';
             $cloudLabel = $geminiConfigured ? 'Google Gemini 3.8 Flash' : 'OpenAI ChatGPT';
 
-            if ($resolvedRole === 'read_analyze' && $estimatedTokens <= 6000) {
-                return [
-                    'provider' => 'ollama',
-                    'tier' => 'read_analyze',
-                    'role' => 'read_analyze',
-                    'reason' => "Modo Cooperativo Ativo: Tarefa de Leitura & Análise (~{$estimatedTokens} tokens) atribuída ao Llama Local (Ollama) para processar dados a custo zero.",
-                    'forced_delegation' => false,
-                ];
-            }
-
             return [
                 'provider' => $cloudExecutor,
                 'tier' => $estimatedTokens > $this->longContextThreshold ? 'heavy_context' : 'task_execution',
-                'role' => 'execute_task',
-                'reason' => "Modo Cooperativo Ativo: Execução de Tarefa (~{$estimatedTokens} tokens) atribuída ao {$cloudLabel} (Llama reservado para leitura e análise).",
+                'role' => $resolvedRole,
+                'reason' => "Motor Principal Ativo: Processamento (~{$estimatedTokens} tokens) executado diretamente pelo {$cloudLabel}.",
                 'forced_delegation' => false,
             ];
         }

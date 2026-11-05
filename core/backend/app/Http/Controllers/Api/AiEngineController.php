@@ -115,26 +115,32 @@ class AiEngineController extends Controller
 
         $this->persistAiConfig($existingConfig);
 
-        // Best-effort update of .env if writable
+        // Best-effort update of .env in backend and project root if writable
         try {
-            $envPath = base_path('.env');
-            if (File::exists($envPath) && File::isWritable($envPath)) {
-                $envContent = File::get($envPath);
-                if (!empty($existingConfig['gemini_api_key'])) {
-                    if (preg_match('/^GEMINI_API_KEY=/m', $envContent)) {
-                        $envContent = preg_replace('/^GEMINI_API_KEY=.*$/m', 'GEMINI_API_KEY=' . $existingConfig['gemini_api_key'], $envContent);
-                    } else {
-                        $envContent .= "\nGEMINI_API_KEY=" . $existingConfig['gemini_api_key'];
+            $candidateEnvPaths = [
+                base_path('.env'),
+                base_path('../../.env'),
+                dirname(base_path()) . '/.env',
+            ];
+            foreach ($candidateEnvPaths as $envPath) {
+                if (File::exists($envPath) && File::isWritable($envPath)) {
+                    $envContent = File::get($envPath);
+                    if (!empty($existingConfig['gemini_api_key'])) {
+                        if (preg_match('/^GEMINI_API_KEY=/m', $envContent)) {
+                            $envContent = preg_replace('/^GEMINI_API_KEY=.*$/m', 'GEMINI_API_KEY=' . $existingConfig['gemini_api_key'], $envContent);
+                        } else {
+                            $envContent .= "\nGEMINI_API_KEY=" . $existingConfig['gemini_api_key'];
+                        }
                     }
-                }
-                if (!empty($existingConfig['openai_api_key'])) {
-                    if (preg_match('/^OPENAI_API_KEY=/m', $envContent)) {
-                        $envContent = preg_replace('/^OPENAI_API_KEY=.*$/m', 'OPENAI_API_KEY=' . $existingConfig['openai_api_key'], $envContent);
-                    } else {
-                        $envContent .= "\nOPENAI_API_KEY=" . $existingConfig['openai_api_key'];
+                    if (!empty($existingConfig['openai_api_key'])) {
+                        if (preg_match('/^OPENAI_API_KEY=/m', $envContent)) {
+                            $envContent = preg_replace('/^OPENAI_API_KEY=.*$/m', 'OPENAI_API_KEY=' . $existingConfig['openai_api_key'], $envContent);
+                        } else {
+                            $envContent .= "\nOPENAI_API_KEY=" . $existingConfig['openai_api_key'];
+                        }
                     }
+                    File::put($envPath, $envContent);
                 }
-                File::put($envPath, $envContent);
             }
         } catch (\Throwable $e) {}
 

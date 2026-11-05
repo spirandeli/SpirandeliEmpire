@@ -718,6 +718,9 @@ PROMPT;
     /**
      * Clean conversational prompt into high-precision search keywords.
      */
+    /**
+     * Clean conversational prompt into high-precision search keywords with stop-word stripping.
+     */
     public function cleanSearchQuery(string $rawPrompt): string
     {
         $q = preg_replace('/^(execute de forma completa.*?:|execute o ciclo.*?:)\s*/isu', '', $rawPrompt);
@@ -729,8 +732,25 @@ PROMPT;
         );
         $q = preg_replace('/\btiktokshop\b/iu', 'TikTok Shop Brasil', $q);
         $q = preg_replace('/\bviralizados\b/iu', 'virais mais vendidos', $q);
+
+        // Strip standalone prepositions / short noise words (e.g. "na", "no", "em", "de", "da")
+        $q = preg_replace('/\b(na|no|em|de|da|do|dos|das|para|pra|pro|com|um|uma|uns|umas|o|a|os|as)\b/iu', ' ', $q);
         $q = trim(preg_replace('/\s+/', ' ', $q), " -:,.?!");
-        return mb_strlen($q) >= 3 ? mb_substr($q, 0, 110) : mb_substr(trim($rawPrompt), 0, 100);
+
+        // If the query was reduced to empty or generic noise, fallback to rich e-commerce discovery query
+        if (mb_strlen($q) < 4) {
+            if (preg_match('/(tiktok|shop|produto|viral|afiliad|achadinho)/iu', $rawPrompt)) {
+                return 'produtos virais mais vendidos TikTok Shop Brasil achadinhos';
+            }
+            return 'produtos em alta e tendencias de mercado brasil';
+        }
+
+        // If query relates to TikTok or products, anchor it with high-precision commercial intent
+        if (preg_match('/(tiktok|shop|achadinho|afiliad|shopee)/iu', $rawPrompt) && !str_contains(strtolower($q), 'tiktok shop')) {
+            $q = 'TikTok Shop Brasil ' . $q;
+        }
+
+        return mb_substr($q, 0, 110);
     }
 
     protected function decodeSearchRedirectUrl(string $rawUrl): string
@@ -771,6 +791,23 @@ PROMPT;
             if ($title === '' || $realUrl === '' || !str_starts_with($realUrl, 'http')) {
                 return;
             }
+
+            // Noise Blocklist: Narcóticos Anônimos (NA), Dictionaries, Chemistry elements, Disambiguation
+            $lowUrl = strtolower($realUrl);
+            $lowTitle = strtolower($title);
+            $lowSnip = strtolower($snippet);
+
+            $noiseDomains = ['na.org.br', 'na.org', 'virtual-na.org', 'na-pt.org', 'dicio.com.br', 'priberam.pt', 'significados.com.br'];
+            foreach ($noiseDomains as $nd) {
+                if (str_contains($lowUrl, $nd)) {
+                    return; // Discard noise
+                }
+            }
+
+            if (preg_match('/(narcóticos anônimos|narcotics anonymous|tabela periódica|chemical element sodium|significado de na\b|contr\. de em com a)/iu', $lowTitle . ' ' . $lowSnip)) {
+                return; // Discard noise
+            }
+
             if (isset($seenUrls[$realUrl])) {
                 return;
             }

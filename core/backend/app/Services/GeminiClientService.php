@@ -19,7 +19,7 @@ class GeminiClientService
     public function __construct()
     {
         $this->apiKey = $this->resolveApiKey();
-        $this->defaultModel = config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-3.8-flash'));
+        $this->defaultModel = self::normalizeModelName(config('ai.gemini.default_model', env('GEMINI_MODEL', 'gemini-3.8-flash')));
 
         $rawBaseUrl = trim((string) config('ai.gemini.base_url', env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta')));
         // Auto-correct invalid hosts like 'https://googleapis.com' to official 'https://generativelanguage.googleapis.com/v1beta'
@@ -39,11 +39,44 @@ class GeminiClientService
         $this->freeTierMode = (bool) config('ai.gemini.free_tier_mode', env('GEMINI_FREE_TIER_MODE', true));
     }
 
+    /**
+     * Normalize model name, preserving Gemini 3.8 Flash as the primary default.
+     */
+    public static function normalizeModelName(?string $model): string
+    {
+        $m = trim((string) $model);
+        if (empty($m) || in_array(strtolower($m), ['default', 'gemini', 'gemini-flash'], true)) {
+            return 'gemini-3.8-flash';
+        }
+        return $m;
+    }
+
     protected function resolveApiKey(): ?string
     {
         $envKey = config('ai.gemini.api_key', env('GEMINI_API_KEY'));
         if (!empty($envKey) && strlen(trim($envKey)) > 10) {
             return trim($envKey);
+        }
+
+        // Also check root .env file in parent directories if running inside Laravel subdirectory
+        $candidatePaths = [
+            base_path('.env'),
+            base_path('../../.env'),
+            dirname(base_path()) . '/.env',
+        ];
+        foreach ($candidatePaths as $p) {
+            if (file_exists($p) && is_readable($p)) {
+                $lines = file($p, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    if (str_starts_with(trim($line), 'GEMINI_API_KEY=')) {
+                        $parts = explode('=', $line, 2);
+                        $k = trim($parts[1] ?? '', " \t\n\r\0\x0B\"'");
+                        if (strlen($k) > 10) {
+                            return $k;
+                        }
+                    }
+                }
+            }
         }
         try {
             $raw = Redis::get('empire:ai:config');
@@ -168,26 +201,24 @@ class GeminiClientService
             ];
         }
 
-        // Primary user choice (Gemini 3.8 Flash) first, followed by Gemini 3 family models and robust fallbacks
-        $candidateModels = [];
-        if ($targetModel) {
-            $candidateModels[] = $targetModel;
-        }
-        foreach (['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'] as $altModel) {
+        // Official Google Gemini models (Gemini 3.8 Flash as primary high-intelligence workhorse)
+        $normalizedTarget = self::normalizeModelName($targetModel);
+        $candidateModels = [$normalizedTarget];
+        foreach (['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as $altModel) {
             if (!in_array($altModel, $candidateModels, true)) {
                 $candidateModels[] = $altModel;
             }
         }
 
         $response = null;
-        $usedModel = $targetModel;
+        $usedModel = $normalizedTarget;
         $lastError = null;
 
         foreach ($candidateModels as $modelName) {
             $endpoint = "{$this->baseUrl}/models/{$modelName}:generateContent?key={$this->apiKey}";
 
-            // Allow up to 3 retries with backoff for primary model (e.g. Gemini 3.8 Flash) to ride out temporary demand spikes
-            $modelRetries = ($modelName === $targetModel) ? 3 : 1;
+            // Allow up to 3 retries with backoff for primary model to ride out temporary demand spikes
+            $modelRetries = ($modelName === $normalizedTarget) ? 3 : 1;
 
             for ($attempt = 1; $attempt <= $modelRetries; $attempt++) {
                 try {
@@ -208,6 +239,12 @@ class GeminiClientService
                     $errMsg = $attemptResp->json('error.message') ?? "HTTP {$statusCode}";
                     $lastError = $errMsg;
 
+                    // If 404 or 400 (model name unrecognized on this endpoint tier), immediately try next candidate model!
+                    if (in_array($statusCode, [404, 400], true)) {
+                        Log::info("Gemini modelo '{$modelName}' indisponível no endpoint ({$statusCode}: {$errMsg}). Tentando próximo modelo suportado...");
+                        break;
+                    }
+
                     // If 503 (high demand), 429 (quota/rate limit), 500, 502, 504, retry primary model with backoff!
                     $isHighDemandOrRateLimit = in_array($statusCode, [503, 429, 500, 502, 504], true)
                         || preg_match('/(high demand|temporary|overloaded|resource_exhausted|quota|rate|unavailable)/i', $errMsg);
@@ -223,11 +260,6 @@ class GeminiClientService
                             usleep(400000);
                             break; // Try next candidate model
                         }
-                    }
-
-                    // If 404 or 400 (model tag not recognized on this API tier), immediately try next model
-                    if (in_array($statusCode, [404, 400], true)) {
-                        break;
                     }
 
                     break;

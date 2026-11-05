@@ -31,7 +31,7 @@ class AiGatewayService
         $this->budget = $budget;
         $this->tokenManager = $tokenManager;
 
-        $this->defaultStrategy = config('ai.default_provider', env('AI_PROVIDER', 'hybrid'));
+        $this->defaultStrategy = config('ai.default_provider', env('AI_PROVIDER', 'gemini'));
         $this->fallbackOrder = config('ai.fallback_order', ['gemini', 'openai', 'ollama']);
     }
 

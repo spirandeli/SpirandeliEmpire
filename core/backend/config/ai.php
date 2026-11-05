@@ -6,12 +6,13 @@ return [
     | Default AI Provider Strategy
     |--------------------------------------------------------------------------
     |
-    | Supported: "hybrid", "gemini", "openai", "ollama"
-    | - hybrid: prioritizes Google Gemini Free Tier, falls back to OpenAI,
-    |   and gracefully degrades to local Llama (Ollama) with 0 cost.
+    | Supported: "gemini", "hybrid", "openai", "ollama"
+    | - gemini (Principal): Prioriza Google Gemini como cérebro principal para todas
+    |   as tarefas, análises e execuções com alta qualidade e velocidade.
+    | - ollama / llama: Usado exclusivamente quando explicitamente solicitado pelo operador.
     |
     */
-    'default_provider' => env('AI_PROVIDER', 'hybrid'),
+    'default_provider' => env('AI_PROVIDER', 'gemini'),
 
     'fallback_order' => explode(',', env('AI_FALLBACK_ORDER', 'gemini,openai,ollama')),
 
@@ -22,13 +23,13 @@ return [
     |--------------------------------------------------------------------------
     | Token Management & Task Delimitation
     |--------------------------------------------------------------------------
-    | Smart token-based routing between Llama local and Cloud APIs (Gemini/OpenAI)
+    | Smart token management. When Gemini is configured, all requests flow
+    | directly to Gemini unless Llama is explicitly chosen by the user.
     */
     'tokens' => [
         'routing_enabled' => (bool) env('TOKEN_ROUTING_ENABLED', true),
-        // Tasks with <= 800 tokens run locally on Llama (saving API quotas)
-        'threshold_local_max' => (int) env('TOKEN_THRESHOLD_LOCAL_MAX', 800),
-        // Tasks with > 3500 tokens route to Gemini 1.5 Flash (1M token window)
+        // Tasks run directly on Gemini when key is configured. Local fallback only when requested.
+        'threshold_local_max' => (int) env('TOKEN_THRESHOLD_LOCAL_MAX', 0),
         'threshold_long_context' => (int) env('TOKEN_THRESHOLD_LONG_CONTEXT', 3500),
         // Daily API safety token cap
         'daily_api_token_cap' => (int) env('DAILY_API_TOKEN_CAP', 500000),
@@ -46,7 +47,7 @@ return [
         'default_model' => env('GEMINI_MODEL', 'gemini-3.8-flash'),
         'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
         'temperature' => (float) env('GEMINI_TEMPERATURE', 0.7),
-        'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 4096),
+        'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 8192),
         'free_tier_mode' => (bool) env('GEMINI_FREE_TIER_MODE', true),
     ],
 
