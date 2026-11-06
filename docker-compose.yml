@@ -1,336 +1,153 @@
+name: abvos
+
+# Autonomous Business Venture OS - ambiente de desenvolvimento / base da VPS.
+# Variáveis de interpolação vêm de ./.env (veja .env.example).
+# A configuração do Laravel vem de ./backend/.env (veja backend/.env.example).
+
+x-php-build: &php-build
+  context: .
+  dockerfile: docker/php/Dockerfile
+  args:
+    UID: ${UID:-1000}
+    GID: ${GID:-1000}
+
+x-php-common: &php-common
+  env_file:
+    - ./backend/.env
+  volumes:
+    - ./backend:/var/www/html
+    - composer_cache:/tmp/composer-cache
+  networks:
+    - abvos
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
 services:
-  # --- REVERSE PROXY & AUTOMATIC TLS ---
-  caddy:
-    image: caddy:2-alpine
-    container_name: empire_caddy
-    restart: unless-stopped
-    ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
-    environment:
-      - DOMAIN=${DOMAIN:-spirandeliempire.tech}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@spirandeliempire.tech}
-    volumes:
-      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./core/frontend/dist:/var/www/frontend:ro
-      - ./core/backend/public:/var/www/backend/public:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - empire-network
-    depends_on:
-      - core-app
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
-  # --- CORE BACKEND (LARAVEL PHP 8.3 FPM) ---
-  core-app:
+  # --- Laravel (PHP-FPM) -----------------------------------------------------
+  app:
+    <<: *php-common
     build:
-      context: .
-      dockerfile: infrastructure/docker/backend.Dockerfile
-    container_name: empire_backend
-    restart: unless-stopped
-    working_dir: /var/www/backend
-    environment:
-      - APP_ENV=${APP_ENV:-production}
-      - APP_DEBUG=${APP_DEBUG:-false}
-      - APP_KEY=${APP_KEY}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@spirandeliempire.tech}
-      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-ChangeMeOnFirstLogin!2026}
-      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
-      - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - CACHE_STORE=file
-      - SESSION_DRIVER=file
-      - AI_PROVIDER=${AI_PROVIDER:-gemini}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - LLAMA_MODEL=${LLAMA_MODEL:-qwen2.5:3b}
-      - DEFAULT_TEXT_MODEL=${DEFAULT_TEXT_MODEL:-qwen2.5:3b}
-      - TOKEN_ROUTING_ENABLED=${TOKEN_ROUTING_ENABLED:-true}
-      - TOKEN_THRESHOLD_LOCAL_MAX=${TOKEN_THRESHOLD_LOCAL_MAX:-0}
-      - TOKEN_THRESHOLD_LONG_CONTEXT=${TOKEN_THRESHOLD_LONG_CONTEXT:-3500}
-      - DAILY_API_TOKEN_CAP=${DAILY_API_TOKEN_CAP:-500000}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - MONTHLY_BUDGET_LIMIT_BRL=${MONTHLY_BUDGET_LIMIT_BRL:-200.00}
-    volumes:
-      - ./core/backend:/var/www/backend
-      - ./storage:/var/www/backend/storage
-      - ./storage/businesses:/var/spirandeli/businesses
-    networks:
-      - empire-network
-      - internal-network
-      - ai-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+      <<: *php-build
+      target: app
+    image: abvos/app:dev
+    container_name: abvos-app
+    working_dir: /var/www/html
 
-  # --- CORE QUEUE WORKER ---
-  core-worker:
+  # --- Worker: Supervisor (queue:work + schedule:work) 24/7 --------------------
+  worker:
+    <<: *php-common
     build:
-      context: .
-      dockerfile: infrastructure/docker/backend.Dockerfile
-    container_name: empire_worker
-    restart: unless-stopped
-    working_dir: /var/www/backend
-    command: sh -c "sleep 3 && php artisan queue:work redis --queue=default,high,low --tries=3 --timeout=120"
-    environment:
-      - APP_ENV=${APP_ENV:-production}
-      - APP_KEY=${APP_KEY}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
-      - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - QUEUE_CONNECTION=redis
-    volumes:
-      - ./core/backend:/var/www/backend
-      - ./storage:/var/www/backend/storage
-    networks:
-      - internal-network
-      - ai-network
-    depends_on:
-      - core-app
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-
-  # --- JEFFREY ORCHESTRATOR & AGENTS WORKER ---
-  jeffrey-worker:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/ai-worker.Dockerfile
-    container_name: empire_jeffrey_worker
-    restart: unless-stopped
-    working_dir: /app
-    command: python -u /app/jeffrey/core/orchestrator_worker.py
-    environment:
-      - AI_PROVIDER=${AI_PROVIDER:-gemini}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - LLAMA_MODEL=${LLAMA_MODEL:-qwen2.5:3b}
-      - DEFAULT_TEXT_MODEL=${DEFAULT_TEXT_MODEL:-qwen2.5:3b}
-      - TOKEN_ROUTING_ENABLED=${TOKEN_ROUTING_ENABLED:-true}
-      - TOKEN_THRESHOLD_LOCAL_MAX=${TOKEN_THRESHOLD_LOCAL_MAX:-0}
-      - TOKEN_THRESHOLD_LONG_CONTEXT=${TOKEN_THRESHOLD_LONG_CONTEXT:-3500}
-      - DAILY_API_TOKEN_CAP=${DAILY_API_TOKEN_CAP:-500000}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - DB_HOST=postgres
-      - DB_DATABASE=${DB_DATABASE:-spirandeli_empire}
-      - DB_USERNAME=${DB_USERNAME:-empire_admin}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - MONTHLY_BUDGET_LIMIT_BRL=${MONTHLY_BUDGET_LIMIT_BRL:-200.00}
-    volumes:
-      - ./jeffrey:/app/jeffrey:ro
-      - ./ai-engine:/app/ai-engine:ro
-      - ./storage:/app/storage
-    networks:
-      - internal-network
-      - ai-network
-    depends_on:
-      - redis
-      - postgres
-      - ollama
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-  # --- DATABASE (POSTGRESQL 16) ---
-  postgres:
-    image: postgres:16-alpine
-    container_name: empire_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_DATABASE:-spirandeli_empire}
-      POSTGRES_USER: ${DB_USERNAME:-empire_admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - internal-network
+      <<: *php-build
+      target: worker
+    image: abvos/worker:dev
+    container_name: abvos-worker
+    working_dir: /var/www/html
+    stop_grace_period: 120s # permite que loops do Gemini em andamento terminem
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-empire_admin} -d ${DB_DATABASE:-spirandeli_empire}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 384M
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/supervisord.conf status | grep -v RUNNING && exit 1 || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # --- CACHE & QUEUE BROKER (REDIS 7) ---
+  # --- Node: Vite + Vue 3 (HMR) ----------------------------------------------
+  node:
+    image: node:22-alpine
+    container_name: abvos-node
+    working_dir: /app
+    user: "${UID:-1000}:${GID:-1000}"
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      - HOME=/tmp
+      - VITE_HMR_CLIENT_PORT=${WEB_PORT:-8080}
+      - VITE_API_BASE_URL=/api
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    networks:
+      - abvos
+    restart: unless-stopped
+
+  # --- Nginx: reverse proxy (API Laravel + SPA Vue) --------------------------
+  web:
+    image: nginx:1.27-alpine
+    container_name: abvos-web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - ./backend:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - abvos
+    depends_on:
+      - app
+      - node
+    restart: unless-stopped
+
+  # --- MySQL 8.0 ---------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: abvos-db
+    command: --defaults-extra-file=/etc/mysql/conf.d/abvos.cnf
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      TZ: ${APP_TIMEZONE:-America/Sao_Paulo}
+    ports:
+      - "127.0.0.1:${DB_FORWARD_PORT:-3307}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql/abvos.cnf:/etc/mysql/conf.d/abvos.cnf:ro
+    networks:
+      - abvos
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  # --- Redis (cache, sessões, filas, broadcasting) ---------------------------
   redis:
     image: redis:7-alpine
-    container_name: empire_redis
-    restart: unless-stopped
-    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 256mb --maxmemory-policy allkeys-lru"]
+    container_name: abvos-redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory-policy", "noeviction"]
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
-      - internal-network
+      - abvos
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-
-  # --- LOCAL AI TEXT INFERENCE (OLLAMA) ---
-  ollama:
-    image: ollama/ollama:latest
-    container_name: empire_ollama
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
-    environment:
-      - OLLAMA_CONTEXT_LENGTH=2048
-      - OLLAMA_NUM_PARALLEL=1
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_FLASH_ATTENTION=1
-      - OLLAMA_KV_CACHE_TYPE=q8_0
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - ai-network
-    deploy:
-      resources:
-        limits:
-          memory: 4608M
 
-  # --- TIKTOK SHOP: VOICE CLONING TTS (XTTS v2) ---
-  xtts-api:
-    image: daswer123/xtts-api-server:latest
-    container_name: empire_xtts
-    restart: unless-stopped
-    expose:
-      - "5021"
-    volumes:
-      - ./storage/businesses/tiktok-shop-afiliados/assets:/assets:ro
-    environment:
-      - COQUI_TOS_AGREED=1
-      - DEVICE=cpu
-      - DEEPSPEED=false
-    networks:
-      - ai-network
-
-  # --- TIKTOK SHOP: WORKFLOW ORCHESTRATOR (n8n) ---
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: empire_n8n
-    restart: unless-stopped
+  # --- Mailpit (e-mail/alertas em DEV) ----------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: abvos-mailpit
     ports:
-      - "127.0.0.1:${N8N_PORT:-5678}:5678"
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme_n8n}
-      - N8N_HOST=${N8N_HOST:-localhost}
-      - WEBHOOK_URL=http://${N8N_HOST:-localhost}:5678/
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - XTTS_API_URL=http://xtts-api:5021/tts
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./storage/businesses/tiktok-shop-afiliados:/var/spirandeli/businesses/tiktok-shop-afiliados
-      - ./ai-engine:/opt/ai-engine:ro
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     networks:
-      - ai-network
-      - empire-network
-    depends_on:
-      - ollama
-      - xtts-api
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-  # --- JEFFREY TELEGRAM BOT ---
-  jeffrey-telegram:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/ai-worker.Dockerfile
-    container_name: empire_jeffrey_telegram
+      - abvos
     restart: unless-stopped
-    working_dir: /app
-    command: python -u /app/jeffrey/telegram/bot.py
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_ALLOWED_IDS=${TELEGRAM_ALLOWED_IDS:-}
-      - TELEGRAM_AI_PROVIDER=${TELEGRAM_AI_PROVIDER:-hybrid}
-      - TELEGRAM_API_TIMEOUT=${TELEGRAM_API_TIMEOUT:-60}
-      - JEFFREY_API_URL=http://core-app/api/v1/jeffrey/chat
-      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
-    volumes:
-      - ./jeffrey:/app/jeffrey:ro
-    networks:
-      - empire-network
-      - internal-network
-      - ai-network
-    depends_on:
-      - core-app
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
-  # --- MONITORING (UPTIME KUMA) ---
-  monitoring:
-    image: louislam/uptime-kuma:1-alpine
-    container_name: empire_monitoring
-    restart: unless-stopped
-    volumes:
-      - uptime_kuma_data:/app/data
-    networks:
-      - empire-network
-    deploy:
-      resources:
-        limits:
-          memory: 192M
 
 networks:
-  empire-network:
-    driver: bridge
-  internal-network:
-    driver: bridge
-  ai-network:
+  abvos:
     driver: bridge
 
 volumes:
-  caddy_data:
-  caddy_config:
-  postgres_data:
+  db_data:
   redis_data:
-  ollama_data:
-  uptime_kuma_data:
-  n8n_data:
-
+  node_modules:
+  composer_cache:

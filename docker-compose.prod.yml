@@ -1,0 +1,121 @@
+name: abvos-prod
+
+x-php-build: &php-build
+  context: .
+  dockerfile: docker/php/Dockerfile
+  args:
+    UID: 1000
+    GID: 1000
+
+x-php-common: &php-common
+  env_file:
+    - ./.env.production
+  volumes:
+    - ./backend:/var/www/html
+    - composer_cache:/tmp/composer-cache
+  networks:
+    - abvos-prod-network
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: always
+
+services:
+  # --- Laravel (PHP-FPM 8.3) --------------------------------------------------
+  app:
+    <<: *php-common
+    build:
+      <<: *php-build
+      target: app
+    image: abvos/app:prod
+    container_name: abvos-prod-app
+    working_dir: /var/www/html
+
+  # --- Worker: Supervisor (Agent Queues + Cron Scheduler) 24/7 ----------------
+  worker:
+    <<: *php-common
+    build:
+      <<: *php-build
+      target: worker
+    image: abvos/worker:prod
+    container_name: abvos-prod-worker
+    working_dir: /var/www/html
+    stop_grace_period: 180s
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/supervisord.conf status | grep -v RUNNING && exit 1 || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # --- Nginx 1.27 (Reverse Proxy + Static SPA Servindo frontend/dist) ---------
+  web:
+    image: nginx:1.27-alpine
+    container_name: abvos-prod-web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./backend/storage/app/public:/var/www/html/storage/app/public:ro
+      - ./frontend/dist:/var/www/frontend:ro
+      - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    networks:
+      - abvos-prod-network
+    depends_on:
+      - app
+    restart: always
+
+  # --- MySQL 8.0 ---------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: abvos-prod-db
+    command: --defaults-extra-file=/etc/mysql/conf.d/abvos.cnf
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-abvos}
+      MYSQL_USER: ${DB_USERNAME:-abvos}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-abvos_prod_pass_2026}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-abvos_root_secret_2026}
+      TZ: America/Sao_Paulo
+    volumes:
+      - db_prod_data:/var/lib/mysql
+      - ./docker/mysql/abvos.cnf:/etc/mysql/conf.d/abvos.cnf:ro
+    networks:
+      - abvos-prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: always
+
+  # --- Redis 7 (Cache, Queues e Locks) ----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: abvos-prod-redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-abvos_redis_pass_2026}", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-abvos_redis_pass_2026}
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - abvos-prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+
+networks:
+  abvos-prod-network:
+    driver: bridge
+
+volumes:
+  db_prod_data:
+  redis_prod_data:
+  composer_cache:
+

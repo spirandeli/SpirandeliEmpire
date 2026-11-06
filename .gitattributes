@@ -1,7 +1,0 @@
-*.sh text eol=lf
-*.py text eol=lf
-*.php text eol=lf
-*.json text eol=lf
-*.Dockerfile text eol=lf
-Dockerfile* text eol=lf
-

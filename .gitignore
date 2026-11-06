@@ -1,85 +1,39 @@
-# SpirandeliEmpire OS - Git Ignore
-
-# Environment files
+# Ambiente e credenciais sensíveis
 .env
-.env.backup
-.env.production
-.env.local
+.env.*
+!.env.example
+!.env.production.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
-# Sensitive credentials & keys
-*.pem
-*.key
-*.cert
-*.crt
-id_rsa*
-*.pub
-secrets/
-credentials/
-tokens/
+# Certificados SSL locais
+docker/ssl/*.key
+docker/ssl/*.crt
 
-# Storage & Runtime data
-storage/logs/*
-!storage/logs/.gitkeep
-storage/backups/*
-!storage/backups/.gitkeep
-storage/businesses/*
-!storage/businesses/.gitkeep
-storage/framework/cache/*
-storage/framework/sessions/*
-storage/framework/views/*
+# Dependências
+vendor/
+backend/vendor/
+node_modules/
+frontend/node_modules/
 
-# Laravel backend
-core/backend/vendor/
-core/backend/.phpunit.result.cache
-core/backend/Homestead.json
-core/backend/Homestead.yaml
-core/backend/npm-debug.log
-core/backend/yarn-error.log
+# Builds e caches
+*.tar.gz
+frontend/dist/
+.phpunit.cache/
+.phpunit.result.cache
 
-# Frontend (Vue 3 / Vite)
-core/frontend/node_modules/
-# core/frontend/dist/ mantido no git para deploy imediato sem precisar de nodejs no host da vps
-!core/frontend/dist/**
-core/frontend/.vite/
+# Logs e sessões
+*.log
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*.php
+backend/bootstrap/cache/*.php
+!backend/bootstrap/cache/.gitignore
 
-# Python & AI Engine cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv/
-ai-engine/**/models/*.bin
-ai-engine/**/models/*.safetensors
-ai-engine/**/models/*.gguf
-ai-engine/**/output/*
-!ai-engine/**/output/.gitkeep
-
-# Docker volumes and temp data
-.docker-data/
-caddy_data/
-caddy_config/
-postgres_data/
-redis_data/
-uptime_kuma_data/
-ollama_data/
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-Desktop.ini
-
-# IDE & Editor files
+# IDEs
 .idea/
 .vscode/
-*.sublime-project
-*.sublime-workspace
-
+*.swp
+.DS_Store
