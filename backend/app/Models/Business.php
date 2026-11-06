@@ -106,6 +106,11 @@ class Business extends Model
         return $this->hasMany(TikTokProduct::class);
     }
 
+    public function products(): HasMany
+    {
+        return $this->tiktokProducts();
+    }
+
     public function contentAssets(): HasMany
     {
         return $this->hasMany(ContentAsset::class);

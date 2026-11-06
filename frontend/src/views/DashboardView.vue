@@ -24,10 +24,24 @@ const scheduleDates = ref({})
 const integrations = ref([])
 const syncingCalendar = ref(false)
 const isChatDrawerOpen = ref(false)
+const provisioningDemo = ref(false)
 
 onMounted(async () => {
   await loadDashboardData()
 })
+
+async function handleProvisionShowcase() {
+  provisioningDemo.value = true
+  try {
+    const res = await api.post('/auth/provision-showcase')
+    swal.toast(res.data.message || 'Showcase de demonstração provisionado com sucesso!', 'success')
+    await loadDashboardData()
+  } catch (err) {
+    swal.error('Erro ao provisionar showcase', err.response?.data?.message || 'Tente novamente.')
+  } finally {
+    provisioningDemo.value = false
+  }
+}
 
 async function loadDashboardData() {
   loading.value = true
@@ -171,9 +185,29 @@ async function syncCalendarNow() {
 <template>
   <AppLayout>
     <template #header>
-      <div>
-        <h1 class="text-xl font-bold text-white tracking-tight">Cockpit Executivo & Supervisão</h1>
-        <p class="text-xs text-slate-400 mt-0.5">Operações Autônomas · Gemini 3.8 Co-Pilot</p>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
+        <div>
+          <h1 class="text-xl font-bold text-white tracking-tight">Cockpit Executivo & Supervisão</h1>
+          <p class="text-xs text-slate-400 mt-0.5">Operações Autônomas · Gemini 3.8 Co-Pilot</p>
+        </div>
+        <div class="flex items-center space-x-2.5">
+          <button
+            @click="handleProvisionShowcase"
+            :disabled="provisioningDemo"
+            class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm"
+            title="Carrega ou cria um novo showcase de demonstração com dados de TikTok Shop e ROI"
+          >
+            <span v-if="provisioningDemo" class="animate-spin h-3.5 w-3.5 border-2 border-emerald-400 border-t-transparent rounded-full"></span>
+            <span v-else class="text-emerald-400">⚡</span>
+            <span>{{ provisioningDemo ? 'Provisionando...' : 'Carregar Showcase Demo' }}</span>
+          </button>
+          <button
+            @click="isChatDrawerOpen = true"
+            class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm shadow-emerald-500/20"
+          >
+            <span>💬 Falar com COO IA</span>
+          </button>
+        </div>
       </div>
     </template>
 
@@ -574,14 +608,32 @@ async function syncCalendarNow() {
           </router-link>
         </div>
 
-        <div v-if="businessStore.businesses.length === 0" class="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-          <p class="text-xs text-slate-400">Você ainda não possui nenhum venture configurado.</p>
-          <button
-            @click="isChatDrawerOpen = true"
-            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition"
-          >
-            Co-Criar Primeiro Negócio com o COO IA
-          </button>
+        <div v-if="businessStore.businesses.length === 0" class="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
+          <div class="w-12 h-12 mx-auto rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl font-bold">
+            🚀
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Nenhum venture configurado no momento</h3>
+            <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Inicialize um Showcase Executivo completo com 1 clique (com produtos minerados na TikTok Shop, criativos de ROI e tarefas no Kanban) para testar e apresentar a clientes.
+            </p>
+          </div>
+          <div class="flex items-center justify-center gap-3">
+            <button
+              @click="handleProvisionShowcase"
+              :disabled="provisioningDemo"
+              class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center space-x-2"
+            >
+              <span v-if="provisioningDemo" class="animate-spin h-3.5 w-3.5 border-2 border-slate-950 border-t-transparent rounded-full"></span>
+              <span>⚡ Inicializar Showcase de Demonstração</span>
+            </button>
+            <button
+              @click="isChatDrawerOpen = true"
+              class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition"
+            >
+              Planejar com Gemini 3.8
+            </button>
+          </div>
         </div>
 
         <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-5">

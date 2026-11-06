@@ -67,8 +67,9 @@ class AuthTest extends TestCase
 
     public function test_login_with_wrong_password_fails_and_is_rate_limited(): void
     {
-        User::factory()->create(['email' => 'ana-wrong@example.com', 'password' => self::PASSWORD]);
-        $body = ['email' => 'ana-wrong@example.com', 'password' => 'errada', 'device_name' => 'testes'];
+        $email = 'ana-wrong-' . uniqid() . '@example.com';
+        User::factory()->create(['email' => $email, 'password' => self::PASSWORD]);
+        $body = ['email' => $email, 'password' => 'errada', 'device_name' => 'testes'];
 
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/auth/login', $body)->assertUnprocessable();
@@ -111,5 +112,40 @@ class AuthTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->putJson('/api/auth/profile', ['agent_enabled' => false, 'timezone' => 'America/Sao_Paulo'])
             ->assertOk()->assertJsonPath('data.agent_enabled', false);
+    }
+
+    public function test_register_and_login_automatically_provisions_starter_kit_for_presentation(): void
+    {
+        // 1. Registro cria usuário e automaticamente provisiona negócio, tarefas, criativos e aprovação
+        $res = $this->postJson('/api/auth/register', $this->payload(['email' => 'novo-cliente@example.com']))
+            ->assertCreated();
+
+        $userId = $res->json('user.id');
+        $this->assertDatabaseHas('businesses', ['user_id' => $userId]);
+        $this->assertDatabaseHas('tasks', ['user_id' => $userId]);
+        $this->assertDatabaseHas('approval_queues', ['user_id' => $userId]);
+
+        // 2. Usuário existente sem negócios ganha o kit automaticamente no login
+        $userEmpty = User::factory()->create(['email' => 'sem-negocio@example.com', 'password' => self::PASSWORD]);
+        $this->assertEquals(0, $userEmpty->businesses()->count());
+
+        $this->postJson('/api/auth/login', [
+            'email' => 'sem-negocio@example.com',
+            'password' => self::PASSWORD,
+            'device_name' => 'test-device',
+        ])->assertOk();
+
+        $this->assertEquals(1, $userEmpty->refresh()->businesses()->count());
+
+        // 3. Rota explícita provision-showcase cria novo showcase sob demanda
+        $token = $this->postJson('/api/auth/login', [
+            'email' => 'novo-cliente@example.com',
+            'password' => self::PASSWORD,
+            'device_name' => 'test-device',
+        ])->json('token');
+
+        $this->withToken($token)->postJson('/api/auth/provision-showcase')
+            ->assertCreated()
+            ->assertJsonPath('message', 'Showcase de demonstração provisionado com sucesso!');
     }
 }

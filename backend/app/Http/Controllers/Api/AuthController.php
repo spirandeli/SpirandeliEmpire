@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\UserOnboardingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,6 +25,12 @@ class AuthController extends Controller
     {
         $user = User::create($request->safe()->only(['name', 'email', 'password', 'timezone']));
 
+        try {
+            app(UserOnboardingService::class)->provisionStarterKit($user);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Falha ao provisionar starter kit no registro: {$e->getMessage()}");
+        }
+
         return $this->authenticated($request, $user, 201);
     }
 
@@ -31,7 +38,25 @@ class AuthController extends Controller
     {
         $user = $request->authenticate();
 
+        if ($user->businesses()->count() === 0) {
+            try {
+                app(UserOnboardingService::class)->provisionStarterKit($user);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Falha ao provisionar starter kit no login: {$e->getMessage()}");
+            }
+        }
+
         return $this->authenticated($request, $user, 200);
+    }
+
+    public function provisionShowcase(Request $request): JsonResponse
+    {
+        $business = app(UserOnboardingService::class)->provisionStarterKit($request->user());
+
+        return response()->json([
+            'message' => 'Showcase de demonstração provisionado com sucesso!',
+            'business' => new \App\Http\Resources\BusinessResource($business),
+        ], 201);
     }
 
     public function me(Request $request): UserResource

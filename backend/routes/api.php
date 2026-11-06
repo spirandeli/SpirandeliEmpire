@@ -29,6 +29,7 @@ Route::prefix('auth')->group(function () {
         Route::get('me', [AuthController::class, 'me']);
         Route::put('profile', [AuthController::class, 'updateProfile']);
         Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('provision-showcase', [AuthController::class, 'provisionShowcase']);
     });
 });
 

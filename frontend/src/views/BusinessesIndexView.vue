@@ -5,6 +5,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
+import { api } from '@/services/api'
 
 const router = useRouter()
 const businessStore = useBusinessStore()
@@ -12,6 +13,20 @@ const swal = useSwal()
 
 const showCreateModal = ref(false)
 const isChatDrawerOpen = ref(false)
+const provisioningDemo = ref(false)
+
+async function handleProvisionShowcase() {
+  provisioningDemo.value = true
+  try {
+    const res = await api.post('/auth/provision-showcase')
+    swal.toast(res.data.message || 'Showcase de demonstração provisionado com sucesso!', 'success')
+    await businessStore.fetchBusinesses()
+  } catch (err) {
+    swal.error('Erro ao provisionar showcase', err.response?.data?.message || 'Tente novamente.')
+  } finally {
+    provisioningDemo.value = false
+  }
+}
 const newBiz = ref({
   name: '',
   niche: '',
@@ -110,6 +125,16 @@ async function handleDelete(biz) {
           <p class="text-xs text-slate-400 mt-0.5">Gestão de Empresas Digitais Autônomas</p>
         </div>
         <div class="flex items-center space-x-3">
+          <button
+            @click="handleProvisionShowcase"
+            :disabled="provisioningDemo"
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center space-x-1.5 shadow-sm"
+            title="Carregar negócio demonstrativo com produtos e métricas"
+          >
+            <span v-if="provisioningDemo" class="animate-spin h-3.5 w-3.5 border-2 border-emerald-400 border-t-transparent rounded-full"></span>
+            <span v-else class="text-emerald-400">⚡</span>
+            <span>{{ provisioningDemo ? 'Provisionando...' : 'Carregar Showcase' }}</span>
+          </button>
           <button
             @click="isChatDrawerOpen = true"
             class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2"
