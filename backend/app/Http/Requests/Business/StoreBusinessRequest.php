@@ -17,6 +17,9 @@ class StoreBusinessRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:120'],
             'type' => ['sometimes', Rule::in(config('abvos.business_types'))],
+            'archetype' => ['sometimes', 'nullable', 'string', 'max:48'],
+            'north_star_metric' => ['sometimes', 'nullable', 'string', 'max:48'],
+            'target_kpi_value' => ['sometimes', 'nullable', 'numeric'],
             'niche' => ['nullable', 'string', 'max:190'],
             'description' => ['nullable', 'string', 'max:5000'],
             'canvas' => ['sometimes', 'array'],

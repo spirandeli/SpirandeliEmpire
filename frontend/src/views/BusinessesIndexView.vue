@@ -15,7 +15,10 @@ const isChatDrawerOpen = ref(false)
 const newBiz = ref({
   name: '',
   niche: '',
+  archetype: 'affiliate_tiktok',
   business_model: 'tiktok_shop_affiliate',
+  north_star_metric: 'commission_volume',
+  target_kpi_value: 5000,
   description: '',
   target_audience: '',
   tone_of_voice: 'Persuasivo, dinâmico e focado em benefícios imediatos',
@@ -32,15 +35,18 @@ async function handleCreate() {
     const created = await businessStore.createBusiness({
       name: newBiz.value.name,
       niche: newBiz.value.niche,
-      business_model: newBiz.value.business_model,
+      archetype: newBiz.value.archetype,
+      type: newBiz.value.archetype === 'affiliate_tiktok' ? 'tiktok_shop_affiliate' : 'custom',
+      north_star_metric: newBiz.value.north_star_metric,
+      target_kpi_value: newBiz.value.target_kpi_value,
       description: newBiz.value.description,
       brand_guidelines: {
         target_audience: newBiz.value.target_audience,
         tone_of_voice: newBiz.value.tone_of_voice,
       },
       canvas: {
-        value_propositions: ['Produtos em alta com entrega rápida e resolução de dor real'],
-        revenue_streams: ['Comissões por venda na TikTok Shop de 15% a 25%'],
+        value_propositions: ['Produtos e ofertas validadas com alto retorno sobre investimento'],
+        revenue_streams: ['Receitas diretas parametrizadas via webhooks'],
       },
     })
     swal.toast('Novo venture criado com sucesso!', 'success')
@@ -48,7 +54,10 @@ async function handleCreate() {
     newBiz.value = {
       name: '',
       niche: '',
+      archetype: 'affiliate_tiktok',
       business_model: 'tiktok_shop_affiliate',
+      north_star_metric: 'commission_volume',
+      target_kpi_value: 5000,
       description: '',
       target_audience: '',
       tone_of_voice: 'Persuasivo, dinâmico e focado em benefícios imediatos',
@@ -256,14 +265,15 @@ async function handleDelete(biz) {
               />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-300 mb-1">Modelo Operacional</label>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Arquétipo do Negócio</label>
               <select
-                v-model="newBiz.business_model"
+                v-model="newBiz.archetype"
                 class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
               >
-                <option value="tiktok_shop_affiliate">TikTok Shop Affiliate</option>
-                <option value="digital_products">Infoprodutos & PLR</option>
-                <option value="saas_microventure">Micro-SaaS Autônomo</option>
+                <option value="affiliate_tiktok">Afiliados & TikTok Shop Viral</option>
+                <option value="infoproduct">Infoprodutos & Lançamentos</option>
+                <option value="saas">SaaS & Assinaturas Recorrentes</option>
+                <option value="ecommerce">E-commerce & Dropshipping Direto</option>
               </select>
             </div>
           </div>
