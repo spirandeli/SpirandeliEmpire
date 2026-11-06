@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\BusinessAutomationController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\UniversalWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,15 +35,20 @@ Route::prefix('auth')->group(function () {
 // --- Webhooks Públicos & Callbacks Externos ---------------------------------
 Route::post('webhooks/shortcuts', [AppleShortcutsController::class, 'handle'])
     ->middleware('throttle:60,1');
+Route::post('webhooks/in/{secret_token}', [UniversalWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1');
 Route::get('integrations/google/callback', [GoogleOAuthController::class, 'callback']);
 
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
-    // --- Negócios + automações -------------------------------------------------
+    // --- Negócios + automações + growth metrics --------------------------------
     Route::apiResource('businesses', BusinessController::class);
     Route::post('businesses/{business}/activate', [BusinessController::class, 'activate']);
     Route::post('businesses/{business}/pause', [BusinessController::class, 'pause']);
     Route::post('businesses/{business}/mine', [BusinessController::class, 'mineNow']);
+    Route::get('businesses/{business}/growth-metrics', [UniversalWebhookController::class, 'metrics']);
+    Route::post('businesses/{business}/webhooks/simulate', [UniversalWebhookController::class, 'simulate']);
+    Route::post('businesses/{business}/optimize-growth', [UniversalWebhookController::class, 'optimizeNow']);
     Route::apiResource('businesses.automations', BusinessAutomationController::class)
         ->except('show')
         ->scoped();
@@ -88,5 +94,3 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin', 'throttle:api'])->g
     Route::post('ai-governance/users/{user}/kill-switch', [\App\Http\Controllers\Api\AdminAiGovernanceController::class, 'toggleKillSwitch']);
     Route::post('ai-governance/users/{user}/reset-usage', [\App\Http\Controllers\Api\AdminAiGovernanceController::class, 'resetUsage']);
 });
-
-

@@ -23,6 +23,9 @@ class ToolRegistry
         'get_user_schedule' => 'checkUserSchedule',
         'check_user_schedule' => 'checkUserSchedule',
         'save_tiktok_product_strategy' => 'saveTikTokProductStrategy',
+        'scale_winning_asset' => 'scaleWinningAsset',
+        'create_funnel_fix_task' => 'createFunnelFixTask',
+        'save_business_learning' => 'saveBusinessLearning',
     ];
 
     /**

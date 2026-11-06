@@ -8,7 +8,7 @@ export const api = axios.create({
     'Accept': 'application/json',
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Para suporte a SPA Cookie Auth
+  withCredentials: false, // Autenticação moderna 100% via Bearer Token (sem atrito de CSRF)
 })
 
 // Interceptor para injetar Bearer Token caso esteja salvo no localStorage

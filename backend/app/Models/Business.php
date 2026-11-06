@@ -17,8 +17,16 @@ class Business extends Model
 
     public const TYPE_TIKTOK_SHOP_AFFILIATE = 'tiktok_shop_affiliate';
 
+    public const ARCHETYPE_AFFILIATE_TIKTOK = 'affiliate_tiktok';
+    public const ARCHETYPE_INFOPRODUCT = 'infoproduct';
+    public const ARCHETYPE_SAAS = 'saas';
+    public const ARCHETYPE_ECOMMERCE = 'ecommerce';
+    public const ARCHETYPE_CONTENT_MEDIA = 'content_media';
+    public const ARCHETYPE_SERVICE_AGENCY = 'service_agency';
+
     protected $fillable = [
         'user_id', 'name', 'slug', 'type', 'status', 'niche', 'description',
+        'archetype', 'north_star_metric', 'target_kpi_value', 'webhook_secret_token',
         'canvas', 'brand_rules', 'goals', 'acquisition_channels', 'automation_playbook',
         'kpis', 'metrics', 'ai_summary', 'automation_enabled', 'activated_at',
     ];
@@ -27,6 +35,7 @@ class Business extends Model
     {
         return [
             'status' => BusinessStatus::class,
+            'target_kpi_value' => 'decimal:2',
             'canvas' => 'array',
             'brand_rules' => 'array',
             'goals' => 'array',
@@ -44,6 +53,14 @@ class Business extends Model
         static::creating(function (Business $business) {
             if (empty($business->slug)) {
                 $business->slug = static::uniqueSlugFor($business->user_id, $business->name);
+            }
+
+            if (empty($business->webhook_secret_token)) {
+                $business->webhook_secret_token = 'whsec_' . Str::random(36);
+            }
+
+            if (empty($business->archetype)) {
+                $business->archetype = self::ARCHETYPE_AFFILIATE_TIKTOK;
             }
         });
     }
@@ -104,6 +121,21 @@ class Business extends Model
         return $this->hasMany(AgentLog::class);
     }
 
+    public function conversionEvents(): HasMany
+    {
+        return $this->hasMany(ConversionEvent::class);
+    }
+
+    public function optimizationCycles(): HasMany
+    {
+        return $this->hasMany(OptimizationCycle::class);
+    }
+
+    public function agentLearnings(): HasMany
+    {
+        return $this->hasMany(AgentLearning::class);
+    }
+
     // --- Scopes ------------------------------------------------------------------
 
     public function scopeActive(Builder $query): Builder
@@ -122,9 +154,14 @@ class Business extends Model
         return $query->where('type', $type);
     }
 
+    public function scopeOfArchetype(Builder $query, string $archetype): Builder
+    {
+        return $query->where('archetype', $archetype);
+    }
+
     public function isTikTokShopAffiliate(): bool
     {
-        return $this->type === self::TYPE_TIKTOK_SHOP_AFFILIATE;
+        return $this->type === self::TYPE_TIKTOK_SHOP_AFFILIATE || $this->archetype === self::ARCHETYPE_AFFILIATE_TIKTOK;
     }
 
     public function getRouteKeyName(): string

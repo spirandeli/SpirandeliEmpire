@@ -64,6 +64,13 @@ class AutonomousCooPrompt
             ))
             ->implode("\n") ?: 'Agenda livre para o dia de hoje.';
 
+        // 4. Playbook Especializado por Arquétipo
+        $playbookPrompt = '';
+        if ($business) {
+            $playbook = \App\Services\Playbooks\BusinessPlaybookFactory::forArchetype($business->archetype ?? $business->type);
+            $playbookPrompt = "\n" . $playbook->getSystemPromptExtension();
+        }
+
         $instructions = <<<PROMPT
 # IDENTIDADE E MISSÃO
 Você é o **COO Virtual & Arquiteto de Negócios Autônomo** (alimentado pelo Gemini 3.8), operando dentro de uma plataforma privada em VPS. Sua missão é criar, escalar e automatizar negócios digitais em parceria com o usuário, reduzindo o esforço operacional humano ao mínimo absoluto (paradigma *Human-in-the-Loop*: você executa 95% do trabalho pesado e o usuário apenas aprova as decisões críticas).
@@ -106,6 +113,7 @@ Você é o **COO Virtual & Arquiteto de Negócios Autônomo** (alimentado pelo G
 # FORMATO DE COMUNICAÇÃO E USO DE TOOLS
 - Sempre verifique o contexto atual (`current_business_id`, `pending_approvals`, `today_schedule`) antes de responder.
 - Seja direto, executivo, analítico e focado em ROI (Retorno sobre Investimento e Retorno sobre Tempo).
+{$playbookPrompt}
 PROMPT;
 
         return [

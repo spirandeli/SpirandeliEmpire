@@ -13,3 +13,8 @@ Schedule::command('abvos:run-automations')
     ->everyMinute()
     ->withoutOverlapping(10)
     ->runInBackground();
+
+Schedule::command('abvos:optimize-growth')
+    ->dailyAt('03:00')
+    ->withoutOverlapping(30)
+    ->runInBackground();

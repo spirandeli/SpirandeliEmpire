@@ -339,6 +339,19 @@ async function syncCalendarNow() {
                       <span class="text-xs text-slate-500 font-mono">
                         Confiança IA: {{ ((item.agent_confidence || 0.95) * 100).toFixed(0) }}%
                       </span>
+                      <span
+                        v-if="item.payload?.badge || item.type === 'roi_scaling'"
+                        class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1"
+                      >
+                        <span>⚡</span>
+                        <span>{{ item.payload?.badge || 'Auto-Otimização de ROI' }}</span>
+                      </span>
+                      <span
+                        v-if="item.payload?.parent_tracking_code"
+                        class="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                      >
+                        Base: {{ item.payload?.parent_tracking_code }} (ROI: {{ item.payload?.parent_roi_score || 0 }})
+                      </span>
                     </div>
                     <h3 class="text-base font-bold text-white mt-1">{{ item.title }}</h3>
                     <p class="text-xs text-slate-400 mt-0.5">{{ item.summary }}</p>

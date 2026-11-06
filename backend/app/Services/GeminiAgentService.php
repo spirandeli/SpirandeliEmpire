@@ -16,7 +16,10 @@ use App\Services\Gemini\Tools\CreateCalendarEventTool;
 use App\Services\Gemini\Tools\CreateReminderTool;
 use App\Services\Gemini\Tools\CreateBusinessVentureTool;
 use App\Services\Gemini\Tools\CreateTaskTool;
+use App\Services\Gemini\Tools\CreateFunnelFixTaskTool;
+use App\Services\Gemini\Tools\SaveBusinessLearningTool;
 use App\Services\Gemini\Tools\SaveTikTokProductStrategyTool;
+use App\Services\Gemini\Tools\ScaleWinningAssetTool;
 use App\Services\Gemini\Tools\SubmitForHumanApprovalTool;
 use App\Services\Gemini\Tools\ToolExecutionContext;
 use App\Services\Gemini\Tools\ToolRegistry;
@@ -51,6 +54,9 @@ class GeminiAgentService
             new SaveTikTokProductStrategyTool(),
             new CreateCalendarEventTool($googleService, $appleService),
             new CreateReminderTool($googleService, $appleService),
+            new ScaleWinningAssetTool($approvalService),
+            new CreateFunnelFixTaskTool($taskService),
+            new SaveBusinessLearningTool(),
         ]);
 
         return new self($integrationService, $registry);

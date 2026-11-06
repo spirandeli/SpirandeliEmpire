@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
+import BusinessGrowthTab from '@/components/BusinessGrowthTab.vue'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
 import { api } from '@/services/api'
@@ -154,6 +155,14 @@ async function toggleAutomation(automation) {
         <!-- Navegação por Abas -->
         <div class="flex items-center space-x-2 overflow-x-auto">
           <button
+            @click="activeTab = 'growth'"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5"
+            :class="activeTab === 'growth' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+          >
+            <span>⚡</span>
+            <span>ROI & Auto-Otimização</span>
+          </button>
+          <button
             @click="activeTab = 'canvas'"
             class="px-3.5 py-2 text-xs font-semibold rounded-xl transition"
             :class="activeTab === 'canvas' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
@@ -212,6 +221,11 @@ async function toggleAutomation(automation) {
             {{ business.status === 'active' ? 'Pausar Venture' : 'Ativar Venture' }}
           </button>
         </div>
+      </div>
+
+      <!-- ABA 0: ROI & Auto-Otimização (Growth Engine) -->
+      <div v-if="activeTab === 'growth'">
+        <BusinessGrowthTab :business-id="businessId" :business="business" />
       </div>
 
       <!-- ABA 1: Business Model Canvas & Regras da Marca -->
