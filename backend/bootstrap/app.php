@@ -14,9 +14,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Sanctum SPA: cookies de sessão + CSRF para requests vindos de SANCTUM_STATEFUL_DOMAINS;
-        // requests sem esse Origin/Referer (apps, Atalhos, testes) usam Bearer token.
+        // Sanctum SPA: cookies de sessão para requests vindos de SANCTUM_STATEFUL_DOMAINS;
+        // requests com Bearer token ou clientes externos autenticam via token.
         $middleware->statefulApi();
+
+        // Isenta rotas de API da checagem de CSRF, permitindo autenticação robusta via Bearer Tokens
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+            'sanctum/*',
+        ]);
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
