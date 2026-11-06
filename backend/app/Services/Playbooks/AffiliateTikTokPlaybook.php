@@ -65,3 +65,4 @@ PROMPT;
         return "Taxa de conversão saudável ({$cvr}%). Recomenda-se criar variações de Hooks para os 3 primeiros segundos para escalar o volume de visualizações.";
     }
 }
+

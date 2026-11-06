@@ -33,7 +33,7 @@ async function handleSubmit() {
       password_confirmation: passwordConfirmation.value,
       timezone: timezone.value,
     })
-    swal.toast('Conta criada com sucesso! Bem-vindo ao ABVOS.', 'success')
+    swal.toast('Conta criada com sucesso! Bem-vindo ao SpirandeliEmpire.', 'success')
     router.push('/')
   } catch (err) {
     if (err.response?.status === 422 && err.response?.data?.errors) {
@@ -52,10 +52,10 @@ async function handleSubmit() {
       <!-- Header -->
       <div class="text-center mb-8">
         <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-xl mx-auto shadow-lg shadow-emerald-500/20 mb-3">
-          A
+          S
         </div>
         <h1 class="text-xl font-bold text-white tracking-tight">Criar Conta Executiva</h1>
-        <p class="text-xs text-slate-400 mt-1">Autonomous Business Venture OS · Operação Privada</p>
+        <p class="text-xs text-slate-400 mt-1">SpirandeliEmpire · Operação Privada</p>
       </div>
 
       <!-- Erro Geral -->

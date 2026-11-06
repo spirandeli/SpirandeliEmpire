@@ -91,3 +91,4 @@ class KiwifyWebhookAdapter implements WebhookPlatformAdapterInterface
         );
     }
 }
+

@@ -45,3 +45,4 @@ class OptimizeGrowthCommand extends Command
         return self::SUCCESS;
     }
 }
+

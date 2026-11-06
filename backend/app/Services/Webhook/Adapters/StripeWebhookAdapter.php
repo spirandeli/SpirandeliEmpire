@@ -80,3 +80,4 @@ class StripeWebhookAdapter implements WebhookPlatformAdapterInterface
         );
     }
 }
+

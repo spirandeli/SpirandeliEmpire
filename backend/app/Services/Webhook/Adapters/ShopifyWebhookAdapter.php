@@ -80,3 +80,4 @@ class ShopifyWebhookAdapter implements WebhookPlatformAdapterInterface
         );
     }
 }
+

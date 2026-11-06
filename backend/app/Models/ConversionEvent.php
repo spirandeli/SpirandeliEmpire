@@ -69,3 +69,4 @@ class ConversionEvent extends Model
         return in_array($this->event_type, [self::EVENT_CHECKOUT_ABANDONED, self::EVENT_PIX_GENERATED], true);
     }
 }
+

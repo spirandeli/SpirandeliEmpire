@@ -140,7 +140,7 @@ XML;
         $vcalendar = <<<ICS
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//ABVOS//Autonomous Business Venture OS//PT
+PRODID:-//SpirandeliEmpire//SpirandeliEmpire//PT
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 UID:{$uid}
@@ -216,7 +216,7 @@ ICS;
         $vtodo = <<<ICS
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//ABVOS//Autonomous Business Venture OS//PT
+PRODID:-//SpirandeliEmpire//SpirandeliEmpire//PT
 CALSCALE:GREGORIAN
 BEGIN:VTODO
 UID:{$uid}

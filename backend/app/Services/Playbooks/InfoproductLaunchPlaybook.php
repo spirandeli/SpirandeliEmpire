@@ -64,3 +64,4 @@ PROMPT;
         return "Funil com boa absorção. Escalar investimento nos anúncios de topo de funil com maior CTR.";
     }
 }
+

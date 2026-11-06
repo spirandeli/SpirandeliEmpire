@@ -58,10 +58,10 @@ function openChat(businessId = null) {
       <div class="h-16 border-b border-slate-800 flex items-center justify-between px-5">
         <div class="flex items-center space-x-3">
           <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-lg shadow-emerald-500/20">
-            A
+            S
           </div>
           <div>
-            <span class="font-bold text-sm tracking-tight text-white block">ABVOS</span>
+            <span class="font-bold text-sm tracking-tight text-white block">SpirandeliEmpire</span>
             <span class="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Gemini 3.8 OS</span>
           </div>
         </div>
@@ -172,7 +172,7 @@ function openChat(businessId = null) {
       <header class="h-16 bg-slate-900/60 backdrop-blur border-b border-slate-800 flex items-center justify-between px-8">
         <div class="flex items-center space-x-4">
           <slot name="header-title">
-            <h1 class="text-base font-bold text-white tracking-tight">Autonomous Business Venture OS</h1>
+            <h1 class="text-base font-bold text-white tracking-tight">SpirandeliEmpire</h1>
           </slot>
         </div>
 

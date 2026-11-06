@@ -36,3 +36,4 @@ class OptimizationCycle extends Model
         return $this->belongsTo(Business::class);
     }
 }
+

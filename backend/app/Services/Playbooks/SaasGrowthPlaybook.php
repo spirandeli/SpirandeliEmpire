@@ -56,3 +56,4 @@ PROMPT;
         return "Para negócios SaaS, priorize ativos que tragam usuários qualificados com dor latente em vez de volume genérico.";
     }
 }
+

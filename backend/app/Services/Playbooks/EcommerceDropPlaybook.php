@@ -55,3 +55,4 @@ PROMPT;
         return "Monitore o custo de aquisição (CAC). Se o ROAS estiver abaixo de 2.0x, teste novos ângulos visuais de topo de funil.";
     }
 }
+

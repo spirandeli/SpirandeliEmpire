@@ -35,9 +35,9 @@ async function handleSubmit() {
       <!-- Header -->
       <div class="text-center mb-8">
         <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-xl mx-auto shadow-lg shadow-emerald-500/20 mb-3">
-          A
+          S
         </div>
-        <h1 class="text-xl font-bold text-white tracking-tight">Autonomous Business Venture OS</h1>
+        <h1 class="text-2xl font-black text-white tracking-tight">SpirandeliEmpire</h1>
         <p class="text-xs text-slate-400 mt-1">Acesso Executivo · Gemini 3.8 Co-Pilot</p>
       </div>
 

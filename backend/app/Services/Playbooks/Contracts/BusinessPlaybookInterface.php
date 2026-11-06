@@ -18,3 +18,4 @@ interface BusinessPlaybookInterface
 
     public function getOptimizationGuidance(array $metrics): string;
 }
+

@@ -32,3 +32,4 @@ class AgentLearning extends Model
         return $this->belongsTo(Business::class);
     }
 }
+

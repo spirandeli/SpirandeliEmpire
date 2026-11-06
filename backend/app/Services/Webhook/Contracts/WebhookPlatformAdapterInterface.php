@@ -22,3 +22,4 @@ interface WebhookPlatformAdapterInterface
      */
     public function getPlatformName(): string;
 }
+

@@ -452,7 +452,7 @@ function copyToClipboard(text) {
                 </span>
               </h2>
               <p class="text-xs text-slate-400 mt-0.5">
-                Permite enviar tarefas por voz pela Siri ou pelo app Atalhos do iPhone para o Kanban do ABVOS.
+                Permite enviar tarefas por voz pela Siri ou pelo app Atalhos do iPhone para o Kanban do SpirandeliEmpire.
               </p>
             </div>
           </div>

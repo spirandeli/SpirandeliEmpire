@@ -504,3 +504,4 @@ function getArchetypeLabel(arch) {
     </div>
   </div>
 </template>
+
