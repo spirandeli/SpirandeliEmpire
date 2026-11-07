@@ -101,11 +101,11 @@ def main():
     run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app php artisan route:cache")
     run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app php artisan view:cache")
 
-    # 9. Criação do Usuário Executivo Inicial / Administrador
-    print("\n==> Provisionando conta Root Admin executiva...")
+    # 9. Criação do Usuário Executivo Inicial / Administrador e Usuário de Demonstração
+    print("\n==> Provisionando conta Root Admin executiva e conta Demo...")
     seed_cmd = (
         f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app php artisan tinker --execute=\""
-        "\\$u = \\App\\Models\\User::firstOrCreate(["
+        "\\$admin = \\App\\Models\\User::firstOrCreate(["
         "    'email' => 'admin@spirandeli.com'"
         "], ["
         "    'name' => 'Alexander Spirandeli (Admin)',"
@@ -116,27 +116,53 @@ def main():
         "    'is_ai_active' => true,"
         "    'monthly_token_limit' => 10000000,"
         "]);"
-        "\\$u->update(['is_admin' => true, 'is_ai_active' => true]);"
-        "echo 'ADMIN_USER_READY: ' . \\$u->email;"
+        "\\$admin->update(['is_admin' => true, 'is_ai_active' => true]);"
+        "echo 'ADMIN_USER_READY: ' . \\$admin->email . PHP_EOL;"
+        "\\$demo = \\App\\Models\\User::firstOrCreate(["
+        "    'email' => 'demo@spirandeliempire.tech'"
+        "], ["
+        "    'name' => 'Visitante Convidado',"
+        "    'password' => \\Illuminate\\Support\\Facades\\Hash::make('Demo2026!'),"
+        "    'timezone' => 'America/Sao_Paulo',"
+        "    'agent_enabled' => true,"
+        "    'is_admin' => false,"
+        "    'is_ai_active' => true,"
+        "    'monthly_token_limit' => 5000000,"
+        "]);"
+        "echo 'DEMO_USER_READY: ' . \\$demo->email;"
         "\""
     )
     run_ssh(client, seed_cmd)
 
-    # 10. Verificação Final de Healthcheck
+    print("\n==> Executando Database Seeder para popular dados operacionais...")
+    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app php artisan db:seed --force || true")
+
+    print("\n==> Provisionando Starter Kits para todos os usuários (Admin e Não-Admins)...")
+    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app php artisan abvos:provision-starter-kits")
+
+    # 10. Reinicia o Nginx para reconectar com o novo IP do app
+    print("\n==> Reiniciando proxy reverso Nginx para garantir conexão FastCGI...")
+    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml restart web")
+
+    # 11. Verificação Final de Healthcheck
     print("\n==> Verificando status dos containers de produção...")
     run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml ps")
 
     print("\n==> Testando respostas HTTP da VPS...")
-    run_ssh(client, "curl -sI http://127.0.0.1/up")
-    run_ssh(client, "curl -sI http://127.0.0.1/")
+    run_ssh(client, "curl -skI https://spirandeliempire.tech/up || curl -sI http://127.0.0.1/up")
+    run_ssh(client, "curl -skI https://spirandeliempire.tech/ || curl -sI http://127.0.0.1/")
 
     client.close()
     print("\n=======================================================")
     print("DEPLOY EM PRODUÇÃO CONCLUÍDO COM SUCESSO NA VPS!")
-    print(f"URL de Acesso: http://{HOST}")
-    print("Credenciais de Acesso Executivo:")
-    print("  E-mail: admin@spirandeli.com")
-    print("  Senha:  Spirandeli2026!")
+    print("Domínio Seguro (SSL): https://spirandeliempire.tech")
+    print("Credenciais de Acesso:")
+    print("  1. Painel Master / Admin:")
+    print("     E-mail: admin@spirandeli.com")
+    print("     Senha:  Spirandeli2026!")
+    print("  2. Acesso Não-Admin / Apresentação Demo:")
+    print("     E-mail: demo@spirandeliempire.tech")
+    print("     Senha:  Demo2026!")
     print("=======================================================")
 
 if __name__ == "__main__":

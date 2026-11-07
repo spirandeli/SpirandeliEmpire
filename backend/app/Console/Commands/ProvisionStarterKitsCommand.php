@@ -53,3 +53,4 @@ class ProvisionStarterKitsCommand extends Command
         return self::SUCCESS;
     }
 }
+
