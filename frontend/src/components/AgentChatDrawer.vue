@@ -146,7 +146,7 @@ function scrollToBottom() {
             </div>
           </div>
 
-          <!-- Mensagem de Tool (Execução de Ferramenta PHP) -->
+          <!-- Mensagem de Tool (Execução de Ferramenta do Agente) -->
           <div v-else-if="msg.role === 'tool'" class="flex justify-start">
             <div class="w-full bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs font-mono">
               <div class="flex items-center justify-between text-slate-400 mb-1.5">

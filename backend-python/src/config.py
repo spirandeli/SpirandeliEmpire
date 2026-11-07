@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: Optional[str] = "http://localhost:8080/api/integrations/google/callback"
 
     model_config = SettingsConfigDict(
-        env_file=("../backend/.env", ".env"),
+        env_file=(".env", "../.env.production", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

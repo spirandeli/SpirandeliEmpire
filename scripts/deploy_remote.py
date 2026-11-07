@@ -73,26 +73,25 @@ def main():
         scp.put(TARBALL, f"{REMOTE_DIR}/release.tar.gz")
     print("==> Upload concluído.")
 
-    # 3. Extrai na VPS e limpa legados PHP
-    print("\n==> Descompactando release na VPS...")
-    run_ssh(client, f"cd {REMOTE_DIR} && tar -xzf release.tar.gz && rm -f release.tar.gz && rm -rf backend")
+    # 3. Extrai na VPS e limpa legados PHP / Laravel
+    print("\n==> Descompactando release na VPS e removendo todos os arquivos legados...")
+    run_ssh(client, f"cd {REMOTE_DIR} && tar -xzf release.tar.gz && rm -f release.tar.gz && rm -rf backend docker/php docker/supervisor")
 
     # 4. Configura variáveis de ambiente
     print("\n==> Configurando variáveis de ambiente...")
     run_ssh(client, f"cd {REMOTE_DIR} && cp -f .env.production .env")
 
-    # 5. Build do frontend Vue 3 caso necessário
-    print("\n==> Verificando build do frontend estático...")
-    run_ssh(client, f"cd {REMOTE_DIR}/frontend && (npm run build || true)")
+    # 5. Remove volumes e imagens antigas do PHP / Laravel
+    print("\n==> Limpando imagens e volumes legados do Docker...")
+    run_ssh(client, "docker stop abvos-prod-app abvos-prod-worker 2>/dev/null || true")
+    run_ssh(client, "docker rm abvos-prod-app abvos-prod-worker 2>/dev/null || true")
+    run_ssh(client, "docker volume rm abvos-prod_composer_cache 2>/dev/null || true")
+    run_ssh(client, "docker rmi abvos/app:prod abvos/worker:prod spirandeliempire-core-app:latest spirandeliempire-core-worker:latest 2>/dev/null || true")
+    run_ssh(client, "docker image prune -f")
 
-    # 6. Para containers legados do Laravel caso ainda estejam de pé
-    print("\n==> Parando containers antigos do Laravel na VPS...")
-    run_ssh(client, f"cd {REMOTE_DIR} && docker stop abvos-prod-app abvos-prod-worker || true")
-    run_ssh(client, f"cd {REMOTE_DIR} && docker rm abvos-prod-app abvos-prod-worker || true")
-
-    # 7. Sobe stack moderna em Python (FastAPI + Nginx + MySQL + Redis)
+    # 6. Sobe stack moderna em Python (FastAPI + Nginx + MySQL + Redis)
     print("\n==> Subindo containers Python FastAPI em produção com Docker Compose...")
-    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml up -d --build")
+    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml up -d --build --remove-orphans")
 
     # 8. Aguarda inicialização (MySQL + Redis + FastAPI)
     print("\n==> Aguardando containers ficarem saudáveis (15s)...")
