@@ -27,6 +27,37 @@ x-php-common: &php-common
   restart: unless-stopped
 
 services:
+  # --- FastAPI Backend (Python) ----------------------------------------------
+  app-py:
+    build:
+      context: .
+      dockerfile: docker/python/Dockerfile
+    image: abvos/app-py:dev
+    container_name: abvos-app-py
+    working_dir: /app
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend-python:/app
+    environment:
+      - PYTHONPATH=/app
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - abvos
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # --- Laravel (PHP-FPM) -----------------------------------------------------
   app:
     <<: *php-common
