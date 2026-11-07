@@ -223,3 +223,4 @@ async def reject(
     await db.refresh(appr)
 
     return {"data": _format_approval(appr)}
+

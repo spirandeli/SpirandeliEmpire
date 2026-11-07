@@ -173,3 +173,4 @@ async def reset_usage(
         "message": f"Consumo mensal de tokens de {u.name} foi resetado para zero.",
         "tokens_used_this_month": 0,
     }
+

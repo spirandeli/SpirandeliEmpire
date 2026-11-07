@@ -141,3 +141,4 @@ async def reply_to_user(
     await db.refresh(assistant_msg)
 
     return assistant_msg, [user_msg, assistant_msg]
+

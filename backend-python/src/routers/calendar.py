@@ -117,3 +117,4 @@ async def get_my_feed_url(
         "webcal_url": webcal_url,
         "upcoming_events_count": upcoming_count,
     }
+

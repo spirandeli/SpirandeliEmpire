@@ -372,3 +372,4 @@ async def delete_vault_word(
         await db.delete(item)
         await db.commit()
     return {"message": "Palavra removida do cofre."}
+

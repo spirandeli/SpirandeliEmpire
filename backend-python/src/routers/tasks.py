@@ -279,3 +279,4 @@ async def destroy(
     task.deleted_at = _utc_now()
     await db.commit()
     return None
+
