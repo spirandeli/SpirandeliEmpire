@@ -27,7 +27,7 @@ return [
     | provider=gemini, criptografada) tem precedência.
     */
     'gemini' => [
-        'base_url' => env('GEMINI_API_BASE', 'https://generativelanguage.googleapis.com/v1beta'),
+        'base_url' => env('GEMINI_API_BASE', env('GEMINI_API_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta')),
         'model' => env('GEMINI_MODEL', 'gemini-3.8'),
         'api_key' => env('GEMINI_API_KEY'),
         'timeout' => 120,

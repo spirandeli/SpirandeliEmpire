@@ -5,10 +5,12 @@ use App\Http\Controllers\Api\AgentLogController;
 use App\Http\Controllers\Api\ApprovalQueueController;
 use App\Http\Controllers\Api\AppleShortcutsController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CalendarIntegrationController;
 use App\Http\Controllers\Api\GoogleOAuthController;
 use App\Http\Controllers\Api\BusinessAutomationController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\IntegrationController;
+use App\Http\Controllers\Api\LanguageAcademyController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\UniversalWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -40,7 +42,16 @@ Route::post('webhooks/in/{secret_token}', [UniversalWebhookController::class, 'h
     ->middleware('throttle:120,1');
 Route::get('integrations/google/callback', [GoogleOAuthController::class, 'callback']);
 
+// --- Integração Nativa Zero-Auth iCalendar RFC 5545 (Apple & Google) -------
+Route::prefix('v1/calendar')->group(function () {
+    Route::get('feed/{calendar_token}', [CalendarIntegrationController::class, 'feed'])
+        ->where('calendar_token', '[A-Za-z0-9_-]+(\.ics)?');
+    Route::get('events/{event}/download', [CalendarIntegrationController::class, 'downloadSingleEvent']);
+});
+
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+    // URL de feed pessoal do usuário autenticado
+    Route::get('v1/calendar/me/feed-url', [CalendarIntegrationController::class, 'getMyFeedUrl']);
 
     // --- Negócios + automações + growth metrics --------------------------------
     Route::apiResource('businesses', BusinessController::class);
@@ -86,6 +97,20 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('integrations/google/sync', [GoogleOAuthController::class, 'sync']);
     Route::post('integrations/shortcuts/token', [IntegrationController::class, 'generateShortcutsToken']);
     Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy']);
+
+    // --- Academia de Idiomas Adaptativa (Gemini 3.8 Flash) ------------------
+    Route::prefix('languages')->group(function () {
+        Route::get('profile', [LanguageAcademyController::class, 'getProfile']);
+        Route::post('profile', [LanguageAcademyController::class, 'storeProfile']);
+        Route::put('profiles/{profile}/schedule', [LanguageAcademyController::class, 'updateSchedule']);
+        Route::get('profiles/{profile}/placement-test', [LanguageAcademyController::class, 'getPlacementTest']);
+        Route::post('profiles/{profile}/placement-test', [LanguageAcademyController::class, 'submitPlacementTest']);
+        Route::get('profiles/{profile}/today', [LanguageAcademyController::class, 'getTodaySession']);
+        Route::post('profiles/{profile}/sessions/{session}/submit', [LanguageAcademyController::class, 'submitDailySession']);
+        Route::get('profiles/{profile}/vault', [LanguageAcademyController::class, 'getVocabularyVault']);
+        Route::post('profiles/{profile}/vault', [LanguageAcademyController::class, 'addVocabularyWord']);
+        Route::delete('profiles/{profile}/vault/{vaultItem}', [LanguageAcademyController::class, 'deleteVocabularyWord']);
+    });
 });
 
 // --- Rotas Administrativas & Governança de IA (Apenas is_admin = true) -------

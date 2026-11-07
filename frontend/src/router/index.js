@@ -39,6 +39,18 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/languages',
+    name: 'languages.academy',
+    component: () => import('@/views/LanguageAcademyView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/calendar/demo',
+    name: 'calendar.demo',
+    component: () => import('@/views/CalendarIntegrationDemoView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/settings/integrations',
     name: 'settings.integrations',
     component: () => import('@/views/SettingsIntegrationsView.vue'),

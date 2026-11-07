@@ -24,6 +24,7 @@ class User extends Authenticatable
         'monthly_token_limit',
         'tokens_used_this_month',
         'settings',
+        'calendar_token',
         'last_login_at',
     ];
 
@@ -82,6 +83,41 @@ class User extends Authenticatable
     public function aiUsageLogs(): HasMany
     {
         return $this->hasMany(AiUsageLog::class);
+    }
+
+    public function languageProfiles(): HasMany
+    {
+        return $this->hasMany(LanguageProfile::class);
+    }
+
+    public function activeLanguageProfile(): ?LanguageProfile
+    {
+        return $this->languageProfiles()
+            ->where('is_active', true)
+            ->latest('updated_at')
+            ->first();
+    }
+
+    /**
+     * Retorna ou gera um calendar_token único para assinatura do feed iCal RFC 5545.
+     */
+    public function getOrCreateCalendarToken(): string
+    {
+        if (empty($this->calendar_token)) {
+            $this->calendar_token = \Illuminate\Support\Str::random(48);
+            $this->saveQuietly();
+        }
+
+        return $this->calendar_token;
+    }
+
+    /**
+     * Retorna a URL pública do feed iCalendar para o usuário.
+     */
+    public function calendarFeedUrl(): string
+    {
+        $token = $this->getOrCreateCalendarToken();
+        return url("/api/v1/calendar/feed/{$token}.ics");
     }
 
     /** Integração conectada de um provider (ou null). */

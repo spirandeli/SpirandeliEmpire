@@ -13,7 +13,7 @@ const loading = ref(false)
 
 // Formulário Gemini
 const geminiApiKey = ref('')
-const geminiModel = ref('gemini-2.5-pro')
+const geminiModel = ref('gemini-3.8')
 const savingGemini = ref(false)
 
 // Formulário Apple CalDAV
@@ -256,9 +256,9 @@ function copyToClipboard(text) {
                 v-model="geminiModel"
                 class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
               >
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Recomendado)</option>
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Ultra Rápido)</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option value="gemini-3.8">Gemini 3.8 (Recomendado)</option>
+                <option value="gemini-3.8-flash">Gemini 3.8 Flash (Ultra Rápido)</option>
+                <option value="gemini-3.8-pro">Gemini 3.8 Pro (Raciocínio Avançado)</option>
               </select>
             </div>
           </div>

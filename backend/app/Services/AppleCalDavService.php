@@ -137,6 +137,15 @@ XML;
         $description = isset($data['description']) ? $this->escapeIcs($data['description']) : '';
         $location = isset($data['location']) ? $this->escapeIcs($data['location']) : '';
 
+        $rruleLine = ! empty($data['rrule']) ? "RRULE:{$data['rrule']}\n" : '';
+        $alarmBlock = ! empty($data['alarm_minutes_before']) ? <<<ALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:{$summary}
+TRIGGER:-PT{$data['alarm_minutes_before']}M
+END:VALARM
+ALARM : '';
+
         $vcalendar = <<<ICS
 BEGIN:VCALENDAR
 VERSION:2.0
@@ -150,7 +159,7 @@ DTEND:{$dtEnd}
 SUMMARY:{$summary}
 DESCRIPTION:{$description}
 LOCATION:{$location}
-STATUS:CONFIRMED
+{$rruleLine}{$alarmBlock}STATUS:CONFIRMED
 END:VEVENT
 END:VCALENDAR
 ICS;
@@ -174,6 +183,25 @@ ICS;
             'uid' => $uid,
             'href' => $eventUrl,
         ];
+    }
+
+    /**
+     * Remove um evento no Apple Calendar via CalDAV.
+     */
+    public function deleteEvent(User $user, string $eventUrl): bool
+    {
+        $integration = $user->integration(UserIntegration::PROVIDER_APPLE_CALDAV);
+        if (! $integration) {
+            return false;
+        }
+
+        $appleId = $integration->credential('apple_id');
+        $password = $integration->credential('app_password');
+
+        $response = $this->client($appleId, $password)
+            ->send('DELETE', $eventUrl);
+
+        return in_array($response->status(), [200, 204, 404], true);
     }
 
     /**

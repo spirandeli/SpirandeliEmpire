@@ -117,6 +117,20 @@ function openChat(businessId = null) {
         </RouterLink>
 
         <RouterLink
+          to="/languages"
+          class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition"
+          :class="route.name?.startsWith('languages') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'"
+        >
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+          </svg>
+          <div class="flex items-center justify-between flex-1">
+            <span>Idiomas (15 min)</span>
+            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">3.8 Flash</span>
+          </div>
+        </RouterLink>
+
+        <RouterLink
           to="/settings/integrations"
           class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition"
           :class="route.name === 'settings.integrations' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'"

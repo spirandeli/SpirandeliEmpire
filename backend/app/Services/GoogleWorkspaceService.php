@@ -256,6 +256,14 @@ class GoogleWorkspaceService
             ],
         ];
 
+        if (! empty($data['recurrence'])) {
+            $payload['recurrence'] = is_array($data['recurrence']) ? $data['recurrence'] : [$data['recurrence']];
+        }
+
+        if (! empty($data['reminders'])) {
+            $payload['reminders'] = $data['reminders'];
+        }
+
         $response = Http::withToken($token)->timeout(15)->post($url, $payload);
 
         if (! $response->successful()) {
@@ -263,6 +271,22 @@ class GoogleWorkspaceService
         }
 
         return $response->json();
+    }
+
+    /**
+     * Remove um evento no Google Calendar.
+     */
+    public function deleteEvent(User $user, string $eventId, string $calendarId = 'primary'): bool
+    {
+        $token = $this->getValidAccessToken($user);
+        if (! $token) {
+            return false;
+        }
+
+        $url = sprintf('%s/calendars/%s/events/%s', self::CALENDAR_API_BASE, urlencode($calendarId), urlencode($eventId));
+        $response = Http::withToken($token)->timeout(15)->delete($url);
+
+        return $response->successful() || $response->status() === 404;
     }
 
     // --- Google Tasks API ----------------------------------------------------

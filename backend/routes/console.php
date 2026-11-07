@@ -18,3 +18,8 @@ Schedule::command('abvos:optimize-growth')
     ->dailyAt('03:00')
     ->withoutOverlapping(30)
     ->runInBackground();
+
+Schedule::command('language:generate-daily-lessons')
+    ->dailyAt('04:00')
+    ->withoutOverlapping(15)
+    ->runInBackground();
