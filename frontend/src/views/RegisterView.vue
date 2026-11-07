@@ -36,11 +36,15 @@ async function handleSubmit() {
     swal.toast('Conta criada com sucesso! Bem-vindo ao SpirandeliEmpire.', 'success')
     router.push('/')
   } catch (err) {
-    if (err.response?.status === 422 && err.response?.data?.errors) {
-      errors.value = err.response.data.errors
-      errorMessage.value = 'Por favor, corrija os erros abaixo.'
+    const data = err.response?.data || {}
+    const errErrors = data.errors || data.detail?.errors || {}
+    const errMessage = data.message || data.detail?.message || (typeof data.detail === 'string' ? data.detail : null) || 'Falha ao registrar conta.'
+
+    if (Object.keys(errErrors).length > 0) {
+      errors.value = errErrors
+      errorMessage.value = typeof errMessage === 'string' ? errMessage : 'Por favor, corrija os erros abaixo.'
     } else {
-      errorMessage.value = err.response?.data?.message || 'Falha ao registrar conta.'
+      errorMessage.value = typeof errMessage === 'string' ? errMessage : 'Falha ao registrar conta.'
     }
   }
 }

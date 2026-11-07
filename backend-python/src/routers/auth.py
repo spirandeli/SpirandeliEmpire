@@ -30,7 +30,10 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"errors": {"email": ["O e-mail informado já está cadastrado."]}},
+            detail={
+                "message": "O e-mail informado já está cadastrado.",
+                "errors": {"email": ["O e-mail informado já está cadastrado."]},
+            },
         )
 
     # Criação do usuário

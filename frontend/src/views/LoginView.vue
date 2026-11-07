@@ -22,9 +22,13 @@ async function handleSubmit() {
     const redirect = route.query.redirect || '/'
     router.push(redirect)
   } catch (err) {
-    errorMessage.value = err.response?.data?.errors?.email?.[0]
-      || err.response?.data?.message
-      || 'Credenciais inválidas.'
+    const data = err.response?.data || {}
+    errorMessage.value = data.errors?.email?.[0]
+      || data.detail?.errors?.email?.[0]
+      || data.message
+      || (typeof data.detail === 'string' ? data.detail : null)
+      || data.detail?.message
+      || 'Credenciais inválidas. Verifique seu e-mail e senha.'
   }
 }
 </script>

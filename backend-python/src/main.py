@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -59,6 +59,28 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": "Os dados fornecidos são inválidos.",
             "errors": errors_dict,
         },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if isinstance(exc.detail, dict):
+        content = dict(exc.detail)
+        if "message" not in content:
+            if "errors" in content:
+                first_err = next(iter(content["errors"].values()), None)
+                if isinstance(first_err, list) and first_err:
+                    content["message"] = first_err[0]
+                elif isinstance(first_err, str):
+                    content["message"] = first_err
+                else:
+                    content["message"] = "Os dados fornecidos são inválidos."
+            else:
+                content["message"] = "Erro ao processar requisição."
+        return JSONResponse(status_code=exc.status_code, content=content)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"message": str(exc.detail), "detail": str(exc.detail)},
     )
 
 
