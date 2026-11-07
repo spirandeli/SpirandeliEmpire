@@ -4,16 +4,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from src.config import get_settings
-from src.routers import auth
+from src.routers import (
+    admin,
+    agent,
+    approvals,
+    auth,
+    businesses,
+    calendar,
+    integrations,
+    languages,
+    tasks,
+    webhooks,
+)
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Inicialização (conexões com Redis, etc.)
     yield
-    # Finalização
 
 
 app = FastAPI(
@@ -25,7 +34,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Configuração de CORS para o SPA Vue 3
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,10 +45,6 @@ app.add_middleware(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """
-    Padroniza erros de validação Pydantic no mesmo formato esperado pelo frontend Vue:
-    { message: "...", errors: { field: ["error message"] } }
-    """
     errors_dict = {}
     for err in exc.errors():
         field = ".".join(str(loc) for loc in err["loc"] if loc != "body")
@@ -65,6 +69,14 @@ async def health_check():
     return {"status": "ok", "app": settings.APP_NAME, "env": settings.APP_ENV}
 
 
-# Rotas da API
+# Rotas da API sob o prefixo /api
 app.include_router(auth.router, prefix="/api")
-
+app.include_router(businesses.router, prefix="/api")
+app.include_router(tasks.router, prefix="/api")
+app.include_router(approvals.router, prefix="/api")
+app.include_router(agent.router, prefix="/api")
+app.include_router(languages.router, prefix="/api")
+app.include_router(calendar.router, prefix="/api")
+app.include_router(integrations.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(webhooks.router, prefix="/api")

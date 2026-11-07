@@ -38,6 +38,7 @@ class AgentConversation(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="conversations")
+    business = relationship("Business")
     messages = relationship("AgentMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="AgentMessage.id")
 
 
