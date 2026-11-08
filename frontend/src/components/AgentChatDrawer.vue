@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import { useAgentChat } from '@/composables/useAgentChat'
 
@@ -34,15 +34,33 @@ const inputText = ref('')
 const messagesContainer = ref(null)
 const expandedTools = ref({})
 
+function handleKeyDown(e) {
+  if (e.key === 'Escape' && props.isOpen) {
+    emit('close')
+  }
+}
+
 watch(
   () => props.isOpen,
   async (open) => {
     if (open) {
+      document.body.style.overflow = 'hidden'
       await loadOrCreateConversation(props.businessId)
       scrollToBottom()
+    } else {
+      document.body.style.overflow = ''
     }
   }
 )
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.body.style.overflow = ''
+  window.removeEventListener('keydown', handleKeyDown)
+})
 
 function toggleToolExpand(msgId) {
   expandedTools.value[msgId] = !expandedTools.value[msgId]
@@ -100,51 +118,76 @@ function scrollToBottom() {
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 overflow-hidden flex justify-end">
+  <div v-if="isOpen" class="fixed inset-0 z-50 overflow-hidden flex justify-end h-screen h-[100dvh]">
     <!-- Backdrop -->
     <div
-      class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
+      class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm transition-opacity"
       @click="emit('close')"
     ></div>
 
     <!-- Drawer Panel -->
-    <div class="relative w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col h-full z-10 animate-in slide-in-from-right duration-200">
-      <!-- Drawer Header -->
-      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
-        <div class="flex items-center space-x-3">
-          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-500/20">
+    <div class="relative w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col h-full max-h-[100dvh] z-10 animate-in slide-in-from-right duration-200 overflow-x-hidden">
+      <!-- Drawer Header com Safe Area e Botões Claros de Saída -->
+      <div
+        class="px-3.5 sm:px-4 py-3 sm:py-3.5 border-b border-slate-800 flex items-center justify-between gap-2.5 bg-slate-950/85 backdrop-blur-md shrink-0"
+        style="padding-top: max(0.85rem, env(safe-area-inset-top, 0px))"
+      >
+        <!-- Lado Esquerdo: Botão Voltar (Mobile Friendly) + Avatar + Títulos -->
+        <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+          <!-- Botão Voltar direto (Facilita sair da tela em 1 toque no mobile) -->
+          <button
+            type="button"
+            aria-label="Voltar para a tela anterior"
+            @click="emit('close')"
+            class="p-2 -ml-1 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 active:scale-95 transition flex items-center justify-center shrink-0 min-w-[38px] min-h-[38px]"
+            title="Voltar / Sair do Chat"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <!-- Avatar Ícone -->
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-500/20 shrink-0">
             ⚡
           </div>
-          <div>
-            <div class="flex items-center space-x-2">
-              <h2 class="text-sm font-bold text-white">Jeffrey · COO Executivo</h2>
-              <span class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Gemini 3.8 Flash
+
+          <!-- Textos de Identificação (Truncados para nunca vazar tela) -->
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center space-x-1.5 min-w-0">
+              <h2 class="text-xs sm:text-sm font-bold text-white truncate">Jeffrey · COO Executivo</h2>
+              <span class="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                Gemini 3.8
               </span>
             </div>
-            <p class="text-[11px] text-slate-400 font-mono">
-              {{ conversation?.business ? `Venture: ${conversation.business.name}` : 'Modo Incubadora & Infraestrutura Geral' }}
+            <p class="text-[11px] text-slate-400 font-mono truncate block leading-tight mt-0.5">
+              {{ conversation?.business ? `Venture: ${conversation.business.name}` : 'Modo Incubadora & Infra Geral' }}
             </p>
           </div>
         </div>
 
+        <!-- Lado Direito: Botão Fechar Explícito -->
         <button
           type="button"
           aria-label="Fechar Drawer COO"
           @click="emit('close')"
-          class="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
+          class="px-2.5 py-1.5 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 active:scale-95 transition flex items-center space-x-1 shrink-0 text-xs font-semibold min-h-[38px]"
+          title="Fechar"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          <span class="hidden sm:inline">Fechar</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
         </button>
       </div>
 
       <!-- Quick Action Pills -->
-      <div class="p-2.5 bg-slate-950/40 border-b border-slate-800/80 flex items-center space-x-2 overflow-x-auto text-[11px] no-scrollbar">
+      <div class="px-3 py-2 bg-slate-950/40 border-b border-slate-800/80 flex items-center space-x-2 overflow-x-auto text-[11px] no-scrollbar shrink-0">
         <button
           @click="handleQuickPrompt('Jeffrey, faça uma auditoria rápida na nossa VPS e liste os contêineres Docker ativos.')"
           class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition flex items-center space-x-1"
         >
-          <span>🖥️ Auditar VPS & Docker</span>
+          <span>🖥️ Auditar VPS</span>
         </button>
         <button
           @click="handleQuickPrompt('Estruture uma nova venture no nicho de utilidades virais para o TikTok Shop.')"
@@ -156,7 +199,7 @@ function scrollToBottom() {
           @click="handleQuickPrompt('Consulte a base de conhecimento e me explique as métricas de mineração e roteiro do TikTok Shop.')"
           class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition flex items-center space-x-1"
         >
-          <span>📚 RAG Base de Negócios</span>
+          <span>📚 RAG Base</span>
         </button>
       </div>
 
@@ -267,20 +310,24 @@ function scrollToBottom() {
         </div>
       </div>
 
-      <!-- Input Bar -->
-      <div class="p-4 border-t border-slate-800 bg-slate-950/80">
+      <!-- Input Bar com Safe Area Bottom -->
+      <div
+        class="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/90 shrink-0"
+        style="padding-bottom: max(0.85rem, env(safe-area-inset-bottom, 0px))"
+      >
         <form @submit.prevent="handleSend" class="flex items-center space-x-2">
           <input
             v-model="inputText"
             type="text"
-            placeholder="Instrua o Jeffrey (ex: 'Audite a VPS', 'Crie um negócio no TikTok Shop')..."
-            class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+            placeholder="Instrua o Jeffrey (ex: 'Audite a VPS', 'Crie um negócio')..."
+            class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition min-h-[42px]"
             :disabled="loading"
           />
           <button
             type="submit"
             :disabled="loading || !inputText.trim()"
-            class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 font-semibold text-sm text-white transition flex items-center justify-center shrink-0 shadow"
+            aria-label="Enviar mensagem"
+            class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 font-semibold text-sm text-white transition flex items-center justify-center shrink-0 shadow min-h-[42px] min-w-[44px]"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
           </button>

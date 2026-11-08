@@ -334,6 +334,36 @@ async function toggleAutomation(automation) {
     swal.error('Erro ao alterar automação', err.response?.data?.message || err.message)
   }
 }
+
+function formatTaskStatus(status) {
+  const map = {
+    'backlog': 'Backlog',
+    'in_progress_agent': 'IA em Execução',
+    'awaiting_supervision': 'Aguardando Supervisão',
+    'todo_user': 'A Fazer (Humano)',
+    'done': 'Concluído',
+    'completed': 'Concluído',
+  }
+  return map[status] || status || 'Pendente'
+}
+
+function formatTaskAssignee(assignee) {
+  const map = {
+    'agent': 'Agente IA',
+    'user': 'Você (Operador)',
+  }
+  return map[assignee] || assignee || 'Agente IA'
+}
+
+function formatTaskPriority(priority) {
+  const map = {
+    'urgent': 'Urgente',
+    'high': 'Alta',
+    'medium': 'Média',
+    'low': 'Baixa',
+  }
+  return map[priority] || priority || 'Normal'
+}
 </script>
 
 <template>
@@ -367,12 +397,12 @@ async function toggleAutomation(automation) {
 
     <div class="space-y-6">
       <!-- Top Action Bar -->
-      <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="p-3 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4">
         <!-- Navegação por Abas -->
-        <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+        <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1 xl:pb-0 flex-1 min-w-0">
           <button
             @click="activeTab = 'growth'"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'growth' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>⚡</span>
@@ -380,7 +410,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'canvas'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'canvas' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             Business Model Canvas & Marca
@@ -389,7 +419,7 @@ async function toggleAutomation(automation) {
           <button
             v-if="isDarkChannel"
             @click="activeTab = 'dark_studio'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'dark_studio' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>🎬</span>
@@ -401,7 +431,7 @@ async function toggleAutomation(automation) {
           <button
             v-else
             @click="activeTab = 'tiktok'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'tiktok' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Vitrine TikTok Shop</span>
@@ -411,7 +441,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'automations'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'automations' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Automações Cron</span>
@@ -421,7 +451,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'tasks'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
             :class="activeTab === 'tasks' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Operações & Tarefas</span>
@@ -432,18 +462,18 @@ async function toggleAutomation(automation) {
         </div>
 
         <!-- Botões de Ação Rápida -->
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0 pt-2 xl:pt-0 border-t border-slate-800/80 xl:border-t-0 w-full xl:w-auto">
           <button
             @click="isChatDrawerOpen = true"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 min-h-[38px] flex-1 sm:flex-initial justify-center"
+            class="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center justify-center space-x-1.5 shadow-md shadow-indigo-600/20 min-h-[38px] whitespace-nowrap active:scale-95"
           >
-            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>Conversar com COO IA</span>
           </button>
 
           <button
             @click="handleToggleStatus"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl border transition min-h-[38px] flex-1 sm:flex-initial text-center"
+            class="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-semibold rounded-xl border transition min-h-[38px] text-center whitespace-nowrap active:scale-95"
             :class="business.status === 'active'
               ? 'bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20'
               : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20'"
@@ -889,20 +919,33 @@ async function toggleAutomation(automation) {
             class="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs"
           >
             <div class="space-y-1.5 flex-1 min-w-0">
-              <div class="flex items-center space-x-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <span
-                  class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                  class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-wide"
                   :class="{
-                    'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30': task.status === 'in_progress_agent',
-                    'bg-amber-500/20 text-amber-300 border border-amber-500/30': task.status === 'awaiting_supervision',
-                    'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': task.status === 'done',
-                    'bg-slate-800 text-slate-300': task.status === 'backlog' || task.status === 'todo_user'
+                    'bg-indigo-500/20 text-indigo-300 border-indigo-500/30': task.status === 'in_progress_agent',
+                    'bg-amber-500/20 text-amber-300 border-amber-500/30': task.status === 'awaiting_supervision',
+                    'bg-emerald-500/20 text-emerald-300 border-emerald-500/30': task.status === 'done' || task.status === 'completed',
+                    'bg-slate-800 text-slate-300 border-slate-700': task.status === 'backlog' || task.status === 'todo_user'
                   }"
                 >
-                  {{ task.status_label || task.status }}
+                  {{ task.status_label || formatTaskStatus(task.status) }}
                 </span>
-                <span class="text-slate-500 text-[11px]">Executor: <strong class="text-indigo-400">{{ task.assignee_label || task.assignee }}</strong></span>
-                <span class="text-slate-600 text-[10px]">· Prioridade: <strong class="text-slate-400 font-mono">{{ task.priority }}</strong></span>
+                <span class="text-slate-400 text-[11px] flex items-center space-x-1">
+                  <span>Executor:</span>
+                  <strong class="text-indigo-400 font-medium">{{ task.assignee_label || formatTaskAssignee(task.assignee) }}</strong>
+                </span>
+                <span class="text-slate-600 text-[10px]">·</span>
+                <span
+                  class="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                  :class="{
+                    'bg-rose-500/20 text-rose-300 border-rose-500/30': task.priority === 'urgent',
+                    'bg-amber-500/20 text-amber-300 border-amber-500/30': task.priority === 'high',
+                    'bg-slate-800 text-slate-400 border-slate-700': task.priority !== 'urgent' && task.priority !== 'high'
+                  }"
+                >
+                  Prioridade {{ formatTaskPriority(task.priority) }}
+                </span>
               </div>
               <h4 class="text-sm font-bold text-white">{{ task.title }}</h4>
               <p v-if="task.description" class="text-slate-400 text-xs line-clamp-2 leading-relaxed">{{ task.description }}</p>

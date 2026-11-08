@@ -17,6 +17,7 @@ from src.models import (
     User,
 )
 from src.services.jeffrey_orchestrator import call_gemini_generate_content, get_effective_gemini_key
+from src.services.media.pipeline import execute_full_media_pipeline
 
 logger = logging.getLogger("abvos.task_executor")
 
@@ -141,9 +142,80 @@ Produza agora o entregável final estruturado."""
             "items": [],
         }
 
-    # Se for venture de Canal Dark, registra ativos de mídia (ContentAsset) para aparecer no Estúdio Dark
+    # Verifica se a tarefa envolve produção multimídia / Canal Dark / Vídeo
+    is_video_task = (
+        (business and business.archetype in ("canal_dark", "dark_channel_automation"))
+        or any(k in (task.title + " " + (task.description or "")).lower() for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução"])
+    )
+
+    media_result = None
     assets_created = []
-    if business and business.archetype in ("canal_dark", "dark_channel_automation"):
+
+    if is_video_task:
+        try:
+            logger.info(f"Disparando Pipeline Multimídia Autônomo para a Tarefa #{task.id}...")
+            raw_items = parsed_output.get("items", [])
+            scenes_payload = []
+
+            for idx, it in enumerate(raw_items):
+                scenes_payload.append({
+                    "scene_number": idx + 1,
+                    "narration": it.get("script") or it.get("description") or f"Cena {idx + 1}",
+                    "visual_prompt": it.get("visual_prompt") or f"Cinematic dark scene, Unreal Engine 5, 8k, 9:16",
+                    "on_screen_text": it.get("title") or f"CENA {idx + 1}",
+                })
+
+            full_narration_text = " ".join([sc["narration"] for sc in scenes_payload if sc.get("narration")])
+            if not full_narration_text:
+                full_narration_text = parsed_output.get("markdown_content", task.title)
+
+            biz_id = business.id if business else 0
+            media_result = await execute_full_media_pipeline(
+                business_id=biz_id,
+                task_id=task.id,
+                scenes=scenes_payload,
+                full_narration=full_narration_text,
+                gemini_key=api_key,
+            )
+
+            # Anexa informações de mídia ao resultado final da tarefa
+            parsed_output["media"] = media_result
+            parsed_output["video_url"] = media_result["video"]["url"]
+            parsed_output["audio_url"] = media_result["audio"]["url"]
+            parsed_output["srt_url"] = media_result["subtitles"]["srt_url"]
+            parsed_output["summary"] = (
+                f"{parsed_output.get('summary', 'Tarefa concluída.')} "
+                f"🎬 VÍDEO FINAL RENDERIZADO (1080x1920 9:16, {media_result['video']['duration_seconds']}s, {media_result['video']['size_mb']}MB) pronto para download."
+            )
+
+            # Cria ContentAsset com o vídeo renderizado
+            unique_code = f"VID-{biz_id}-{task.id}-{secrets.token_hex(3)}"
+            asset = ContentAsset(
+                tracking_code=unique_code,
+                business_id=biz_id,
+                type="rendered_dark_video",
+                platform="youtube_shorts",
+                title=f"[Vídeo 9:16] {task.title}",
+                body=media_result["video"]["url"],
+                content={
+                    "video": media_result["video"],
+                    "audio": media_result["audio"],
+                    "subtitles": media_result["subtitles"],
+                    "scenes_count": media_result["scenes_count"],
+                    "format_type": "short_9x16",
+                },
+                status="pending_approval",
+                created_at=now,
+            )
+            db.add(asset)
+            assets_created.append(asset.title)
+
+        except Exception as media_err:
+            logger.error(f"Erro ao executar pipeline multimídia para tarefa #{task.id}: {media_err}")
+            parsed_output["media_error"] = str(media_err)
+
+    # Se for venture de Canal Dark, registra também os roteiros como ContentAsset se ainda não registrados
+    if business and business.archetype in ("canal_dark", "dark_channel_automation") and not media_result:
         items = parsed_output.get("items", [])
         if items:
             for idx, it in enumerate(items[:10]):

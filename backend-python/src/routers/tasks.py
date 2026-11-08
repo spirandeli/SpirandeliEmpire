@@ -1,10 +1,11 @@
+import logging
 from datetime import datetime, timezone
 from typing import Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from src.database import get_db
+from src.database import get_db, AsyncSessionLocal
 from src.dependencies import get_current_user
 from src.models import Business, Task, User
 from src.schemas.task import (
@@ -14,6 +15,19 @@ from src.schemas.task import (
     TaskUpdateRequest,
 )
 from src.services.task_executor_service import execute_agent_task
+
+logger = logging.getLogger("abvos.routers.tasks")
+
+
+async def _bg_execute_task(task_id: int, user: User):
+    """
+    Executa a tarefa em background quando arrastada para in_progress_agent.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            await execute_agent_task(session, task_id, user)
+    except Exception as e:
+        logger.error(f"Erro ao executar tarefa #{task_id} em background: {e}")
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -249,6 +263,7 @@ async def show(
 async def move(
     task_id: int,
     payload: TaskMoveRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -268,6 +283,10 @@ async def move(
     task.updated_at = now
     await db.commit()
     await db.refresh(task)
+
+    # Dispara execução autônoma com IA Worker e Pipeline Multimídia se movido para in_progress_agent
+    if target_status == "in_progress_agent" and task.assignee == "agent":
+        background_tasks.add_task(_bg_execute_task, task.id, current_user)
 
     return {"data": _format_task(task)}
 

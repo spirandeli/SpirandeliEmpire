@@ -38,5 +38,9 @@ backend/bootstrap/cache/*.php
 # IDEs
 .idea/
 .vscode/
+
+# ABVOS Media & Binaries
+backend-python/bin/
+backend-python/storage/media/
 *.swp
 .DS_Store

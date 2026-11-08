@@ -8,8 +8,12 @@ from src.config import get_settings
 
 settings = get_settings()
 
-CHROMA_DIR = os.getenv("CHROMA_DIR", "/app/knowledge_base/chroma_db")
-DOCS_DIR = os.getenv("DOCS_DIR", "/app/knowledge_base/docs")
+BASE_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent.parent / "knowledge_base"
+DEFAULT_CHROMA = "/app/knowledge_base/chroma_db" if os.path.exists("/app") and os.access("/app", os.W_OK) else str(BASE_KNOWLEDGE_DIR / "chroma_db")
+DEFAULT_DOCS = "/app/knowledge_base/docs" if os.path.exists("/app") and os.access("/app", os.R_OK) else str(BASE_KNOWLEDGE_DIR / "docs")
+
+CHROMA_DIR = os.getenv("CHROMA_DIR", DEFAULT_CHROMA)
+DOCS_DIR = os.getenv("DOCS_DIR", DEFAULT_DOCS)
 COLLECTION_NAME = "abvos_knowledge"
 EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 

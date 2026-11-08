@@ -13,6 +13,7 @@ from src.routers import (
     calendar,
     integrations,
     languages,
+    media,
     tasks,
     webhooks,
 )
@@ -118,4 +119,5 @@ app.include_router(languages.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(media.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")

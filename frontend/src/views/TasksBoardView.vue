@@ -596,6 +596,90 @@ function getColumnBadgeColor(status) {
         </div>
 
         <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-slate-300 text-xs leading-relaxed">
+          <!-- SEÇÃO VÍDEO & MÍDIA RENDERIZADA PELO ABVOS -->
+          <div
+            v-if="selectedTaskResult.result?.video_url || selectedTaskResult.result?.media?.video?.url"
+            class="p-4 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-950 border border-indigo-500/30 space-y-3.5 shadow-xl"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-base">🎬</span>
+                <span class="text-sm font-bold text-white">Vídeo Vertical 9:16 Renderizado</span>
+              </div>
+              <div class="flex items-center space-x-1.5 text-[10px] font-mono">
+                <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">1080x1920</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {{ selectedTaskResult.result?.media?.video?.duration_seconds || '60' }}s
+                </span>
+                <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {{ selectedTaskResult.result?.media?.video?.size_mb || '0' }} MB
+                </span>
+              </div>
+            </div>
+
+            <!-- Player de Vídeo 9:16 -->
+            <div class="flex justify-center bg-black/60 rounded-xl p-2 border border-slate-800/80">
+              <video
+                :src="selectedTaskResult.result.video_url || selectedTaskResult.result.media?.video?.url"
+                controls
+                playsinline
+                class="max-h-80 w-auto rounded-lg shadow-2xl border border-slate-700/60"
+              ></video>
+            </div>
+
+            <!-- Botões de Ação e Download -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <a
+                :href="selectedTaskResult.result.video_url || selectedTaskResult.result.media?.video?.url"
+                download
+                target="_blank"
+                class="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] text-center flex items-center justify-center space-x-1.5 transition shadow-md shadow-emerald-500/20"
+              >
+                <span>📥</span>
+                <span>Baixar Vídeo (.mp4)</span>
+              </a>
+
+              <a
+                v-if="selectedTaskResult.result.audio_url || selectedTaskResult.result.media?.audio?.url"
+                :href="selectedTaskResult.result.audio_url || selectedTaskResult.result.media?.audio?.url"
+                download
+                target="_blank"
+                class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] text-center flex items-center justify-center space-x-1.5 transition shadow-sm"
+              >
+                <span>🎙️</span>
+                <span>Baixar Áudio (.mp3)</span>
+              </a>
+
+              <a
+                v-if="selectedTaskResult.result.srt_url || selectedTaskResult.result.media?.subtitles?.srt_url"
+                :href="selectedTaskResult.result.srt_url || selectedTaskResult.result.media?.subtitles?.srt_url"
+                download
+                target="_blank"
+                class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] text-center flex items-center justify-center space-x-1.5 transition border border-slate-700"
+              >
+                <span>📝</span>
+                <span>Legendas (.srt)</span>
+              </a>
+            </div>
+
+            <!-- Galeria de Imagens de Cenas (se houver) -->
+            <div v-if="selectedTaskResult.result?.media?.images_generated?.length" class="pt-2 border-t border-slate-800/80">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Cenas Visuais Geradas (9:16):</span>
+              <div class="flex space-x-2 overflow-x-auto pb-1">
+                <a
+                  v-for="(imgUrl, iIdx) in selectedTaskResult.result.media.images_generated"
+                  :key="iIdx"
+                  :href="imgUrl"
+                  target="_blank"
+                  class="shrink-0 w-16 h-28 rounded-lg overflow-hidden border border-slate-800 hover:border-indigo-500 transition shadow"
+                  :title="`Cena ${iIdx + 1}`"
+                >
+                  <img :src="imgUrl" :alt="`Cena ${iIdx + 1}`" class="w-full h-full object-cover" />
+                </a>
+              </div>
+            </div>
+          </div>
+
           <div v-if="selectedTaskResult.result?.summary" class="p-3 rounded-xl bg-slate-950 border border-slate-800">
             <h4 class="text-slate-400 font-semibold mb-1">Resumo Executivo:</h4>
             <p class="text-slate-200">{{ selectedTaskResult.result.summary }}</p>
