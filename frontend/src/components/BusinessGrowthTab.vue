@@ -45,7 +45,14 @@ async function loadGrowthMetrics() {
   loading.value = true
   try {
     const res = await api.get(`/businesses/${props.businessId}/growth-metrics`)
-    metrics.value = res.data
+    metrics.value = {
+      ...metrics.value,
+      ...res.data,
+      learnings: res.data.learnings || [],
+      optimization_cycles: res.data.optimization_cycles || [],
+      winning_assets: res.data.winning_assets || [],
+      recent_conversions: res.data.recent_conversions || [],
+    }
   } catch (err) {
     swal.toast('Erro ao carregar métricas de ROI e Growth', 'error')
   } finally {
@@ -298,10 +305,10 @@ function getArchetypeLabel(arch) {
           <h3 class="text-base font-bold text-white tracking-tight">Creative Leaderboard (Ranking de ROI)</h3>
           <p class="text-xs text-slate-400">Identificação automática dos ativos com maior retorno para alavancagem.</p>
         </div>
-        <span class="text-xs text-slate-500 font-mono">{{ metrics.winning_assets.length }} ativos rankeados</span>
+        <span class="text-xs text-slate-500 font-mono">{{ metrics.winning_assets?.length || 0 }} ativos rankeados</span>
       </div>
 
-      <div v-if="metrics.winning_assets.length === 0" class="p-8 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-xs text-slate-400">
+      <div v-if="!metrics.winning_assets?.length" class="p-8 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-xs text-slate-400">
         Nenhum ativo com conversão registrada ainda. Simule uma venda ou aguarde webhooks externos com o código de rastreio (ex: <code>AST-XXXX</code>).
       </div>
 

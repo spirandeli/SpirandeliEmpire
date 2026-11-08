@@ -67,11 +67,14 @@ const canAdvanceStep1 = computed(() => !!targetLanguage.value && !!learningFocus
 const canAdvanceStep2 = computed(() => studyDays.value.length > 0 && !!preferredTime.value)
 
 async function handleFinish() {
+  const dayMap = { MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6, SUN: 7 }
+  const normalizedStudyDays = studyDays.value.map(d => dayMap[d] || d)
+
   try {
     await languageStore.createProfile({
       target_language: targetLanguage.value,
       learning_focus: learningFocus.value,
-      study_days: studyDays.value,
+      study_days: normalizedStudyDays,
       preferred_time: preferredTime.value,
       daily_duration_minutes: dailyDuration.value,
     })
@@ -97,21 +100,31 @@ async function handleFinish() {
           <p class="text-xs text-slate-400">Micro-learning diário de 15 minutos adaptativo à sua agenda executiva</p>
         </div>
 
-        <!-- Indicador de Passos -->
-        <div class="flex items-center space-x-2">
-          <div
-            class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition"
-            :class="currentStep === 1 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400'"
-          >
-            1
+        <!-- Indicador de Passos & Fechar -->
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2">
+            <div
+              class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition"
+              :class="currentStep === 1 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400'"
+            >
+              1
+            </div>
+            <div class="w-6 h-0.5 bg-slate-800"></div>
+            <div
+              class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition"
+              :class="currentStep === 2 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400'"
+            >
+              2
+            </div>
           </div>
-          <div class="w-6 h-0.5 bg-slate-800"></div>
-          <div
-            class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition"
-            :class="currentStep === 2 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400'"
+          <button
+            type="button"
+            @click="$emit('close')"
+            class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition ml-2"
+            title="Fechar"
           >
-            2
-          </div>
+            ✕
+          </button>
         </div>
       </div>
 

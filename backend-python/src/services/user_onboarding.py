@@ -43,6 +43,8 @@ async def provision_starter_kit(user: User, db: AsyncSession) -> Business:
         type="tiktok_shop_affiliate",
         archetype="affiliate_tiktok",
         status="active",
+        automation_enabled=True,
+        activated_at=now,
         niche="Tecnologia & Utilidades Virais",
         description="Operação automatizada de alta performance na TikTok Shop Brasil operada pelo Gemini 3.8 Co-Pilot.",
         north_star_metric="commission_volume",

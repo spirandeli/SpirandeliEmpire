@@ -184,13 +184,15 @@ function openChat(businessId = null) {
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
       <!-- Top Header -->
       <header class="h-16 bg-slate-900/60 backdrop-blur border-b border-slate-800 flex items-center justify-between px-8">
-        <div class="flex items-center space-x-4">
-          <slot name="header-title">
-            <h1 class="text-base font-bold text-white tracking-tight">SpirandeliEmpire</h1>
+        <div class="flex-1 flex items-center justify-between min-w-0 mr-4">
+          <slot name="header">
+            <slot name="header-title">
+              <h1 class="text-base font-bold text-white tracking-tight">SpirandeliEmpire</h1>
+            </slot>
           </slot>
         </div>
 
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-4 shrink-0">
           <!-- Kill-Switch Global do Agente -->
           <div class="flex items-center space-x-2.5 bg-slate-950 px-3.5 py-1.5 rounded-full border border-slate-800">
             <span class="text-xs font-medium text-slate-300">Autonomia dos Workers:</span>

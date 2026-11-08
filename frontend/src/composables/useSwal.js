@@ -48,10 +48,9 @@ export function useSwal() {
     return result.isConfirmed
   }
 
-  const promptRevision = async ({
-    title = 'Solicitar Ajuste ao Gemini 3.8',
-    defaultSection = 'all',
-  } = {}) => {
+  const promptRevision = async (opts = {}) => {
+    const title = typeof opts === 'string' ? `Solicitar Ajuste: ${opts}` : (opts.title || 'Solicitar Ajuste ao Gemini 3.8')
+    const defaultSection = (typeof opts === 'object' && opts.defaultSection) ? opts.defaultSection : 'all'
     const { value: formValues } = await darkSwal.fire({
       title,
       html: `
@@ -110,8 +109,12 @@ export function useSwal() {
     })
   }
 
+  const fire = (...args) => darkSwal.fire(...args)
+
   return {
     swal: darkSwal,
+    instance: darkSwal,
+    fire,
     toast,
     confirm,
     promptRevision,

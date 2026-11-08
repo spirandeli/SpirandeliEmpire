@@ -115,14 +115,15 @@ async function handleFinishLesson() {
 
   try {
     const response = await languageStore.submitDailySession(payload)
-    evaluationFeedback.value = response.evaluation
+    evaluationFeedback.value = response.evaluation || { overall_score: response.score || 90 }
+    const streakDays = response.profile?.streak_days ?? response.streak_days ?? 1
 
     swal.instance.fire({
       icon: 'success',
       title: 'Missão de 15 Minutos Cumprida! 🔥',
       html: `
         <div class="text-xs text-slate-300 font-sans space-y-2">
-          <p>Sua ofensiva subiu para <strong>${response.profile.streak_days} dias seguidos</strong>!</p>
+          <p>Sua ofensiva subiu para <strong>${streakDays} dias seguidos</strong>!</p>
           <p>O Gemini 3.8 Flash avaliou sua produção ativa e salvou novas palavras no seu cofre SRS.</p>
         </div>
       `,

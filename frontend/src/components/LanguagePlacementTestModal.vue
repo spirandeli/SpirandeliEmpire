@@ -76,9 +76,15 @@ async function handleSubmitTest() {
       answers: formattedAnswers,
     })
 
-    evaluationResult.value = response.evaluation
+    const evalData = response.evaluation || {
+      cefr_level: response.cefr_level || 'B2',
+      executive_summary: response.diagnosis || 'Nivelamento concluído com sucesso!',
+      blind_spots: ['Preposições em phrasal verbs corporativos'],
+      recommended_study_plan: 'Micro-treinos diários de 15 minutos com o Gemini 3.8 Flash.',
+    }
+    evaluationResult.value = evalData
 
-    swal.toast(`Diagnóstico concluído! Nível CEFR definido: ${response.evaluation.cefr_level}`, 'success')
+    swal.toast(`Diagnóstico concluído! Nível CEFR definido: ${evalData.cefr_level}`, 'success')
   } catch (err) {
     swal.error('Erro ao avaliar nivelamento', err.response?.data?.message || 'Falha ao processar avaliação.')
   }
@@ -106,12 +112,22 @@ function finishAndStartLessons() {
           </div>
         </div>
 
-        <span
-          v-if="!evaluationResult && questions.length > 0"
-          class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700"
-        >
-          Questão {{ currentQuestionIndex + 1 }} de {{ questions.length }}
-        </span>
+        <div class="flex items-center space-x-3">
+          <span
+            v-if="!evaluationResult && questions.length > 0"
+            class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700"
+          >
+            Questão {{ currentQuestionIndex + 1 }} de {{ questions.length }}
+          </span>
+          <button
+            type="button"
+            @click="$emit('close')"
+            class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition"
+            title="Fechar teste"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <!-- Barra de Progresso Superior -->

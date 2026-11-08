@@ -14,6 +14,7 @@ const swal = useSwal()
 const showCreateModal = ref(false)
 const isChatDrawerOpen = ref(false)
 const provisioningDemo = ref(false)
+const isCreating = ref(false)
 
 async function handleProvisionShowcase() {
   provisioningDemo.value = true
@@ -44,17 +45,29 @@ onMounted(async () => {
 })
 
 async function handleCreate() {
-  if (!newBiz.value.name.trim()) return
+  if (!newBiz.value.name.trim()) {
+    swal.error('Campo obrigatório', 'Por favor, informe o nome do negócio.')
+    return
+  }
+  if (!newBiz.value.niche.trim()) {
+    swal.error('Campo obrigatório', 'Por favor, informe o nicho ou categoria do negócio.')
+    return
+  }
 
+  isCreating.value = true
   try {
     const created = await businessStore.createBusiness({
-      name: newBiz.value.name,
-      niche: newBiz.value.niche,
+      name: newBiz.value.name.trim(),
+      niche: newBiz.value.niche.trim(),
       archetype: newBiz.value.archetype,
       type: newBiz.value.archetype === 'affiliate_tiktok' ? 'tiktok_shop_affiliate' : 'custom',
       north_star_metric: newBiz.value.north_star_metric,
       target_kpi_value: newBiz.value.target_kpi_value,
       description: newBiz.value.description,
+      brand_rules: {
+        target_audience: newBiz.value.target_audience,
+        tone_of_voice: newBiz.value.tone_of_voice,
+      },
       brand_guidelines: {
         target_audience: newBiz.value.target_audience,
         tone_of_voice: newBiz.value.tone_of_voice,
@@ -80,6 +93,8 @@ async function handleCreate() {
     router.push(`/businesses/${created.id}`)
   } catch (err) {
     swal.error('Erro ao criar negócio', err.response?.data?.message || err.message)
+  } finally {
+    isCreating.value = false
   }
 }
 
@@ -333,9 +348,11 @@ async function handleDelete(biz) {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20"
+              :disabled="isCreating"
+              class="px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20 disabled:opacity-50 flex items-center space-x-1.5"
             >
-              Criar e Configurar
+              <span v-if="isCreating" class="animate-spin h-3.5 w-3.5 border-2 border-slate-950 border-t-transparent rounded-full"></span>
+              <span>{{ isCreating ? 'Criando...' : 'Criar e Configurar' }}</span>
             </button>
           </div>
         </form>

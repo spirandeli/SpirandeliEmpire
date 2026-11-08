@@ -232,14 +232,15 @@ async def move(
 ):
     task = await _get_user_task(task_id, current_user, db)
 
-    task.status = payload.status
+    target_status = "done" if payload.status in ("done", "completed") else payload.status
+    task.status = target_status
     if payload.position is not None:
         task.position = payload.position
 
     now = _utc_now()
-    if payload.status == "done" and not task.completed_at:
+    if target_status == "done" and not task.completed_at:
         task.completed_at = now
-    elif payload.status != "done":
+    elif target_status != "done":
         task.completed_at = None
 
     task.updated_at = now

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 from src.database import get_db
 from src.dependencies import require_admin
 from src.models import AiUsageLog, User
@@ -49,7 +50,11 @@ async def stats(
     blocked_users = total_users - active_ai_users
 
     # 2. Ranking de Usuários
-    users_res = await db.execute(select(User).order_by(User.tokens_used_this_month.desc()))
+    users_res = await db.execute(
+        select(User)
+        .options(selectinload(User.businesses), selectinload(User.tasks))
+        .order_by(User.tokens_used_this_month.desc())
+    )
     users = users_res.scalars().all()
 
     users_data = []

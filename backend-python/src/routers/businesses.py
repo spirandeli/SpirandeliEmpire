@@ -15,7 +15,6 @@ from src.models import (
     User,
     Task,
     ApprovalQueue,
-    TikTokProduct,
     ContentAsset,
     ConversionEvent,
 )
@@ -137,6 +136,8 @@ async def store(
         niche=payload.niche,
         description=payload.description,
         status="active",
+        automation_enabled=True,
+        activated_at=now,
         webhook_secret_token=secrets.token_urlsafe(32),
         canvas=payload.canvas or {},
         brand_rules=payload.brand_rules or {},
@@ -200,8 +201,11 @@ async def activate(
     db: AsyncSession = Depends(get_db),
 ):
     biz = await _get_user_business(business_id, current_user, db)
+    now = _utc_now()
     biz.status = "active"
-    biz.updated_at = _utc_now()
+    biz.automation_enabled = True
+    biz.activated_at = now
+    biz.updated_at = now
     await db.commit()
     await db.refresh(biz)
     return {"data": BusinessResponse.model_validate(biz)}
@@ -215,6 +219,7 @@ async def pause(
 ):
     biz = await _get_user_business(business_id, current_user, db)
     biz.status = "paused"
+    biz.automation_enabled = False
     biz.updated_at = _utc_now()
     await db.commit()
     await db.refresh(biz)
@@ -228,7 +233,7 @@ async def mine_now(
     db: AsyncSession = Depends(get_db),
 ):
     biz = await _get_user_business(business_id, current_user, db)
-    return {"message": "Job de mineração de produtos TikTok Shop despachado com sucesso!"}
+    return {"message": f"Job de mineração de produtos TikTok Shop para {biz.name} despachado com sucesso!"}
 
 
 @router.get("/{business_id}/growth-metrics")
@@ -301,6 +306,8 @@ async def growth_metrics(
         "winning_assets": winning,
         "losing_assets": [],
         "recent_conversions": recent_convs,
+        "learnings": [],
+        "optimization_cycles": [],
     }
 
 
@@ -313,7 +320,7 @@ async def optimize_growth(
     biz = await _get_user_business(business_id, current_user, db)
     return {
         "status": "success",
-        "message": "Ciclo de auto-otimização OODA disparado em background pelo Gemini 3.8!",
+        "message": f"Ciclo de auto-otimização OODA disparado em background pelo Gemini 3.8 para {biz.name}!",
     }
 
 
@@ -401,4 +408,54 @@ async def update_automation(
     await db.refresh(auto)
 
     return {"data": BusinessAutomationResponse.model_validate(auto)}
+
+
+@router.post("/{business_id}/automations", status_code=status.HTTP_201_CREATED)
+async def store_automation(
+    business_id: int,
+    payload: BusinessAutomationCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    biz = await _get_user_business(business_id, current_user, db)
+    now = _utc_now()
+    auto = BusinessAutomation(
+        business_id=biz.id,
+        type=payload.type,
+        name=payload.name,
+        cron_expression=payload.cron_expression,
+        timezone=payload.timezone,
+        is_enabled=payload.is_enabled,
+        config=payload.config or {},
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(auto)
+    await db.commit()
+    await db.refresh(auto)
+    return {"data": BusinessAutomationResponse.model_validate(auto)}
+
+
+@router.delete("/{business_id}/automations/{automation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_automation(
+    business_id: int,
+    automation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    biz = await _get_user_business(business_id, current_user, db)
+    res = await db.execute(
+        select(BusinessAutomation).where(
+            BusinessAutomation.id == automation_id,
+            BusinessAutomation.business_id == biz.id,
+        )
+    )
+    auto = res.scalar_one_or_none()
+    if not auto:
+        raise HTTPException(status_code=404, detail="Automação não encontrada.")
+
+    await db.delete(auto)
+    await db.commit()
+    return None
+
 

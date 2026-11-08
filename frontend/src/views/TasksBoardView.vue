@@ -13,6 +13,7 @@ const selectedBusinessId = ref('')
 const selectedAssignee = ref('')
 const showCreateModal = ref(false)
 const showLogsDrawer = ref(true)
+const isCreatingTask = ref(false)
 
 const newTask = ref({
   business_id: '',
@@ -47,12 +48,26 @@ function handleFilterChange() {
 }
 
 async function handleCreateTask() {
-  if (!newTask.value.title.trim()) return
+  if (!newTask.value.title.trim()) {
+    swal.error('Campo obrigatório', 'Por favor, informe o título da tarefa.')
+    return
+  }
 
+  let bizId = newTask.value.business_id
+  if (!bizId) {
+    if (businessStore.businesses.length > 0) {
+      bizId = businessStore.businesses[0].id
+    } else {
+      swal.error('Venture obrigatório', 'Crie um negócio primeiro no Hub de Negócios para associar tarefas.')
+      return
+    }
+  }
+
+  isCreatingTask.value = true
   try {
     await taskStore.createTask({
-      business_id: newTask.value.business_id || null,
-      title: newTask.value.title,
+      business_id: Number(bizId),
+      title: newTask.value.title.trim(),
       description: newTask.value.description,
       priority: newTask.value.priority,
       assignee: newTask.value.assignee,
@@ -69,6 +84,8 @@ async function handleCreateTask() {
     await loadBoard()
   } catch (err) {
     swal.error('Erro ao criar tarefa', err.response?.data?.message || err.message)
+  } finally {
+    isCreatingTask.value = false
   }
 }
 
@@ -112,6 +129,7 @@ function getColumnTitle(status) {
       return '3. Supervisão (Revisar)'
     case 'todo_user':
       return '4. A Fazer (Humano)'
+    case 'done':
     case 'completed':
       return '5. Concluído'
     default:
@@ -129,6 +147,7 @@ function getColumnBadgeColor(status) {
       return 'bg-amber-500/20 text-amber-300 border-amber-500/30'
     case 'todo_user':
       return 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+    case 'done':
     case 'completed':
       return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
     default:
@@ -280,7 +299,7 @@ function getColumnBadgeColor(status) {
                   <!-- Mover para Trás -->
                   <button
                     v-if="col.status !== 'backlog'"
-                    @click="handleMove(task, col.status === 'completed' ? 'awaiting_supervision' : col.status === 'todo_user' ? 'in_progress_agent' : col.status === 'awaiting_supervision' ? 'in_progress_agent' : 'backlog')"
+                    @click="handleMove(task, (col.status === 'done' || col.status === 'completed') ? 'awaiting_supervision' : col.status === 'todo_user' ? 'in_progress_agent' : col.status === 'awaiting_supervision' ? 'in_progress_agent' : 'backlog')"
                     title="Mover para coluna anterior"
                     class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white"
                   >
@@ -288,8 +307,8 @@ function getColumnBadgeColor(status) {
                   </button>
                   <!-- Mover para Frente -->
                   <button
-                    v-if="col.status !== 'completed'"
-                    @click="handleMove(task, col.status === 'backlog' ? (task.assignee === 'agent' ? 'in_progress_agent' : 'todo_user') : col.status === 'in_progress_agent' ? 'awaiting_supervision' : 'completed')"
+                    v-if="col.status !== 'done' && col.status !== 'completed'"
+                    @click="handleMove(task, col.status === 'backlog' ? (task.assignee === 'agent' ? 'in_progress_agent' : 'todo_user') : col.status === 'in_progress_agent' ? 'awaiting_supervision' : 'done')"
                     title="Avançar etapa"
                     class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 font-bold"
                   >
@@ -399,7 +418,7 @@ function getColumnBadgeColor(status) {
               v-model="newTask.business_id"
               class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
             >
-              <option value="">Sem negócio vinculado (Geral)</option>
+              <option value="">Selecione o negócio (ou padrão do venture ativo)</option>
               <option v-for="b in businessStore.businesses" :key="b.id" :value="b.id">
                 {{ b.name }}
               </option>
@@ -451,9 +470,11 @@ function getColumnBadgeColor(status) {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20"
+              :disabled="isCreatingTask"
+              class="px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20 disabled:opacity-50 flex items-center space-x-1.5"
             >
-              Criar Tarefa
+              <span v-if="isCreatingTask" class="animate-spin h-3.5 w-3.5 border-2 border-slate-950 border-t-transparent rounded-full"></span>
+              <span>{{ isCreatingTask ? 'Criando...' : 'Criar Tarefa' }}</span>
             </button>
           </div>
         </form>

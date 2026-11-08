@@ -39,8 +39,11 @@ class Business(Base):
     kpis: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    automation_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="businesses")
     automations = relationship("BusinessAutomation", back_populates="business", cascade="all, delete-orphan")

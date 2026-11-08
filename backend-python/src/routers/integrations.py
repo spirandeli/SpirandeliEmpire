@@ -39,7 +39,9 @@ def _format_integration(integ: UserIntegration) -> dict[str, Any]:
         "provider": integ.provider,
         "label": integ.label,
         "status": integ.status,
+        "is_active": integ.status in ("connected", "active"),
         "meta": integ.meta,
+        "metadata": integ.meta,
         "scopes": integ.scopes,
         "token_prefix": integ.token_prefix,
         "expires_at": integ.expires_at.isoformat() if integ.expires_at else None,
@@ -205,7 +207,7 @@ async def google_redirect(
     current_user: User = Depends(get_current_user),
 ):
     redirect_url = "https://accounts.google.com/o/oauth2/v2/auth?scope=https://www.googleapis.com/auth/calendar&access_type=offline&response_type=code"
-    return {"url": redirect_url}
+    return {"auth_url": redirect_url, "url": redirect_url}
 
 
 @router.post("/google/sync")

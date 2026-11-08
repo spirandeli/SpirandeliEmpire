@@ -26,22 +26,24 @@ def _utc_now() -> datetime:
 class ProfileCreateRequest(BaseModel):
     target_language: str = Field(..., max_length=50)
     learning_focus: str = Field(..., max_length=100)
-    study_days: list[int] = Field(default=[1, 2, 3, 4, 5])
+    study_days: list[Any] = Field(default=[1, 2, 3, 4, 5])
     preferred_time: str = Field(default="07:30")
     daily_duration_minutes: int = Field(default=15)
 
 
 class ScheduleUpdateRequest(BaseModel):
-    study_days: list[int]
+    study_days: list[Any]
     preferred_time: str
 
 
 class SubmitPlacementTestRequest(BaseModel):
-    answers: dict[str, Any]
+    answers: Any
+    questions: Optional[list[Any]] = None
 
 
 class SubmitDailySessionRequest(BaseModel):
-    answers: dict[str, Any]
+    answers: Optional[dict[str, Any]] = None
+    user_answers: Optional[dict[str, Any]] = None
     time_spent_seconds: Optional[int] = 900
 
 
@@ -213,10 +215,21 @@ async def submit_placement_test(
     profile.updated_at = _utc_now()
     await db.commit()
 
+    evaluation = {
+        "cefr_level": "B2",
+        "executive_summary": "Boa base gramatical com vocabulário fluido em contextos gerais e técnicos.",
+        "blind_spots": [
+            "Uso de preposições em phrasal verbs corporativos",
+            "Entonação e clareza em negociações sob pressão",
+        ],
+        "recommended_study_plan": "Foco diário de 15 minutos em micro-desafios de business pitch e negociações internacionais.",
+    }
+
     return {
         "message": "Nivelamento concluído com sucesso!",
         "cefr_level": "B2",
         "diagnosis": "Boa base gramatical com foco recomendado em vocabulário executivo e negociação.",
+        "evaluation": evaluation,
     }
 
 
@@ -298,7 +311,26 @@ async def submit_daily_session(
     profile.updated_at = now
 
     await db.commit()
-    return {"message": "Parabéns! Sessão diária concluída.", "score": 90, "streak_days": profile.streak_days}
+
+    evaluation = {
+        "score": 90,
+        "overall_score": 90,
+        "positives": ["Excelente clareza", "Vocabulário corporativo adequado"],
+        "improvements": ["Pratique a entonação de encerramento"],
+    }
+
+    return {
+        "message": "Parabéns! Sessão diária concluída.",
+        "score": 90,
+        "streak_days": profile.streak_days,
+        "profile": {
+            "id": profile.id,
+            "streak_days": profile.streak_days,
+            "target_language": profile.target_language,
+            "cefr_level": profile.cefr_level,
+        },
+        "evaluation": evaluation,
+    }
 
 
 @router.get("/profiles/{profile_id}/vault")

@@ -45,6 +45,11 @@ async function fetchUserCalendarFeed() {
  * Disparado automaticamente no callback de sucesso após o usuário criar um agendamento.
  */
 async function handleCreateAppointment() {
+  if (!appointmentForm.value.title?.trim()) {
+    swal.error('Campo obrigatório', 'Por favor, informe o título do agendamento.')
+    return
+  }
+
   loading.value = true
   try {
     const startDate = new Date(appointmentForm.value.starts_at)

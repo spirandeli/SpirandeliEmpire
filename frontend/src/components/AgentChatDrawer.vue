@@ -85,6 +85,8 @@ function scrollToBottom() {
         </div>
 
         <button
+          type="button"
+          aria-label="Fechar Drawer COO"
           @click="emit('close')"
           class="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
         >

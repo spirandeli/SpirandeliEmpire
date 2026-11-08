@@ -105,10 +105,13 @@ async function handleMineNow() {
 
 async function toggleAutomation(automation) {
   try {
-    const updatedStatus = !automation.is_active
+    const currentState = automation.is_enabled ?? automation.is_active ?? true
+    const updatedStatus = !currentState
     await api.put(`/businesses/${businessId}/automations/${automation.id}`, {
+      is_enabled: updatedStatus,
       is_active: updatedStatus,
     })
+    automation.is_enabled = updatedStatus
     automation.is_active = updatedStatus
     swal.toast(
       updatedStatus ? 'Automação ativada!' : 'Automação pausada.',
@@ -434,11 +437,11 @@ async function toggleAutomation(automation) {
                 <button
                   @click="toggleAutomation(auto)"
                   class="px-3 py-1 rounded-full text-xs font-semibold border transition"
-                  :class="auto.is_active
+                  :class="(auto.is_enabled ?? auto.is_active)
                     ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20'
                     : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'"
                 >
-                  {{ auto.is_active ? 'Ativa' : 'Pausada' }}
+                  {{ (auto.is_enabled ?? auto.is_active) ? 'Ativa' : 'Pausada' }}
                 </button>
               </div>
             </div>
