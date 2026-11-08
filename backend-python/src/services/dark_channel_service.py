@@ -78,20 +78,27 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
     parsed_data = None
     try:
         client, model_name = await get_user_gemini_client(user, db)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                response_mime_type="application/json",
-            ),
-        )
-        if response.text:
-            cleaned = response.text.strip()
-            if cleaned.startswith("```json"):
-                cleaned = re.sub(r"^```json\s*", "", cleaned)
-                cleaned = re.sub(r"\s*```$", "", cleaned)
-            parsed_data = json.loads(cleaned)
+        candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
+        for cand in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=cand,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        response_mime_type="application/json",
+                    ),
+                )
+                if response.text:
+                    cleaned = response.text.strip()
+                    if cleaned.startswith("```json"):
+                        cleaned = re.sub(r"^```json\s*", "", cleaned)
+                        cleaned = re.sub(r"\s*```$", "", cleaned)
+                    parsed_data = json.loads(cleaned)
+                    break
+            except Exception as cand_err:
+                logger.warning(f"Tentativa com {cand} falhou: {cand_err}. Tentando próximo modelo...")
+                continue
     except Exception as e:
         logger.warning(f"Erro ao invocar Gemini para script dark: {e}. Usando gerador estruturado inteligente.")
 

@@ -1718,19 +1718,28 @@ async def analyze_audio_pronunciation(
             )
 
             def _call_gemini_audio():
-                return client.models.generate_content(
-                    model=model_name,
-                    contents=[
-                        types.Content(
-                            role="user",
-                            parts=[
-                                types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime),
-                                types.Part.from_text(text=prompt),
+                candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
+                last_err = None
+                for cand in candidate_models:
+                    try:
+                        return client.models.generate_content(
+                            model=cand,
+                            contents=[
+                                types.Content(
+                                    role="user",
+                                    parts=[
+                                        types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime),
+                                        types.Part.from_text(text=prompt),
+                                    ],
+                                )
                             ],
+                            config=types.GenerateContentConfig(temperature=0.2),
                         )
-                    ],
-                    config=types.GenerateContentConfig(temperature=0.2),
-                )
+                    except Exception as err:
+                        last_err = err
+                        continue
+                if last_err:
+                    raise last_err
 
             res = await asyncio.wait_for(asyncio.to_thread(_call_gemini_audio), timeout=15.0)
             if res.text and "{" in res.text:
@@ -1894,16 +1903,25 @@ async def send_practice_message(
             prompt_content = f"Histórico recente da conversa:\n{history_text}\n\nGere a resposta da IA e o feedback pedagógico."
 
             def _call_gemini():
-                return client.models.generate_content(
-                    model=model_name,
-                    contents=[
-                        types.Content(role="user", parts=[
-                            types.Part.from_text(text=system_prompt),
-                            types.Part.from_text(text=prompt_content),
-                        ])
-                    ],
-                    config=types.GenerateContentConfig(temperature=0.7),
-                )
+                candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
+                last_err = None
+                for cand in candidate_models:
+                    try:
+                        return client.models.generate_content(
+                            model=cand,
+                            contents=[
+                                types.Content(role="user", parts=[
+                                    types.Part.from_text(text=system_prompt),
+                                    types.Part.from_text(text=prompt_content),
+                                ])
+                            ],
+                            config=types.GenerateContentConfig(temperature=0.7),
+                        )
+                    except Exception as err:
+                        last_err = err
+                        continue
+                if last_err:
+                    raise last_err
 
             res = await asyncio.wait_for(asyncio.to_thread(_call_gemini), timeout=10.0)
             if res.text and "{" in res.text:

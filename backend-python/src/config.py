@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Gemini AI
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_API_BASE: str = "https://generativelanguage.googleapis.com/v1beta"
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     # Google Workspace
     GOOGLE_CLIENT_ID: Optional[str] = None

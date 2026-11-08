@@ -64,7 +64,7 @@ async def test_gemini_fallback_logic():
             tools_declarations=[],
             preferred_model="gemini-3.8-flash",
         )
-        assert used_model == "gemini-3.5-flash"
+        assert used_model == "gemini-3.5-flash-lite"
         assert "candidates" in data
         assert call_count >= 2
 

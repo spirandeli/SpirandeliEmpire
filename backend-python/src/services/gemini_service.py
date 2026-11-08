@@ -48,11 +48,9 @@ async def get_user_gemini_client(user: User, db: AsyncSession) -> tuple[genai.Cl
         if integ.meta and isinstance(integ.meta, dict) and integ.meta.get("model"):
             model = integ.meta.get("model")
 
-    # Mapeamento / normalização de modelos
-    if model in ("gemini-3.8", "gemini-3.8-flash"):
-        model = "gemini-3.5-flash"
-    elif model in ("gemini-3.5", "gemini-3.0"):
-        model = "gemini-3.5-flash"
+    # Mapeamento / normalização de modelos com preferência por modelos de alta disponibilidade e sem rate-limit de cota
+    if model in ("gemini-3.8", "gemini-3.8-flash", "gemini-3.5", "gemini-3.0", "gemini-3.5-flash"):
+        model = "gemini-3.5-flash-lite"
 
     if not key:
         raise ValueError("Chave de API do Gemini não configurada.")
@@ -104,7 +102,7 @@ async def reply_to_user(
     reply_text = ""
     try:
         client, model_name = await get_user_gemini_client(user, db)
-        candidate_models = [model_name, "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"]
+        candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash"]
         last_exc = None
         for cand in candidate_models:
             try:
