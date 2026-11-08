@@ -4,6 +4,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from src.models import ApprovalQueue, Business, Task
 
+STATUS_MAPPING = {
+    "ready": "in_progress_agent",
+    "in_progress": "in_progress_agent",
+    "in_progress_agent": "in_progress_agent",
+    "running": "in_progress_agent",
+    "doing": "in_progress_agent",
+    "todo": "todo_user",
+    "todo_user": "todo_user",
+    "supervision": "awaiting_supervision",
+    "awaiting_supervision": "awaiting_supervision",
+    "review": "awaiting_supervision",
+    "pending_review": "awaiting_supervision",
+    "done": "done",
+    "completed": "done",
+    "finished": "done",
+    "backlog": "backlog",
+}
+
+def normalize_task_status(status: Optional[str], assignee: str = "agent") -> str:
+    if not status:
+        return "in_progress_agent" if assignee == "agent" else "todo_user"
+    clean = status.lower().strip()
+    if clean == "ready" and assignee == "user":
+        return "todo_user"
+    return STATUS_MAPPING.get(clean, "in_progress_agent" if assignee == "agent" else "todo_user")
+
 
 async def create_kanban_task(
     db: AsyncSession,
@@ -13,7 +39,7 @@ async def create_kanban_task(
     description: Optional[str] = None,
     priority: str = "medium",
     assignee: str = "agent",
-    status: str = "ready",
+    status: str = "in_progress_agent",
 ) -> dict[str, Any]:
     """Despacha e cadastra uma nova tarefa no quadro Kanban operacional da venture.
 
@@ -23,7 +49,7 @@ async def create_kanban_task(
         description: Detalhes, instruções ou passos da tarefa.
         priority: Nível de prioridade ('low', 'medium', 'high', 'urgent').
         assignee: Responsável ('agent' para Jeffrey/Workers ou 'user' para humano).
-        status: Coluna inicial ('backlog', 'ready', 'in_progress', 'supervision', 'done').
+        status: Coluna inicial ('backlog', 'in_progress_agent', 'awaiting_supervision', 'todo_user', 'done').
 
     Returns:
         Dicionário com a tarefa criada no Kanban.
@@ -34,14 +60,17 @@ async def create_kanban_task(
     if not biz:
         return {"error": f"Negócio #{business_id} não encontrado ou não pertence a este usuário."}
 
+    norm_assignee = assignee if assignee in ("agent", "user") else "agent"
+    norm_status = normalize_task_status(status, norm_assignee)
+
     task = Task(
         business_id=business_id,
         user_id=user_id,
         title=title,
         description=description,
         priority=priority if priority in ("low", "medium", "high", "urgent") else "medium",
-        assignee=assignee if assignee in ("agent", "user") else "agent",
-        status=status if status in ("backlog", "ready", "in_progress", "supervision", "done") else "ready",
+        assignee=norm_assignee,
+        status=norm_status,
         source="agent",
         position=0,
     )
@@ -69,33 +98,30 @@ async def move_kanban_task(
     task_id: int,
     new_status: str,
 ) -> dict[str, Any]:
-    """Move uma tarefa entre colunas no quadro Kanban (ex: mover para 'done' ou 'in_progress').
+    """Move uma tarefa entre colunas no quadro Kanban (ex: mover para 'done' ou 'in_progress_agent').
 
     Args:
         task_id: ID da tarefa a ser movida.
-        new_status: Novo status ('backlog', 'ready', 'in_progress', 'supervision', 'done', 'blocked').
+        new_status: Novo status ('backlog', 'in_progress_agent', 'awaiting_supervision', 'todo_user', 'done').
 
     Returns:
         Status atualizado da tarefa.
     """
-    valid_statuses = ("backlog", "ready", "in_progress", "supervision", "done", "blocked")
-    if new_status not in valid_statuses:
-        return {"error": f"Status inválido. Escolha um entre: {valid_statuses}"}
-
     res = await db.execute(select(Task).where(Task.id == task_id, Task.user_id == user_id))
     task = res.scalar_one_or_none()
     if not task:
         return {"error": f"Tarefa #{task_id} não encontrada."}
 
     old_status = task.status
-    task.status = new_status
+    target_status = normalize_task_status(new_status, task.assignee)
+    task.status = target_status
     await db.commit()
 
     return {
         "success": True,
-        "message": f"Tarefa #{task.id} movida de '{old_status}' para '{new_status}'.",
+        "message": f"Tarefa #{task.id} movida de '{old_status}' para '{target_status}'.",
         "task_id": task.id,
-        "new_status": new_status,
+        "new_status": target_status,
     }
 
 

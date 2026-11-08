@@ -46,6 +46,7 @@ onMounted(async () => {
   await loadBusiness()
   await loadTasks()
   if (isDarkChannel.value) {
+    activeTab.value = 'dark_studio'
     await loadDarkStudio()
   }
 })
@@ -130,8 +131,66 @@ async function loadTasks() {
 
 const business = computed(() => businessStore.currentBusiness || {})
 
+const businessModelLabel = computed(() => {
+  if (business.value?.business_model) return business.value.business_model
+  if (isDarkChannel.value) return 'Canal Dark Automatizado (YouTube / TikTok)'
+  const arch = business.value?.archetype || business.value?.type
+  if (arch === 'affiliate_tiktok' || arch === 'tiktok_shop_affiliate') return 'TikTok Shop Afiliados'
+  if (arch === 'infoproduct') return 'Infoprodutos'
+  if (arch === 'saas') return 'SaaS Bootstrapped'
+  if (arch === 'ecommerce') return 'E-commerce / Drop'
+  return 'Venture Digital'
+})
+
 const canvasData = computed(() => {
-  return business.value?.canvas || {
+  const c = business.value?.canvas
+  if (isDarkChannel.value) {
+    if (c && c.customer_segments && !JSON.stringify(c).includes('impulso no TikTok') && !JSON.stringify(c).includes('Comissão de afiliados (15%')) {
+      return c
+    }
+    return {
+      value_propositions: [
+        'Vídeos altamente magnéticos e documentais sem rosto, com retenção acima da média.',
+        'Storytelling em múltiplos atos gerando curiosidade e visualizações em massa no YouTube e TikTok.',
+      ],
+      customer_segments: [
+        'Público interessado em mistérios, fatos históricos, curiosidades e reflexões profundas.',
+      ],
+      channels: [
+        'YouTube Shorts & Vídeos Longos (8-12 min)',
+        'TikTok Vídeos Virais',
+        'Instagram Reels',
+      ],
+      customer_relationships: [
+        'Engajamento contínuo nos comentários, ganchos em partes (Parte 1, 2, 3) e senso de comunidade.',
+      ],
+      revenue_streams: [
+        'YouTube AdSense (RPM qualificado)',
+        'Fundo de Criadores do TikTok (Creator Rewards)',
+        'Comissões de infoprodutos e afiliados recomendados na descrição/bio',
+      ],
+      key_resources: [
+        'Cérebro Gemini 3.8 para Roteirização e Engenharia de Prompts',
+        'Vozes Sintéticas Hiper-Realistas (TTS)',
+        'Banco de Prompts Visuais e Renderizador de Vídeos',
+      ],
+      key_activities: [
+        'Mineração diária de tópicos e ganchos de alta curiosidade',
+        'Roteirização em 5 atos com ganchos de 3 segundos',
+        'Produção de narrações, legendas dinâmicas e assets visuais',
+        'Revisão na Fila de Supervisão e publicação programada',
+      ],
+      key_partners: [
+        'YouTube Creator Studio & TikTok Creator Program',
+        'Provedores de IA Generativa de Áudio e Imagem',
+      ],
+      cost_structure: [
+        'Assinaturas de APIs de IA e Infraestrutura Cloud/VPS',
+      ],
+    }
+  }
+
+  return c || {
     value_propositions: ['Produtos testados com alta conversão e apelo visual direto.'],
     customer_segments: ['Jovens e adultos entre 18 e 35 anos que compram por impulso no TikTok.'],
     channels: ['TikTok Orgânico', 'TikTok Shop Showcase', 'Shorts / Reels'],
@@ -145,7 +204,23 @@ const canvasData = computed(() => {
 })
 
 const brandRules = computed(() => {
-  return business.value?.brand_rules || {
+  const b = business.value?.brand_rules
+  if (isDarkChannel.value) {
+    if (b && b.guidelines && b.guidelines.length > 0 && !JSON.stringify(b).includes('link amarelo')) {
+      return b
+    }
+    return {
+      tone_of_voice: b?.tone_of_voice || 'Misterioso, imersivo, com pausas dramáticas e ritmo dinâmico de alta retenção.',
+      target_audience: b?.target_audience || 'Audiência ávida por curiosidades, mistérios e histórias épicas no YouTube e TikTok.',
+      guidelines: [
+        'Gancho ultra impactante nos primeiros 3 segundos para quebrar a rolagem',
+        'Ritmo narrativo com pausas dramáticas e trilha imersiva',
+        'Dividir narrativas densas em partes (Part 1, 2, 3) para retenção e fidelização',
+      ],
+    }
+  }
+
+  return b || {
     tone_of_voice: 'Persuasivo, enérgico, confiável e focado em resolver uma dor imediata nos primeiros 3 segundos.',
     target_audience: 'Consumidores de compras por impulso no TikTok Brasil.',
     guidelines: ['Sempre incluir demonstração do produto em ação', 'Nunca fazer promessas falsas de entrega', 'Adicionar chamada clara para o link amarelo.'],
@@ -233,7 +308,7 @@ async function toggleAutomation(automation) {
             </span>
           </h1>
           <p class="text-xs text-slate-400 mt-0.5 truncate">
-            Nicho: <span class="text-slate-200 font-semibold">{{ business.niche || 'Geral' }}</span> · Modelo: <span class="text-slate-200">{{ business.business_model || 'TikTok Shop Affiliate' }}</span>
+            Nicho: <span class="text-slate-200 font-semibold">{{ business.niche || 'Geral' }}</span> · Modelo: <span class="text-slate-200 font-medium">{{ businessModelLabel }}</span>
           </p>
         </div>
       </div>

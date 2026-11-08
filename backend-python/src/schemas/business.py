@@ -62,6 +62,7 @@ class BusinessResponse(BaseModel):
     slug: str
     type: str
     archetype: str
+    business_model: Optional[str] = None
     north_star_metric: str
     target_kpi_value: Decimal
     status: str

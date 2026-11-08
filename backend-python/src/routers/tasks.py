@@ -24,6 +24,32 @@ STATUS_LABELS = {
     "done": "Concluído",
 }
 
+STATUS_MAPPING = {
+    "ready": "in_progress_agent",
+    "in_progress": "in_progress_agent",
+    "in_progress_agent": "in_progress_agent",
+    "running": "in_progress_agent",
+    "doing": "in_progress_agent",
+    "todo": "todo_user",
+    "todo_user": "todo_user",
+    "supervision": "awaiting_supervision",
+    "awaiting_supervision": "awaiting_supervision",
+    "review": "awaiting_supervision",
+    "pending_review": "awaiting_supervision",
+    "done": "done",
+    "completed": "done",
+    "finished": "done",
+    "backlog": "backlog",
+}
+
+def normalize_task_status(status: Optional[str], assignee: str = "agent") -> str:
+    if not status:
+        return "backlog" if assignee == "agent" else "todo_user"
+    clean = status.lower().strip()
+    if clean == "ready" and assignee == "user":
+        return "todo_user"
+    return STATUS_MAPPING.get(clean, "in_progress_agent" if assignee == "agent" else "todo_user")
+
 ASSIGNEE_LABELS = {
     "agent": "IA Co-Pilot",
     "user": "Operador (Você)",
@@ -39,6 +65,8 @@ def _format_task(task: Task) -> dict[str, Any]:
     if task.business:
         biz_data = {"id": task.business.id, "name": task.business.name}
 
+    norm_status = normalize_task_status(task.status, task.assignee)
+
     return {
         "id": task.id,
         "business_id": task.business_id,
@@ -48,8 +76,8 @@ def _format_task(task: Task) -> dict[str, Any]:
         "description": task.description,
         "assignee": task.assignee,
         "assignee_label": ASSIGNEE_LABELS.get(task.assignee, task.assignee.capitalize()),
-        "status": task.status,
-        "status_label": STATUS_LABELS.get(task.status, task.status.capitalize()),
+        "status": norm_status,
+        "status_label": STATUS_LABELS.get(norm_status, norm_status.capitalize()),
         "priority": task.priority,
         "source": task.source,
         "position": task.position,
@@ -141,23 +169,18 @@ async def board(
     if search:
         base_query = base_query.where(Task.title.ilike(f"%{search}%"))
 
-    # Tarefas abertas
-    open_res = await db.execute(
-        base_query.where(Task.status != "done").order_by(Task.position.asc(), Task.id.asc())
-    )
-    open_tasks = list(open_res.scalars().all())
+    # Tarefas abertas (qualquer status que não normalize para 'done')
+    raw_open_res = await db.execute(base_query.order_by(Task.position.asc(), Task.id.asc()))
+    all_raw_tasks = list(raw_open_res.scalars().all())
 
-    # Concluídas (últimas 50)
-    done_res = await db.execute(
-        base_query.where(Task.status == "done").order_by(Task.completed_at.desc(), Task.id.desc()).limit(50)
-    )
-    done_tasks = list(done_res.scalars().all())
+    open_tasks = [t for t in all_raw_tasks if normalize_task_status(t.status, t.assignee) != "done"]
+    done_tasks = [t for t in all_raw_tasks if normalize_task_status(t.status, t.assignee) == "done"][:50]
 
     all_tasks = open_tasks + done_tasks
 
     columns = []
     for col_key, col_label in STATUS_LABELS.items():
-        col_tasks = [t for t in all_tasks if t.status == col_key]
+        col_tasks = [t for t in all_tasks if normalize_task_status(t.status, t.assignee) == col_key]
         columns.append({
             "status": col_key,
             "label": col_label,
@@ -185,9 +208,7 @@ async def store(
             detail="Negócio não encontrado ou sem permissão de acesso.",
         )
 
-    task_status = payload.status
-    if not task_status:
-        task_status = "backlog" if payload.assignee == "agent" else "todo_user"
+    task_status = normalize_task_status(payload.status, payload.assignee)
 
     now = _utc_now()
     task = Task(
@@ -232,7 +253,7 @@ async def move(
 ):
     task = await _get_user_task(task_id, current_user, db)
 
-    target_status = "done" if payload.status in ("done", "completed") else payload.status
+    target_status = normalize_task_status(payload.status, task.assignee)
     task.status = target_status
     if payload.position is not None:
         task.position = payload.position
@@ -261,6 +282,8 @@ async def update(
     task = await _get_user_task(task_id, current_user, db)
 
     for field, val in payload.model_dump(exclude_unset=True).items():
+        if field == "status" and val is not None:
+            val = normalize_task_status(val, task.assignee)
         setattr(task, field, val)
 
     task.updated_at = _utc_now()

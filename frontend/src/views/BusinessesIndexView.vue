@@ -88,11 +88,12 @@ async function handleCreate() {
 
   isCreating.value = true
   try {
+    const isDark = newBiz.value.archetype === 'canal_dark'
     const created = await businessStore.createBusiness({
       name: newBiz.value.name.trim(),
       niche: newBiz.value.niche.trim(),
       archetype: newBiz.value.archetype,
-      type: newBiz.value.archetype === 'affiliate_tiktok' ? 'tiktok_shop_affiliate' : 'custom',
+      type: isDark ? 'dark_channel_automation' : (newBiz.value.archetype === 'affiliate_tiktok' ? 'tiktok_shop_affiliate' : 'custom'),
       north_star_metric: newBiz.value.north_star_metric,
       target_kpi_value: newBiz.value.target_kpi_value,
       description: newBiz.value.description,
@@ -104,7 +105,17 @@ async function handleCreate() {
         target_audience: newBiz.value.target_audience,
         tone_of_voice: newBiz.value.tone_of_voice,
       },
-      canvas: {
+      canvas: isDark ? {
+        value_propositions: [
+          'Vídeos magnéticos sem rosto de alta retenção no YouTube e TikTok.',
+          'Monetização escalável com AdSense, Creator Rewards e produtos de afiliados.',
+        ],
+        customer_segments: [
+          'Espectadores no YouTube e TikTok fascinados por narrativas imersivas e curiosidades.',
+        ],
+        channels: ['YouTube Shorts', 'YouTube Vídeos Longos (8-12 min)', 'TikTok Vídeos Virais'],
+        revenue_streams: ['YouTube AdSense', 'TikTok Creator Rewards Program', 'Afiliados Digitais'],
+      } : {
         value_propositions: ['Produtos e ofertas validadas com alto retorno sobre investimento'],
         revenue_streams: ['Receitas diretas parametrizadas via webhooks'],
       },

@@ -46,6 +46,20 @@ def _slugify(text: str) -> str:
     return re.sub(r"[\s_-]+", "-", text)
 
 
+def _get_business_model_label(archetype: str, biz_type: str) -> str:
+    if archetype in ("canal_dark", "dark_channel") or biz_type == "dark_channel_automation":
+        return "Canal Dark (YouTube & TikTok)"
+    if archetype in ("affiliate_tiktok", "tiktok_shop_affiliate") or biz_type == "tiktok_shop_affiliate":
+        return "TikTok Shop Afiliados"
+    if archetype == "infoproduct":
+        return "Infoprodutos"
+    if archetype == "saas":
+        return "SaaS Bootstrapped"
+    if archetype == "ecommerce":
+        return "E-commerce / Drop"
+    return "Venture Digital"
+
+
 async def _get_user_business(business_id: int, user: User, db: AsyncSession) -> Business:
     res = await db.execute(
         select(Business).where(Business.id == business_id, Business.user_id == user.id)
@@ -103,6 +117,7 @@ async def index(
             "slug": b.slug,
             "type": b.type,
             "archetype": b.archetype,
+            "business_model": _get_business_model_label(b.archetype, b.type),
             "status": b.status,
             "north_star_metric": b.north_star_metric,
             "target_kpi_value": float(b.target_kpi_value),
@@ -140,11 +155,11 @@ async def store(
 
     if archetype in ("canal_dark", "dark_channel"):
         archetype = "canal_dark"
-        if biz_type == "custom":
+        if biz_type in ("custom", "tiktok_shop_affiliate"):
             biz_type = "dark_channel_automation"
         if not payload.north_star_metric or payload.north_star_metric == "commission_volume":
             north_star = "monthly_views"
-        if not canvas:
+        if not canvas or "Produtos e ofertas validadas" in str(canvas):
             canvas = {
                 "value_propositions": [
                     "Vídeos magnéticos sem rosto de alta retenção no YouTube e TikTok.",
@@ -158,10 +173,18 @@ async def store(
                     "YouTube Vídeos Longos (8-12 min)",
                     "TikTok Vídeos Virais",
                 ],
+                "customer_relationships": [
+                    "Comunidade engajada por comentários, suspense contínuo (Part 1, 2, 3) e enquetes.",
+                ],
                 "revenue_streams": [
                     "YouTube AdSense (RPM R$ 20 a R$ 60)",
                     "TikTok Creator Rewards Program",
                     "Comissões de infoprodutos no comentário fixado",
+                ],
+                "key_resources": [
+                    "Cérebro Gemini 3.8 para Roteirização e Ideação",
+                    "Vozes de IA e Narrativas Imersivas",
+                    "Banco de Prompts Visuais e Renderização",
                 ],
                 "key_activities": [
                     "Mineração de temas de alto volume de buscas e baixa concorrência",
@@ -169,11 +192,25 @@ async def store(
                     "Geração de imagens Midjourney e narração sintética",
                     "Aprovação na Fila de Supervisão e postagem",
                 ],
+                "key_partners": [
+                    "YouTube Creator Studio",
+                    "TikTok Creator Program",
+                    "Plataformas de IA",
+                ],
+                "cost_structure": [
+                    "Assinaturas de APIs e Ferramentas de IA",
+                    "VPS e Hospedagem dos Workers",
+                ],
             }
-        if not brand_rules:
+        if not brand_rules or "compras por impulso" in str(brand_rules):
             brand_rules = {
                 "tone_of_voice": "Misterioso, imersivo, com ritmo dinâmico, quebra de padrões e storytelling de alta retenção.",
                 "target_audience": "Audiência de vídeos rápidos e documentários no YouTube e TikTok Brasil.",
+                "guidelines": [
+                    "Gancho ultra impactante nos primeiros 3 segundos",
+                    "Manter suspense crescente e ritmo narrativo constante",
+                    "Dividir histórias épicas em partes (Part 1, 2, 3) para gerar retenção em cadeia",
+                ],
             }
 
     business = Business(
@@ -220,7 +257,9 @@ async def store(
     await db.commit()
     await db.refresh(business)
 
-    return {"data": BusinessResponse.model_validate(business)}
+    resp = BusinessResponse.model_validate(business)
+    resp.business_model = _get_business_model_label(business.archetype, business.type)
+    return {"data": resp}
 
 
 @router.get("/{business_id}")
@@ -230,7 +269,9 @@ async def show(
     db: AsyncSession = Depends(get_db),
 ):
     biz = await _get_user_business(business_id, current_user, db)
-    return {"data": BusinessResponse.model_validate(biz)}
+    resp = BusinessResponse.model_validate(biz)
+    resp.business_model = _get_business_model_label(biz.archetype, biz.type)
+    return {"data": resp}
 
 
 @router.put("/{business_id}")
