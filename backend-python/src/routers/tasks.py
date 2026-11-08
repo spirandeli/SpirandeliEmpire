@@ -104,6 +104,7 @@ def _format_task(task: Task) -> dict[str, Any]:
         "payload": task.payload,
         "result": task.result,
         "failure_reason": task.failure_reason,
+        "status_log": getattr(task, "status_log", None),
         "attempts": task.attempts,
         "external_calendar_provider": task.external_calendar_provider,
         "created_at": task.created_at.isoformat() if task.created_at else None,

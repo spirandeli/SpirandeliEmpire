@@ -38,7 +38,15 @@ async def render_video_with_audio_and_subtitles(
     temp_dir = output_dir / "render_tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Determina a duração do áudio e tempo por cena
+    # 1. Validação estrita pré-compilação: confirma que todos os assets de imagem e áudio estão salvos no disco
+    for idx, img in enumerate(image_paths):
+        if not os.path.exists(img) or os.path.getsize(img) == 0:
+            raise FileNotFoundError(f"Asset da cena #{idx + 1} não foi salvo no disco ou está vazio: {img}")
+
+    if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+        raise FileNotFoundError(f"Asset de áudio da narração não foi salvo no disco ou está vazio: {audio_path}")
+
+    # Determina a duração do áudio e tempo por cena
     ffprobe = get_ffprobe_path()
     audio_duration = 60.0
     if os.path.exists(ffprobe):
@@ -56,13 +64,17 @@ async def render_video_with_audio_and_subtitles(
             logger.warning(f"Não foi possível obter duração exata do áudio ({e}). Usando padrão de 60s.")
 
     num_images = max(1, len(image_paths))
+    # Para 20 cenas em vídeos Dark, cada cena tem exatamente 3.0s totalizando 60.0s (1 minuto)
     if scene_duration is None:
-        duration_per_scene = round(audio_duration / num_images, 3)
+        duration_per_scene = 3.0 if num_images == 20 else round(max(audio_duration, 60.0) / num_images, 3)
     else:
         duration_per_scene = float(scene_duration)
 
+    target_total_duration = round(num_images * duration_per_scene, 2)
+
     logger.info(
-        f"Iniciando renderização de vídeo ({num_images} cenas, {duration_per_scene}s/cena, áudio total {audio_duration:.2f}s)"
+        f"CONFIRMAÇÃO DE ASSETS OK: {num_images} cenas ({duration_per_scene}s/cena) e áudio ({audio_duration:.2f}s) validados no disco. "
+        f"Disparando montagem final FFmpeg sem cortes (Duração alvo exata: {target_total_duration}s)..."
     )
 
     # 2. Constrói arquivo concat com durações exatas
@@ -71,7 +83,7 @@ async def render_video_with_audio_and_subtitles(
         for img in image_paths:
             f.write(f"file '{os.path.abspath(img)}'\n")
             f.write(f"duration {duration_per_scene}\n")
-        # No ffmpeg concat demuxer, a última imagem precisa ser repetida ou declarada
+        # No ffmpeg concat demuxer, a última imagem precisa ser repetida
         if image_paths:
             f.write(f"file '{os.path.abspath(image_paths[-1])}'\n")
 
@@ -92,6 +104,9 @@ async def render_video_with_audio_and_subtitles(
 
     filter_complex_str = ",".join(vf_filters)
 
+    # Filtro de áudio com apad para garantir preenchimento até a duração total sem interrupções bruscas
+    audio_filter = f"apad=whole_dur={target_total_duration}"
+
     cmd = [
         ffmpeg,
         "-y",
@@ -100,13 +115,14 @@ async def render_video_with_audio_and_subtitles(
         "-i", str(concat_file_path),
         "-i", os.path.abspath(audio_path),
         "-vf", filter_complex_str,
+        "-af", audio_filter,
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "23",
         "-c:a", "aac",
         "-b:a", "192k",
         "-r", str(fps),
-        "-shortest",
+        "-t", str(target_total_duration),
         "-movflags", "+faststart",
         output_video_path,
     ]
@@ -133,13 +149,14 @@ async def render_video_with_audio_and_subtitles(
                 "-i", str(concat_file_path),
                 "-i", os.path.abspath(audio_path),
                 "-vf", fallback_vf,
+                "-af", audio_filter,
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-crf", "23",
                 "-c:a", "aac",
                 "-b:a", "192k",
                 "-r", str(fps),
-                "-shortest",
+                "-t", str(target_total_duration),
                 "-movflags", "+faststart",
                 output_video_path,
             ]

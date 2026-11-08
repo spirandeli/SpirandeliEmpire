@@ -1,6 +1,17 @@
-from src.services.media.pipeline import execute_full_media_pipeline
+from src.services.media.pipeline import (
+    execute_full_media_pipeline,
+    execute_full_video_pipeline,
+    router,
+    TaskRouter,
+    ensure_twenty_scenes,
+)
 from src.services.media.tts_service import synthesize_narration
-from src.services.media.image_service import generate_all_scene_images, generate_single_scene_image
+from src.services.media.image_service import (
+    generate_all_scene_images,
+    generate_single_scene_image,
+    generate_single_scene_image_with_retry,
+    create_cinematic_dark_backdrop,
+)
 from src.services.media.subtitle_service import generate_subtitles
 from src.services.media.video_renderer import render_video_with_audio_and_subtitles
 from src.services.media.media_settings import (
@@ -12,9 +23,15 @@ from src.services.media.media_settings import (
 
 __all__ = [
     "execute_full_media_pipeline",
+    "execute_full_video_pipeline",
+    "router",
+    "TaskRouter",
+    "ensure_twenty_scenes",
     "synthesize_narration",
     "generate_all_scene_images",
     "generate_single_scene_image",
+    "generate_single_scene_image_with_retry",
+    "create_cinematic_dark_backdrop",
     "generate_subtitles",
     "render_video_with_audio_and_subtitles",
     "get_ffmpeg_path",
@@ -22,4 +39,3 @@ __all__ = [
     "get_task_media_dir",
     "STORAGE_MEDIA_DIR",
 ]
-

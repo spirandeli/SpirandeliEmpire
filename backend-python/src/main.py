@@ -26,9 +26,16 @@ async def lifespan(app: FastAPI):
     # Auto-criação de tabelas que ainda não existem
     try:
         from src.database import engine, Base
+        from sqlalchemy import text
         import src.models
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            try:
+                col_res = await conn.execute(text("SHOW COLUMNS FROM tasks LIKE 'status_log'"))
+                if not col_res.scalar():
+                    await conn.execute(text("ALTER TABLE tasks ADD COLUMN status_log TEXT NULL"))
+            except Exception:
+                pass
     except Exception as e:
         print(f"Warning initializing database tables: {e}")
 

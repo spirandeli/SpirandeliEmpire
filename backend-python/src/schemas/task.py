@@ -51,6 +51,7 @@ class TaskResponse(BaseModel):
     payload: Optional[dict[str, Any]] = None
     result: Optional[dict[str, Any]] = None
     failure_reason: Optional[str] = None
+    status_log: Optional[str] = None
     attempts: int = 0
     external_calendar_provider: Optional[str] = None
     created_at: Optional[datetime] = None

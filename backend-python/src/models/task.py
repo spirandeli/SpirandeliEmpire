@@ -39,6 +39,7 @@ class Task(Base):
     result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
+    status_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     external_calendar_provider: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     external_calendar_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())

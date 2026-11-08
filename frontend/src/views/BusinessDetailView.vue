@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
 import BusinessGrowthTab from '@/components/BusinessGrowthTab.vue'
+import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
 import { api } from '@/services/api'
@@ -21,8 +22,8 @@ const tasks = ref([])
 const loadingTasks = ref(false)
 const executingTaskId = ref(null)
 const executingAllTasks = ref(false)
-const selectedTaskResult = ref(null)
-const showTaskResultModal = ref(false)
+const selectedTaskForDetail = ref(null)
+const showTaskDetailModal = ref(false)
 
 // Dark Channel Studio States
 const darkScripts = ref([])
@@ -133,12 +134,17 @@ async function loadTasks() {
   }
 }
 
-async function handleExecuteTask(taskId) {
+async function handleExecuteTask(taskOrId) {
+  const taskId = typeof taskOrId === 'object' ? taskOrId.id : taskOrId
   executingTaskId.value = taskId
   try {
     const res = await api.post(`/tasks/${taskId}/execute`)
     swal.toast(res.data?.message || 'Tarefa executada com sucesso pelo IA Worker!', 'success')
     await loadTasks()
+    if (selectedTaskForDetail.value && selectedTaskForDetail.value.id === taskId) {
+      const updated = tasks.value.find((t) => t.id === taskId)
+      if (updated) selectedTaskForDetail.value = updated
+    }
     if (isDarkChannel.value) {
       await loadDarkStudio()
     }
@@ -170,14 +176,54 @@ async function handleApproveTask(taskId) {
     await api.patch(`/tasks/${taskId}/move`, { status: 'done' })
     swal.toast('Tarefa aprovada e concluída com sucesso!', 'success')
     await loadTasks()
+    if (selectedTaskForDetail.value && selectedTaskForDetail.value.id === taskId) {
+      const updated = tasks.value.find((t) => t.id === taskId)
+      if (updated) selectedTaskForDetail.value = updated
+    }
   } catch (err) {
     swal.error('Erro ao aprovar tarefa', err.message)
   }
 }
 
+async function handleMoveTask(task, targetStatus) {
+  try {
+    await api.patch(`/tasks/${task.id}/move`, { status: targetStatus })
+    swal.toast(`Tarefa movida para "${targetStatus}"`, 'info')
+    await loadTasks()
+    if (selectedTaskForDetail.value && selectedTaskForDetail.value.id === task.id) {
+      const updated = tasks.value.find((t) => t.id === task.id)
+      if (updated) selectedTaskForDetail.value = updated
+    }
+  } catch (err) {
+    swal.error('Movimento não permitido', err.response?.data?.message || err.message)
+  }
+}
+
+async function handleDeleteTask(task) {
+  const confirmed = await swal.confirm({
+    title: 'Excluir esta tarefa?',
+    text: `Você está excluindo "${task.title}".`,
+    confirmText: 'Sim, excluir',
+    confirmButtonColor: '#ef4444',
+  })
+  if (!confirmed) return
+  try {
+    await api.delete(`/tasks/${task.id}`)
+    swal.toast('Tarefa excluída.', 'info')
+    showTaskDetailModal.value = false
+    await loadTasks()
+  } catch (err) {
+    swal.error('Erro ao excluir tarefa', err.response?.data?.message || err.message)
+  }
+}
+
+function openTaskDetail(task) {
+  selectedTaskForDetail.value = task
+  showTaskDetailModal.value = true
+}
+
 function viewTaskResult(task) {
-  selectedTaskResult.value = task
-  showTaskResultModal.value = true
+  openTaskDetail(task)
 }
 
 const business = computed(() => businessStore.currentBusiness || {})
@@ -916,7 +962,8 @@ function formatTaskPriority(priority) {
           <div
             v-for="task in tasks"
             :key="task.id"
-            class="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs"
+            @click="openTaskDetail(task)"
+            class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900/60 cursor-pointer transition flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs group"
           >
             <div class="space-y-1.5 flex-1 min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -946,8 +993,29 @@ function formatTaskPriority(priority) {
                 >
                   Prioridade {{ formatTaskPriority(task.priority) }}
                 </span>
+                <span
+                  v-if="task.result?.video_url || task.result?.media?.video?.url"
+                  class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold flex items-center space-x-1"
+                >
+                  <span>🎬</span>
+                  <span>Vídeo 9:16</span>
+                </span>
+                <span
+                  v-else-if="task.result"
+                  class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold flex items-center space-x-1"
+                >
+                  <span>📄</span>
+                  <span>Entregável Pronto</span>
+                </span>
+                <span
+                  v-if="task.failure_reason"
+                  class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-semibold flex items-center space-x-1"
+                >
+                  <span>⚠️</span>
+                  <span>Falha</span>
+                </span>
               </div>
-              <h4 class="text-sm font-bold text-white">{{ task.title }}</h4>
+              <h4 class="text-sm font-bold text-white group-hover:text-emerald-400 transition">{{ task.title }}</h4>
               <p v-if="task.description" class="text-slate-400 text-xs line-clamp-2 leading-relaxed">{{ task.description }}</p>
               <div v-if="task.result?.summary" class="text-emerald-400/90 text-[11px] bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2 mt-2">
                 <strong>✓ Entregável IA:</strong> {{ task.result.summary }}
@@ -955,19 +1023,19 @@ function formatTaskPriority(priority) {
             </div>
 
             <!-- Botões de Ação na Tarefa -->
-            <div class="flex items-center space-x-2 shrink-0 self-end md:self-center">
+            <div class="flex items-center space-x-2 shrink-0 self-end md:self-center" @click.stop>
               <button
-                v-if="task.result"
-                @click="viewTaskResult(task)"
+                @click.stop="openTaskDetail(task)"
                 class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center space-x-1"
+                title="Abrir detalhes e entregável da tarefa"
               >
-                <span>📄</span>
-                <span>Ver Entregável</span>
+                <span>{{ task.result ? '📄' : '🔍' }}</span>
+                <span>{{ task.result ? 'Ver Entregável' : 'Detalhes' }}</span>
               </button>
 
               <button
                 v-if="task.assignee === 'agent' && task.status !== 'done'"
-                @click="handleExecuteTask(task.id)"
+                @click.stop="handleExecuteTask(task.id)"
                 :disabled="executingTaskId === task.id"
                 class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition flex items-center space-x-1 shadow-md shadow-indigo-600/20 disabled:opacity-50"
               >
@@ -978,7 +1046,7 @@ function formatTaskPriority(priority) {
 
               <button
                 v-if="task.status === 'awaiting_supervision'"
-                @click="handleApproveTask(task.id)"
+                @click.stop="handleApproveTask(task.id)"
                 class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-semibold transition flex items-center space-x-1"
                 title="Aprovar entrega da IA e concluir tarefa"
               >
@@ -1236,85 +1304,16 @@ function formatTaskPriority(priority) {
       </div>
     </div>
 
-    <!-- MODAL: Visualizar Entregável da Tarefa -->
-    <div
-      v-if="showTaskResultModal && selectedTaskResult"
-      class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-    >
-      <div class="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4 my-8 max-h-[85vh] flex flex-col">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
-          <div>
-            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Entregável do IA Worker (Gemini 3.8)</span>
-            <h3 class="text-base font-bold text-white mt-1">{{ selectedTaskResult.title }}</h3>
-          </div>
-          <button @click="showTaskResultModal = false" class="text-slate-400 hover:text-white p-2">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-slate-300 text-xs leading-relaxed">
-          <div v-if="selectedTaskResult.result?.summary" class="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <h4 class="text-slate-400 font-semibold mb-1">Resumo Executivo:</h4>
-            <p class="text-slate-200">{{ selectedTaskResult.result.summary }}</p>
-          </div>
-
-          <div v-if="selectedTaskResult.result?.markdown_content" class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono whitespace-pre-wrap">
-            {{ selectedTaskResult.result.markdown_content }}
-          </div>
-
-          <div v-if="selectedTaskResult.result?.items?.length" class="space-y-3">
-            <h4 class="text-sm font-bold text-white">Itens & Cenas Detalhadas:</h4>
-            <div
-              v-for="(it, idx) in selectedTaskResult.result.items"
-              :key="idx"
-              class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2"
-            >
-              <div class="flex items-center justify-between">
-                <strong class="text-white text-xs">{{ idx + 1 }}. {{ it.title }}</strong>
-                <span v-if="it.description" class="text-slate-500 text-[10px]">{{ it.description }}</span>
-              </div>
-              <p v-if="it.script" class="text-slate-200 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 text-[11px]">
-                <span class="text-emerald-400 font-semibold block mb-0.5">Narração / TTS:</span>
-                {{ it.script }}
-              </p>
-              <div v-if="it.visual_prompt" class="bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/20 text-[11px] text-indigo-300">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-[10px] uppercase text-indigo-400">Prompt Visual (Midjourney/Leonardo):</span>
-                  <button @click="copyPrompt(it.visual_prompt)" class="text-[10px] text-indigo-300 hover:text-white underline">Copiar Prompt</button>
-                </div>
-                <code class="font-mono text-[10px] select-all">{{ it.visual_prompt }}</code>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0">
-          <button
-            @click="copyPrompt(selectedTaskResult.result?.markdown_content || selectedTaskResult.result?.summary)"
-            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-          >
-            📋 Copiar Todo o Conteúdo
-          </button>
-          <div class="flex items-center space-x-2">
-            <button
-              v-if="selectedTaskResult.status === 'awaiting_supervision'"
-              @click="handleApproveTask(selectedTaskResult.id); showTaskResultModal = false"
-              class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition"
-            >
-              ✓ Aprovar Entregável
-            </button>
-            <button
-              @click="showTaskResultModal = false"
-              class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- MODAL DETALHADO DA TAREFA (COMPONENTE COMPARTILHADO) -->
+    <TaskDetailModal
+      :is-open="showTaskDetailModal"
+      :task="selectedTaskForDetail"
+      :is-executing="executingTaskId === selectedTaskForDetail?.id"
+      @close="showTaskDetailModal = false"
+      @execute="handleExecuteTask"
+      @move="(task, status) => { handleMoveTask(task, status); showTaskDetailModal = false; }"
+      @delete="(task) => { handleDeleteTask(task); }"
+    />
 
     <!-- Drawer de Chat Contextualizado neste Negócio -->
     <AgentChatDrawer
