@@ -1,4 +1,4 @@
-.PHONY: up down restart logs shell test seed cli automations optimize
+.PHONY: up down restart logs shell test seed cli automations optimize deploy
 
 up:        ; docker compose up -d
 down:      ; docker compose down
@@ -10,3 +10,4 @@ seed:      ; docker compose exec -e PYTHONPATH=/app app-py python3 -m src.cli se
 cli:       ; docker compose exec -e PYTHONPATH=/app app-py python3 -m src.cli
 automations: ; docker compose exec -e PYTHONPATH=/app app-py python3 -m src.cli run-automations --force
 optimize:  ; docker compose exec -e PYTHONPATH=/app app-py python3 -m src.cli optimize-growth
+deploy:    ; python3 scripts/deploy_remote.py

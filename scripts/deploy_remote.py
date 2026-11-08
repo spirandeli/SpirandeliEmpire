@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import subprocess
 import sys
 import tarfile
 import time
@@ -15,6 +16,9 @@ TARBALL = "/tmp/abvos_release.tar.gz"
 
 
 def create_tarball():
+    print("==> Compilando frontend para produção (Vite)...")
+    subprocess.run(["npm", "run", "build"], cwd=os.path.join(LOCAL_ROOT, "frontend"), check=True)
+
     print("==> Criando pacote de release de produção (Python FastAPI + Vue 3)...")
     excludes = [
         '.git',
@@ -99,7 +103,7 @@ def main():
 
     # 9. Provisiona contas de Administrador e Demonstração
     print("\n==> Provisionando dados iniciais no banco de dados...")
-    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app-py python3 src/seed.py")
+    run_ssh(client, f"cd {REMOTE_DIR} && docker compose -f docker-compose.prod.yml exec -T app-py python3 -m src.cli seed")
 
     # 10. Reinicia o Nginx para aplicar configuração reversa ao FastAPI
     print("\n==> Reiniciando Nginx com proxy reverso apontando para o FastAPI...")
