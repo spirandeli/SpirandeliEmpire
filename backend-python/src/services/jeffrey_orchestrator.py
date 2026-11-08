@@ -35,10 +35,10 @@ settings = get_settings()
 
 MAX_REACT_STEPS = 5
 FALLBACK_MODELS = [
+    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
     "gemini-3.5-flash",
-    "gemini-3.8-flash",
     "gemini-3-flash-preview",
 ]
 
@@ -126,7 +126,8 @@ async def call_gemini_generate_content(
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         for model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            api_model = "gemini-3.8-flash" if model in ("gemini-3.8", "gemini-3.8-pro") else model
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{api_model}:generateContent?key={api_key}"
             try:
                 t0 = time.time()
                 res = await client.post(url, json=payload)

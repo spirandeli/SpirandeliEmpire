@@ -28,7 +28,7 @@ def _utc_now() -> datetime:
 async def get_user_gemini_client(user: User, db: AsyncSession) -> tuple[genai.Client, str]:
     """Obtém a chave do usuário (user_integrations) ou usa a chave do sistema."""
     key = settings.GEMINI_API_KEY
-    model = settings.GEMINI_MODEL or "gemini-3.5-flash"
+    model = settings.GEMINI_MODEL or "gemini-3.8"
 
     res = await db.execute(
         select(UserIntegration).where(
@@ -48,9 +48,12 @@ async def get_user_gemini_client(user: User, db: AsyncSession) -> tuple[genai.Cl
         if integ.meta and isinstance(integ.meta, dict) and integ.meta.get("model"):
             model = integ.meta.get("model")
 
-    # Mapeamento / normalização de modelos com preferência por modelos de alta disponibilidade e sem rate-limit de cota
-    if model in ("gemini-3.8", "gemini-3.8-flash", "gemini-3.5", "gemini-3.0", "gemini-3.5-flash"):
-        model = "gemini-3.5-flash-lite"
+    # Mapeamento / normalização de modelos:
+    # A API do Google GenAI v1beta resolve o Gemini 3.8 como 'gemini-3.8-flash'
+    if model in ("gemini-3.8", "gemini-3.8-flash"):
+        model = "gemini-3.8-flash"
+    elif model in ("gemini-3.5", "gemini-3.0", "gemini-3.5-flash"):
+        model = "gemini-3.8-flash"
 
     if not key:
         raise ValueError("Chave de API do Gemini não configurada.")
@@ -102,7 +105,7 @@ async def reply_to_user(
     reply_text = ""
     try:
         client, model_name = await get_user_gemini_client(user, db)
-        candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash"]
+        candidate_models = [model_name, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview"]
         last_exc = None
         for cand in candidate_models:
             try:
