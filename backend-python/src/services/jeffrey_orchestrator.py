@@ -206,22 +206,10 @@ class JeffreyOrchestrator:
         # Monta payload `contents` para a API
         contents: list[dict[str, Any]] = []
         for m in all_db_msgs:
-            role = "user" if m.role == "user" else "model"
-            if m.role == "tool":
-                # Resposta de function call anterior
-                contents.append({
-                    "role": "function",
-                    "parts": [{
-                        "functionResponse": {
-                            "name": m.tool_name or "unknown",
-                            "response": m.tool_result or {},
-                        }
-                    }]
-                })
-            elif m.parts:
-                contents.append({"role": role, "parts": m.parts})
-            elif m.content:
-                contents.append({"role": role, "parts": [{"text": m.content}]})
+            if m.role == "user" and m.content:
+                contents.append({"role": "user", "parts": [{"text": m.content}]})
+            elif m.role in ("model", "assistant") and m.content:
+                contents.append({"role": "model", "parts": [{"text": m.content}]})
 
         api_key = await get_effective_gemini_key(self.user, self.db)
         tools_declarations = get_gemini_tools_declarations()
@@ -237,13 +225,14 @@ class JeffreyOrchestrator:
         while step < MAX_REACT_STEPS:
             step += 1
             t_start = time.time()
+            current_preferred = last_model_used if step > 1 else preferred_model
             try:
                 response_data, last_model_used = await call_gemini_generate_content(
                     api_key=api_key,
                     contents=contents,
                     system_instruction=system_instruction,
                     tools_declarations=tools_declarations,
-                    preferred_model=preferred_model,
+                    preferred_model=current_preferred,
                 )
             except Exception as e:
                 logger.error(f"Erro no ReAct loop na iteração {step}: {e}")
@@ -326,9 +315,9 @@ class JeffreyOrchestrator:
                 await self.db.flush()
                 created_messages.append(tool_msg)
 
-                # Injeta a function response de volta no array contents
+                # Injeta a function response de volta no array contents (role: 'user' conforme API do Gemini)
                 contents.append({
-                    "role": "function",
+                    "role": "user",
                     "parts": [{
                         "functionResponse": {
                             "name": fn_name,
