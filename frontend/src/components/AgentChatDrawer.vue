@@ -1,6 +1,12 @@
 <script setup>
 import { ref, watch, nextTick } from 'vue'
+import { marked } from 'marked'
 import { useAgentChat } from '@/composables/useAgentChat'
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+})
 
 const props = defineProps({
   isOpen: {
@@ -73,6 +79,15 @@ async function handleSend() {
 function handleQuickPrompt(promptText) {
   inputText.value = promptText
   handleSend()
+}
+
+function renderMarkdown(content) {
+  if (!content) return ''
+  try {
+    return marked.parse(content)
+  } catch (err) {
+    return content
+  }
 }
 
 function scrollToBottom() {
@@ -173,7 +188,11 @@ function scrollToBottom() {
                 <span class="font-semibold text-slate-300">Jeffrey (COO)</span>
                 <span v-if="msg.latency_ms">· {{ msg.latency_ms }}ms</span>
               </div>
-              <p v-if="msg.content" class="whitespace-pre-wrap leading-relaxed text-sm text-slate-100 font-sans">{{ msg.content }}</p>
+              <div
+                v-if="msg.content"
+                class="chat-markdown text-sm text-slate-100 font-sans"
+                v-html="renderMarkdown(msg.content)"
+              ></div>
             </div>
           </div>
 
