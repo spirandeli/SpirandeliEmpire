@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.mysql import BIGINT as MYSQL_BIGINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.database import Base
 
@@ -80,8 +81,8 @@ class LanguageVocabularyVault(Base):
 class LanguagePracticeMessage(Base):
     __tablename__ = "language_practice_messages"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    language_profile_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("language_profiles.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(MYSQL_BIGINT(unsigned=True), "mysql"), primary_key=True, autoincrement=True)
+    language_profile_id: Mapped[int] = mapped_column(BigInteger().with_variant(MYSQL_BIGINT(unsigned=True), "mysql"), ForeignKey("language_profiles.id", ondelete="CASCADE"), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user") # 'user' or 'assistant'
     content: Mapped[str] = mapped_column(Text, nullable=False)
     topic: Mapped[str] = mapped_column(String(100), default="free_chat")

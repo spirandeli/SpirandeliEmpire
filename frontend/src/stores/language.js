@@ -24,6 +24,13 @@ export const useLanguageStore = defineStore('language', () => {
     due_today: 0,
   })
 
+  // Estado da Conversação Aberta e Prática de Áudio
+  const conversationMessages = ref([])
+  const practiceTopics = ref([])
+  const conversationLoading = ref(false)
+  const pronunciationLoading = ref(false)
+  const pronunciationResult = ref(null)
+
   const loading = ref(false)
   const sessionLoading = ref(false)
   const actionLoading = ref(false)
@@ -178,6 +185,58 @@ export const useLanguageStore = defineStore('language', () => {
     return response.data
   }
 
+  async function analyzePronunciation(payload) {
+    if (!profile.value?.id) return
+    pronunciationLoading.value = true
+    try {
+      const response = await api.post(`/languages/profiles/${profile.value.id}/pronunciation/analyze`, payload)
+      pronunciationResult.value = response.data.analysis
+      return response.data.analysis
+    } finally {
+      pronunciationLoading.value = false
+    }
+  }
+
+  async function fetchConversation() {
+    if (!profile.value?.id) return
+    conversationLoading.value = true
+    try {
+      const response = await api.get(`/languages/profiles/${profile.value.id}/conversation`)
+      conversationMessages.value = response.data.messages || []
+      practiceTopics.value = response.data.topics || []
+      return response.data
+    } finally {
+      conversationLoading.value = false
+    }
+  }
+
+  async function sendConversationMessage(payload) {
+    if (!profile.value?.id) return
+    conversationLoading.value = true
+    try {
+      const response = await api.post(`/languages/profiles/${profile.value.id}/conversation/message`, payload)
+      if (response.data.user_message && response.data.assistant_message) {
+        conversationMessages.value.push(response.data.user_message)
+        conversationMessages.value.push(response.data.assistant_message)
+      }
+      return response.data
+    } finally {
+      conversationLoading.value = false
+    }
+  }
+
+  async function clearConversation() {
+    if (!profile.value?.id) return
+    conversationLoading.value = true
+    try {
+      const response = await api.delete(`/languages/profiles/${profile.value.id}/conversation`)
+      conversationMessages.value = []
+      return response.data
+    } finally {
+      conversationLoading.value = false
+    }
+  }
+
   return {
     profile,
     hasProfile,
@@ -186,6 +245,11 @@ export const useLanguageStore = defineStore('language', () => {
     placementTest,
     vaultItems,
     vaultStats,
+    conversationMessages,
+    practiceTopics,
+    conversationLoading,
+    pronunciationLoading,
+    pronunciationResult,
     loading,
     sessionLoading,
     actionLoading,
@@ -203,5 +267,9 @@ export const useLanguageStore = defineStore('language', () => {
     addVaultWord,
     deleteVaultWord,
     reviewVaultWord,
+    analyzePronunciation,
+    fetchConversation,
+    sendConversationMessage,
+    clearConversation,
   }
 })

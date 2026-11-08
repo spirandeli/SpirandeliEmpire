@@ -2,8 +2,9 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import NullPool
 from src.config import get_settings
-from src.database import get_db
+from src.database import get_db, Base
 from src.main import app
+import src.models
 
 settings = get_settings()
 
@@ -18,6 +19,12 @@ TestingSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     autoflush=False,
 )
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def init_test_db():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def override_get_db():

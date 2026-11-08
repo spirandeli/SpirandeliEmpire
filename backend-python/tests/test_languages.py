@@ -287,7 +287,8 @@ async def test_pronunciation_audio_analysis_endpoint():
         profile_id = create_res.json()["profile"]["id"]
 
         # Simula áudio em base64 (bytes válidos simulados)
-        dummy_audio_b64 = "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAA=" * 3
+        import base64
+        dummy_audio_b64 = base64.b64encode(b"RIFF" + b"\x00" * 300).decode()
 
         res = await ac.post(
             f"/api/languages/profiles/{profile_id}/pronunciation/analyze",
