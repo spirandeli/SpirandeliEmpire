@@ -78,7 +78,7 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
     parsed_data = None
     try:
         client, model_name = await get_user_gemini_client(user, db)
-        candidate_models = [model_name, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
+        candidate_models = [model_name, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash"]
         for cand in candidate_models:
             try:
                 response = client.models.generate_content(
