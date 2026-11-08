@@ -1,3 +1,4 @@
+import base64
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +14,7 @@ from src.models import (
     LanguageDailySession,
     LanguageProfile,
     LanguageVocabularyVault,
+    LanguagePracticeMessage,
     User,
 )
 from src.services.language_service import (
@@ -21,6 +23,10 @@ from src.services.language_service import (
     get_or_create_today_session,
     evaluate_daily_session_submission,
     review_vault_item,
+    analyze_audio_pronunciation,
+    get_practice_conversation,
+    send_practice_message,
+    clear_practice_conversation,
 )
 
 router = APIRouter(prefix="/languages", tags=["Languages"])
@@ -62,6 +68,17 @@ class AddVaultWordRequest(BaseModel):
 
 class VaultReviewRequest(BaseModel):
     remembered: bool = True
+
+
+class PronunciationAnalyzeRequest(BaseModel):
+    target_text: str = Field(..., description="Texto ou frase que o usuário deve pronunciar")
+    audio_base64: str = Field(..., description="Áudio gravado em base64")
+    mime_type: Optional[str] = Field(default="audio/webm", description="MIME type do áudio")
+
+
+class PracticeMessageRequest(BaseModel):
+    message: str = Field(..., description="Mensagem em texto do usuário")
+    topic: Optional[str] = Field(default="free_chat", description="Tópico de conversação selecionado")
 
 
 async def _get_profile(profile_id: int, user: User, db: AsyncSession) -> LanguageProfile:
@@ -224,7 +241,13 @@ async def submit_placement_test(
             for k, v in payload.answers.items()
         ]
 
-    diag = await evaluate_placement_test(profile, formatted_answers, current_user, db)
+    diag = await evaluate_placement_test(
+        profile,
+        formatted_answers,
+        current_user,
+        db,
+        submitted_questions=payload.questions,
+    )
 
     return {
         "message": "Nivelamento concluído com sucesso!",
@@ -393,3 +416,117 @@ async def delete_vault_word(
         await db.delete(item)
         await db.commit()
     return {"message": "Palavra removida do cofre."}
+
+
+# ---------------------------------------------------------------------------
+# ANÁLISE DE PRONÚNCIA E DICÇÃO POR IA
+# ---------------------------------------------------------------------------
+
+@router.post("/profiles/{profile_id}/pronunciation/analyze")
+async def analyze_pronunciation_endpoint(
+    profile_id: int,
+    payload: PronunciationAnalyzeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recebe um áudio em base64 e o texto esperado, e retorna análise fonética
+    com nota de dicção, vícios articulatórios e instruções corretivas do Gemini.
+    """
+    profile = await _get_profile(profile_id, current_user, db)
+
+    # Decodifica base64
+    raw_b64 = payload.audio_base64
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",")[1]
+
+    try:
+        audio_bytes = base64.b64decode(raw_b64)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Áudio em formato base64 inválido.",
+        )
+
+    if not audio_bytes or len(audio_bytes) < 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo de áudio muito curto ou vazio.",
+        )
+
+    result = await analyze_audio_pronunciation(
+        profile=profile,
+        audio_bytes=audio_bytes,
+        mime_type=payload.mime_type or "audio/webm",
+        target_text=payload.target_text,
+        user=current_user,
+        db=db,
+    )
+
+    return {
+        "message": "Análise de dicção processada com sucesso!",
+        "analysis": result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# ÁREA ABERTA DE CONVERSAÇÃO INTERATIVA
+# ---------------------------------------------------------------------------
+
+@router.get("/profiles/{profile_id}/conversation")
+async def get_conversation_endpoint(
+    profile_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna o histórico da conversação de prática e os tópicos disponíveis."""
+    profile = await _get_profile(profile_id, current_user, db)
+    data = await get_practice_conversation(profile.id, db)
+    return {
+        "profile": {
+            "id": profile.id,
+            "target_language": profile.target_language,
+            "cefr_level": profile.cefr_level,
+        },
+        **data,
+    }
+
+
+@router.post("/profiles/{profile_id}/conversation/message")
+async def send_conversation_message_endpoint(
+    profile_id: int,
+    payload: PracticeMessageRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Envia uma mensagem no chat de prática e recebe a réplica nativa com correções pedagógicas."""
+    profile = await _get_profile(profile_id, current_user, db)
+
+    if not payload.message.strip():
+        raise HTTPException(status_code=400, detail="A mensagem não pode ser vazia.")
+
+    result = await send_practice_message(
+        profile=profile,
+        user_message=payload.message.strip(),
+        topic=payload.topic or "free_chat",
+        user=current_user,
+        db=db,
+    )
+
+    return {
+        "message": "Mensagem enviada com sucesso!",
+        **result,
+    }
+
+
+@router.delete("/profiles/{profile_id}/conversation")
+async def clear_conversation_endpoint(
+    profile_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Limpa o histórico da conversação de prática para iniciar um novo diálogo."""
+    profile = await _get_profile(profile_id, current_user, db)
+    result = await clear_practice_conversation(profile.id, db)
+    return result
+

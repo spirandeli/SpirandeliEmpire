@@ -57,7 +57,7 @@ function handleDismiss() {
 <template>
   <div
     v-if="showInstallBanner"
-    class="fixed top-3 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-50 bg-slate-900/95 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 transition-all transform animate-slide-down"
+    class="fixed bottom-20 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 sm:w-96 z-40 bg-slate-900/95 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 transition-all transform animate-slide-up"
   >
     <div class="flex items-start justify-between">
       <div class="flex items-center space-x-3">

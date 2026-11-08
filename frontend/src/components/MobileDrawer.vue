@@ -1,6 +1,7 @@
 <script setup>
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useApprovalStore } from '@/stores/approvals'
 
 const props = defineProps({
   isOpen: {
@@ -9,9 +10,10 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['close', 'toggle-kill-switch', 'logout'])
+const emit = defineEmits(['close', 'toggle-kill-switch', 'logout', 'open-chat'])
 const route = useRoute()
 const authStore = useAuthStore()
+const approvalStore = useApprovalStore()
 
 function handleNavClick() {
   emit('close')
@@ -28,12 +30,12 @@ function handleNavClick() {
 
     <!-- Drawer Panel lateral com slide da esquerda -->
     <div
-      class="relative w-4/5 max-w-xs bg-slate-900 border-r border-slate-800 flex flex-col justify-between shadow-2xl z-10 safe-top"
-      style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px))"
+      class="relative w-4/5 max-w-xs bg-slate-900 border-r border-slate-800 flex flex-col justify-between shadow-2xl z-10"
+      style="padding-top: max(0.75rem, env(safe-area-inset-top, 0px)); padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px))"
     >
       <!-- Header do Drawer -->
-      <div>
-        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex-1 flex flex-col min-h-0">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
           <div class="flex items-center space-x-3">
             <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-md shadow-emerald-500/20">
               S
@@ -55,7 +57,7 @@ function handleNavClick() {
         </div>
 
         <!-- Autonomia dos Workers (Toggle Rápido Mobile) -->
-        <div class="p-4 border-b border-slate-800/60 bg-slate-950/40">
+        <div class="p-4 border-b border-slate-800/60 bg-slate-950/40 shrink-0">
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
               <span
@@ -80,15 +82,57 @@ function handleNavClick() {
           </p>
         </div>
 
-        <!-- Links de Navegação Secundários -->
-        <nav class="p-3 space-y-1 overflow-y-auto">
+        <!-- Links de Navegação Completos -->
+        <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+          <div class="px-3 pt-1 pb-1 text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
+            Operações Principais
+          </div>
+
+          <RouterLink
+            to="/"
+            @click="handleNavClick"
+            class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
+            :class="route.name === 'dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
+          >
+            <div class="flex items-center space-x-3">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+              <span>Dashboard Executivo</span>
+            </div>
+            <span
+              v-if="approvalStore.summary.total_awaiting > 0"
+              class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
+            >
+              {{ approvalStore.summary.total_awaiting }}
+            </span>
+          </RouterLink>
+
+          <RouterLink
+            to="/businesses"
+            @click="handleNavClick"
+            class="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
+            :class="route.name?.startsWith('businesses') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+            <span>Hub de Negócios</span>
+          </RouterLink>
+
+          <RouterLink
+            to="/tasks"
+            @click="handleNavClick"
+            class="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
+            :class="route.name === 'tasks.board' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            <span>Operações (Kanban)</span>
+          </RouterLink>
+
           <RouterLink
             to="/languages"
             @click="handleNavClick"
-            class="flex items-center space-x-3 px-3.5 py-3 rounded-xl text-sm font-medium transition min-h-[44px]"
+            class="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
             :class="route.name?.startsWith('languages') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
           >
-            <svg class="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
             </svg>
             <div class="flex items-center justify-between flex-1">
@@ -97,13 +141,17 @@ function handleNavClick() {
             </div>
           </RouterLink>
 
+          <div class="px-3 pt-3 pb-1 text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
+            Configurações & IA
+          </div>
+
           <RouterLink
             to="/settings/integrations"
             @click="handleNavClick"
-            class="flex items-center space-x-3 px-3.5 py-3 rounded-xl text-sm font-medium transition min-h-[44px]"
+            class="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
             :class="route.name === 'settings.integrations' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
           >
-            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
             </svg>
             <span>Integrações & Cofre</span>
@@ -114,10 +162,10 @@ function handleNavClick() {
             v-if="authStore.user?.is_admin"
             to="/admin/ai-governance"
             @click="handleNavClick"
-            class="flex items-center space-x-3 px-3.5 py-3 rounded-xl text-sm font-medium transition min-h-[44px]"
+            class="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition min-h-[42px]"
             :class="route.name === 'admin.ai-governance' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold' : 'text-slate-300 hover:bg-slate-800/60'"
           >
-            <svg class="w-5 h-5 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             <span>Governança & FinOps IA</span>
@@ -126,7 +174,7 @@ function handleNavClick() {
       </div>
 
       <!-- Footer do Drawer: Usuário e Sair -->
-      <div class="p-4 border-t border-slate-800 bg-slate-950/60 space-y-3">
+      <div class="p-4 border-t border-slate-800 bg-slate-950/60 shrink-0 space-y-3">
         <div class="flex items-center justify-between text-xs text-slate-400">
           <div class="truncate mr-2">
             <span class="font-semibold text-slate-200 block truncate">{{ authStore.user?.name }}</span>

@@ -235,26 +235,29 @@ function openChat(businessId = null) {
         </div>
       </header>
 
-      <!-- Mobile Top Navigation Bar (Enxuta, 56px, Nunca quebra) -->
-      <header class="md:hidden h-14 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between px-3.5 safe-top shrink-0">
-        <div class="flex items-center space-x-2.5 min-w-0 flex-1 mr-2">
+      <!-- Mobile Top Navigation Bar (Fluida, com Safe-Area real e espaçosa) -->
+      <header
+        class="md:hidden bg-slate-900/95 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 py-2.5 shrink-0"
+        style="padding-top: max(0.65rem, env(safe-area-inset-top, 0px))"
+      >
+        <div class="flex items-center space-x-3 min-w-0 flex-1 mr-3">
           <!-- Botão Drawer com Logo -->
           <button
             @click="isMobileDrawerOpen = true"
-            class="flex items-center space-x-1.5 p-1 rounded-xl bg-slate-800 text-white min-h-[38px] shrink-0 border border-slate-700/60"
-            title="Abrir Menu"
+            class="flex items-center space-x-2 px-2 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white shrink-0 border border-slate-700/60 active:scale-95 transition"
+            title="Abrir Menu de Navegação"
           >
-            <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs">
+            <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-sm">
               S
             </div>
-            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
             </svg>
           </button>
 
-          <div class="truncate">
-            <span class="text-xs font-bold text-white tracking-tight truncate block">{{ pageTitle }}</span>
-            <span class="text-[9px] text-slate-400 block font-mono">Spirandeli OS</span>
+          <div class="min-w-0 flex-1">
+            <span class="text-sm font-bold text-white tracking-tight truncate block leading-tight">{{ pageTitle }}</span>
+            <span class="text-[10px] text-slate-400 block font-mono leading-tight">Spirandeli OS · Gemini 3.8</span>
           </div>
         </div>
 
@@ -262,20 +265,20 @@ function openChat(businessId = null) {
         <div class="flex items-center space-x-2 shrink-0">
           <button
             @click="handleToggleKillSwitch"
-            class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full border border-slate-800 bg-slate-950 text-[10px] font-mono min-h-[32px]"
-            :title="authStore.isAgentEnabled ? 'Workers Autônomos Ativos' : 'Workers Pausados'"
+            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full border border-slate-800 bg-slate-950 text-xs font-mono transition active:scale-95 shadow-sm min-h-[34px]"
+            :title="authStore.isAgentEnabled ? 'Workers Autônomos Ativos (Toque para pausar)' : 'Workers Pausados (Toque para ativar)'"
           >
             <span
               class="w-2 h-2 rounded-full"
               :class="authStore.isAgentEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"
             ></span>
-            <span class="text-slate-300 font-bold">{{ authStore.isAgentEnabled ? 'ONLINE' : 'PAUSED' }}</span>
+            <span class="text-slate-200 font-bold text-[11px]">{{ authStore.isAgentEnabled ? 'ONLINE' : 'PAUSED' }}</span>
           </button>
         </div>
       </header>
 
       <!-- Main Body com padding responsivo e compensação da bottom bar -->
-      <main class="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+      <main class="flex-1 overflow-y-auto p-4 md:p-8 pb-28 md:pb-8">
         <!-- Cabeçalho da Página no Mobile (Renderizado fluidamente no topo do conteúdo) -->
         <div v-if="$slots.header" class="md:hidden mb-5 pb-3 border-b border-slate-800/80">
           <slot name="header" />

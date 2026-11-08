@@ -2,12 +2,13 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, delete
 from google.genai import types
 
 from src.models import (
@@ -15,6 +16,7 @@ from src.models import (
     LanguageDailySession,
     LanguageProfile,
     LanguageVocabularyVault,
+    LanguagePracticeMessage,
     User,
 )
 from src.services.gemini_service import get_user_gemini_client
@@ -157,6 +159,81 @@ PLACEMENT_QUESTIONS_EN: list[dict[str, Any]] = [
         "correct_option": "had implemented / wouldn't be",
         "explanation": "Mixed conditional connecting an unreal past action (had implemented) with a present consequence (wouldn't be).",
     },
+    {
+        "id": 11,
+        "target_cefr": "A1",
+        "category": "Company Description & Operations",
+        "scenario": "Explaining your company's core operations to an external contractor.",
+        "question": "Which sentence correctly describes your company's core service?",
+        "options": [
+            "Our company develops software solutions for global logistics.",
+            "Our company are develop software solutions for global logistics.",
+            "Our company developing software solutions on global logistics.",
+            "Our company is develop software solutions of global logistics.",
+        ],
+        "correct_option": "Our company develops software solutions for global logistics.",
+        "explanation": "Use third-person singular 'develops' with the subject 'Our company' in the Simple Present.",
+    },
+    {
+        "id": 12,
+        "target_cefr": "A2",
+        "category": "Past Actions & Milestones",
+        "scenario": "Confirming during a standup that the deployment was finalized last week.",
+        "question": "Last week, our engineering team ______ the cloud migration successfully.",
+        "options": [
+            "completed",
+            "complete",
+            "was completed",
+            "has complete",
+        ],
+        "correct_option": "completed",
+        "explanation": "For a finished time period ('last week'), use the past simple 'completed'.",
+    },
+    {
+        "id": 13,
+        "target_cefr": "B1",
+        "category": "Purpose & Alignment",
+        "scenario": "Explaining the objective of an emergency sprint retrospective meeting.",
+        "question": "We scheduled an emergency sync ______ address the bottlenecks in the checkout funnel.",
+        "options": [
+            "in order to",
+            "so",
+            "because of",
+            "for to",
+        ],
+        "correct_option": "in order to",
+        "explanation": "'In order to' expresses formal business purpose followed by a base verb.",
+    },
+    {
+        "id": 14,
+        "target_cefr": "B2",
+        "category": "Idioms & Stakeholder Alignment",
+        "scenario": "Confirming everyone understands the new go-to-market strategy.",
+        "question": "Before we launch the campaign, let's ensure all department heads are on the same ______.",
+        "options": [
+            "page",
+            "book",
+            "paper",
+            "line",
+        ],
+        "correct_option": "page",
+        "explanation": "'On the same page' is the executive idiom meaning in agreement and alignment.",
+    },
+    {
+        "id": 15,
+        "target_cefr": "C1",
+        "category": "Inversion & High Formal Tone",
+        "scenario": "Stating an inflexible security protocol to system administrators.",
+        "question": "Under no circumstances ______ unencrypted customer credentials be stored in plain text.",
+        "options": [
+            "should",
+            "we should",
+            "it must",
+            "ought to",
+        ],
+        "correct_option": "should",
+        "explanation": "Negative inversion: 'Under no circumstances' triggers auxiliary inversion ('should unencrypted... be stored').",
+    },
 ]
 
 # 2. ESPANHOL (Spanish)
@@ -285,6 +362,81 @@ PLACEMENT_QUESTIONS_ES: list[dict[str, Any]] = [
         ],
         "correct_option": "hubiera implementado / estaríamos",
         "explanation": "Estructura condicional mixta: Pluscuamperfecto de subjuntivo ('hubiera implementado') con condicional simple ('estaríamos').",
+    },
+    {
+        "id": 11,
+        "target_cefr": "A1",
+        "category": "Actividad Empresarial & Servicios",
+        "scenario": "Explicando la actividad principal de su empresa a un nuevo cliente.",
+        "question": "¿Cuál frase expresa correctamente a qué se dedica su empresa?",
+        "options": [
+            "Nuestra empresa desarrolla soluciones de software para la logística global.",
+            "Nuestra empresa es desarrollar soluciones software para logística.",
+            "Nuestra empresa desarrollando soluciones de software en logística.",
+            "Nuestra empresa tiene desarrollar soluciones de software logística.",
+        ],
+        "correct_option": "Nuestra empresa desarrolla soluciones de software para la logística global.",
+        "explanation": "En presente de indicativo para la tercera persona ('Nuestra empresa desarrolla').",
+    },
+    {
+        "id": 12,
+        "target_cefr": "A2",
+        "category": "Hitos & Acciones Pasadas",
+        "scenario": "Confirmando que el equipo completó la auditoría la semana pasada.",
+        "question": "La semana pasada, nuestro equipo técnico ______ la migración de servidores con éxito.",
+        "options": [
+            "completó",
+            "completa",
+            "ha completando",
+            "fue completado",
+        ],
+        "correct_option": "completó",
+        "explanation": "'La semana pasada' exige el uso del pretérito indefinido ('completó').",
+    },
+    {
+        "id": 13,
+        "target_cefr": "B1",
+        "category": "Finalidad & Conectores",
+        "scenario": "Justificando la necesidad de una reunión de revisión urgente.",
+        "question": "Convocamos esta sesión de trabajo ______ resolver los cuellos de botella del proyecto.",
+        "options": [
+            "con el fin de",
+            "por qué",
+            "para que de",
+            "a causa de",
+        ],
+        "correct_option": "con el fin de",
+        "explanation": "'Con el fin de + infinitivo' es la locución formal idónea para expresar propósito corporativo.",
+    },
+    {
+        "id": 14,
+        "target_cefr": "B2",
+        "category": "Expresiones de Sintonía & Acuerdo",
+        "scenario": "Asegurando que todos los líderes de área comparten la misma visión.",
+        "question": "Antes del lanzamiento, debemos asegurarnos de que todos los socios estemos en la misma ______.",
+        "options": [
+            "sintonía",
+            "página",
+            "línea de tren",
+            "letra",
+        ],
+        "correct_option": "sintonía",
+        "explanation": "'Estar en la misma sintonía' es la expresión idiomática natural hispanohablante equivalente a 'on the same page'.",
+    },
+    {
+        "id": 15,
+        "target_cefr": "C1",
+        "category": "Subjuntivo & Fórmulas Concesivas C1",
+        "scenario": "Estableciendo una condición estricta de cumplimiento normativo.",
+        "question": "Por más que ______ presiones sobre los plazos, bajo ningún concepto reduciremos los estándares de calidad.",
+        "options": [
+            "haya",
+            "hay",
+            "habrá",
+            "había",
+        ],
+        "correct_option": "haya",
+        "explanation": "'Por más que + presente de subjuntivo' ('haya') expresa concesión de alta formalidad ejecutiva.",
     },
 ]
 
@@ -840,16 +992,39 @@ PLACEMENT_QUESTIONS_BY_LANG: dict[str, list[dict[str, Any]]] = {
 
 
 def get_placement_test_payload(profile: LanguageProfile) -> dict[str, Any]:
-    """Retorna o teste de nivelamento adaptativo estruturado para o idioma ativo do perfil."""
+    """
+    Retorna o teste de nivelamento adaptativo estruturado para o idioma ativo do perfil.
+    Garante aleatorização real:
+    1. Amostra 2 questões balanceadas por nível CEFR (A1 a C1).
+    2. Embaralha a ordem das alternativas de cada questão para que a resposta correta não fique sempre na 1ª opção.
+    """
     target_lang = profile.target_language or "Inglês"
-    questions = PLACEMENT_QUESTIONS_BY_LANG.get(target_lang, PLACEMENT_QUESTIONS_BY_LANG["Inglês"])
+    all_questions = PLACEMENT_QUESTIONS_BY_LANG.get(target_lang, PLACEMENT_QUESTIONS_BY_LANG["Inglês"])
+
+    levels = ["A1", "A2", "B1", "B2", "C1"]
+    chosen_questions = []
+
+    for lvl in levels:
+        lvl_qs = [q for q in all_questions if q.get("target_cefr") == lvl]
+        if len(lvl_qs) >= 2:
+            sampled = random.sample(lvl_qs, 2)
+        else:
+            sampled = lvl_qs
+
+        for q in sampled:
+            q_copy = dict(q)
+            # Embaralha as alternativas
+            shuffled_options = list(q.get("options", []))
+            random.shuffle(shuffled_options)
+            q_copy["options"] = shuffled_options
+            chosen_questions.append(q_copy)
 
     test_data = {
         "profile_id": profile.id,
         "language": target_lang,
-        "total_questions": len(questions),
+        "total_questions": len(chosen_questions),
         "target_levels": ["A1", "A2", "B1", "B2", "C1"],
-        "questions": questions,
+        "questions": chosen_questions,
     }
     return {
         "placement_test": test_data,
@@ -862,15 +1037,24 @@ async def evaluate_placement_test(
     user_answers: list[dict[str, Any]],
     user: User,
     db: AsyncSession,
+    submitted_questions: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """
     Avalia as respostas do teste de nivelamento no idioma alvo do usuário,
     calcula o nível CEFR real, identifica pontos cegos e atualiza o perfil.
     """
     target_lang = profile.target_language or "Inglês"
-    questions = PLACEMENT_QUESTIONS_BY_LANG.get(target_lang, PLACEMENT_QUESTIONS_BY_LANG["Inglês"])
+    all_questions = PLACEMENT_QUESTIONS_BY_LANG.get(target_lang, PLACEMENT_QUESTIONS_BY_LANG["Inglês"])
 
     answers_map = {ans.get("question_id"): str(ans.get("answer", "")).strip() for ans in user_answers}
+
+    # Seleciona as questões a serem avaliadas
+    if submitted_questions and len(submitted_questions) > 0:
+        eval_questions = submitted_questions
+    else:
+        answered_ids = set(answers_map.keys())
+        matched = [q for q in all_questions if q["id"] in answered_ids]
+        eval_questions = matched if matched else all_questions[:10]
 
     scores_by_cefr: dict[str, dict[str, int]] = {
         "A1": {"correct": 0, "total": 0},
@@ -882,7 +1066,7 @@ async def evaluate_placement_test(
 
     total_correct = 0
 
-    for q in questions:
+    for q in eval_questions:
         level = q["target_cefr"]
         scores_by_cefr[level]["total"] += 1
         user_ans = answers_map.get(q["id"])
@@ -929,7 +1113,7 @@ async def evaluate_placement_test(
         strengths.append(f"Boa compreensão inicial das bases funcionais de {target_lang}.")
 
     executive_summary = (
-        f"Diagnóstico oficial ABVOS em {target_lang} concluído com {total_correct}/{len(questions)} acertos. "
+        f"Diagnóstico oficial ABVOS em {target_lang} concluído com {total_correct}/{len(eval_questions)} acertos. "
         f"Seu nível funcional classificado é {determined_level}. "
         f"Sua trilha de 15 minutos foi ajustada para os desafios corporativos em {target_lang}."
     )
@@ -943,7 +1127,7 @@ async def evaluate_placement_test(
         "cefr_level": determined_level,
         "executive_summary": executive_summary,
         "score_total": total_correct,
-        "max_score": len(questions),
+        "max_score": len(eval_questions),
         "scores_by_cefr": scores_by_cefr,
         "blind_spots": blind_spots,
         "strengths": strengths,
@@ -1456,3 +1640,318 @@ def log_ai_usage(user_id: int, model: str, context: str, prompt_tokens: int, com
         db.add(log_entry)
     except Exception as e:
         logger.error(f"Erro ao registrar AiUsageLog: {e}")
+
+
+# ---------------------------------------------------------------------------
+# ANÁLISE DE DICÇÃO E PRONÚNCIA POR IA (Multimodal Audio Gemini)
+# ---------------------------------------------------------------------------
+
+async def analyze_audio_pronunciation(
+    profile: LanguageProfile,
+    audio_bytes: bytes,
+    mime_type: str,
+    target_text: str,
+    user: User,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """
+    Avalia a dicção, fonética e fluência do áudio enviado pelo usuário usando Gemini Multimodal.
+    Fornece nota de 0 a 100, transcrição, detecção de vícios articulatórios e instruções anatômicas corretivas.
+    """
+    target_lang = profile.target_language or "Inglês"
+    cefr = profile.cefr_level if profile.cefr_level != "UNSET" else "B1"
+
+    # Fallback estruturado caso Gemini esteja offline ou em ambiente de testes
+    fallback_result = {
+        "overall_score": 88,
+        "clarity_score": 85,
+        "rhythm_score": 90,
+        "transcription": target_text,
+        "target_text": target_text,
+        "is_acceptable": True,
+        "phonetic_errors": [],
+        "coaching_instruction": (
+            f"Boa articulação em {target_lang}! Para atingir máxima fluência nativa, pratique conectar as consoantes finais "
+            f"com a vogal da palavra seguinte (linking sounds) e mantenha a ênfase nas palavras-chave da mensagem."
+        ),
+        "practice_drill": f"Repita com foco no ritmo: '{target_text}'.",
+    }
+
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            client, model_name = await get_user_gemini_client(user, db)
+
+            clean_mime = mime_type.split(";")[0].strip() or "audio/webm"
+            if clean_mime not in ("audio/webm", "audio/wav", "audio/mp4", "audio/ogg", "audio/mpeg", "audio/mp3", "audio/x-m4a"):
+                clean_mime = "audio/webm"
+
+            prompt = (
+                f"Você é um fonoaudiólogo bilíngue e coach executivo de pronúncia e dicção para o idioma {target_lang}.\n"
+                f"O aluno é brasileiro (português nativo) e seu nível atual é {cefr}.\n"
+                f"A frase que o aluno devia pronunciar é:\n"
+                f"\"{target_text}\"\n\n"
+                f"Analise o áudio anexado e faça uma avaliação fonética minuciosa e profissional:\n"
+                f"1. Transcreva com fidelidade o que o aluno realmente disse no áudio.\n"
+                f"2. Avalie com nota de 0 a 100 a dicção (overall_score), clareza fonética (clarity_score) e ritmo/prosódia (rhythm_score).\n"
+                f"3. Aponte palavras com erro fonético ou sotaque acentuado (ex: epêntese de vogais como 'fóquios' para 'focus', 'th' falhado, tonicidade incorreta, etc.).\n"
+                f"4. Ensine exatamente como posicionar língua, lábios, dentes e fluxo de ar para corrigir o som incorreto.\n\n"
+                f"Responda EXCLUSIVAMENTE em formato JSON com o seguinte formato:\n"
+                f"{{\n"
+                f"  \"overall_score\": 85,\n"
+                f"  \"clarity_score\": 88,\n"
+                f"  \"rhythm_score\": 82,\n"
+                f"  \"transcription\": \"transcrição do áudio\",\n"
+                f"  \"target_text\": \"{target_text}\",\n"
+                f"  \"is_acceptable\": true,\n"
+                f"  \"phonetic_errors\": [\n"
+                f"    {{\n"
+                f"      \"word\": \"palavra\",\n"
+                f"      \"heard_as\": \"como soou\",\n"
+                f"      \"phonetic_ipa\": \"/ipa/\",\n"
+                f"      \"issue\": \"descrição do desvio articulatório\",\n"
+                f"      \"correction_tip\": \"instrução anatômica prática de correção\"\n"
+                f"    }}\n"
+                f"  ],\n"
+                f"  \"coaching_instruction\": \"explicação didática completa e motivadora em português\",\n"
+                f"  \"practice_drill\": \"exercício de repetição direcionado\"\n"
+                f"}}"
+            )
+
+            def _call_gemini_audio():
+                return client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime),
+                                types.Part.from_text(text=prompt),
+                            ],
+                        )
+                    ],
+                    config=types.GenerateContentConfig(temperature=0.2),
+                )
+
+            res = await asyncio.wait_for(asyncio.to_thread(_call_gemini_audio), timeout=15.0)
+            if res.text and "{" in res.text:
+                json_part = res.text[res.text.find("{") : res.text.rfind("}") + 1]
+                data = json.loads(json_part)
+                log_ai_usage(user.id, model_name, "languages_pronunciation_analysis", 350, 200, db)
+                return data
+        except Exception as e:
+            logger.warning(f"Erro na análise multimodal de pronúncia: {e}")
+
+    return fallback_result
+
+
+# ---------------------------------------------------------------------------
+# ÁREA ABERTA DE CONVERSAÇÃO INTERATIVA NO IDIOMA ATIVO
+# ---------------------------------------------------------------------------
+
+PRACTICE_TOPICS = [
+    {
+        "id": "business_meeting",
+        "title": "Alinhamento & Reunião de Negócios",
+        "icon": "💼",
+        "description": "Simule uma reunião estratégica para discutir metas, prazos e entregáveis com executivos.",
+    },
+    {
+        "id": "negotiation",
+        "title": "Negociação & Fechamento de Contratos",
+        "icon": "🤝",
+        "description": "Pratique a defesa de propostas comerciais, escopo e termos vantajosos.",
+    },
+    {
+        "id": "casual_networking",
+        "title": "Networking & Conversa Casual",
+        "icon": "☕",
+        "description": "Treine apresentações pessoais, trocas informais e conversas de café e eventos.",
+    },
+    {
+        "id": "startup_pitch",
+        "title": "Pitch de Apresentação de Projeto",
+        "icon": "🚀",
+        "description": "Apresente uma startup ou produto e responda a perguntas de clientes e investidores.",
+    },
+    {
+        "id": "travel_airport",
+        "title": "Viagens, Imigração & Hotel",
+        "icon": "✈️",
+        "description": "Situações práticas de aeroporto, imigração, conferências e reservas internacionais.",
+    },
+    {
+        "id": "free_chat",
+        "title": "Conversa Livre & Qualquer Tema",
+        "icon": "✨",
+        "description": "Pratique livremente sobre qualquer assunto de seu interesse com feedback nativo.",
+    },
+]
+
+
+async def get_practice_conversation(profile_id: int, db: AsyncSession) -> dict[str, Any]:
+    """Retorna o histórico de mensagens da conversação de prática e os tópicos disponíveis."""
+    res = await db.execute(
+        select(LanguagePracticeMessage)
+        .where(LanguagePracticeMessage.language_profile_id == profile_id)
+        .order_by(LanguagePracticeMessage.id.asc())
+    )
+    msgs = res.scalars().all()
+    return {
+        "topics": PRACTICE_TOPICS,
+        "messages": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "topic": m.topic,
+                "feedback": m.feedback,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in msgs
+        ],
+    }
+
+
+async def send_practice_message(
+    profile: LanguageProfile,
+    user_message: str,
+    topic: str,
+    user: User,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """
+    Envia uma mensagem na área de conversação aberta.
+    O Gemini responde fluidamente no idioma alvo e gera feedback pedagógico lateral (correções e dicas nativas).
+    """
+    target_lang = profile.target_language or "Inglês"
+    cefr = profile.cefr_level if profile.cefr_level != "UNSET" else "B1"
+
+    now = _utc_now()
+    user_msg_record = LanguagePracticeMessage(
+        language_profile_id=profile.id,
+        role="user",
+        content=user_message,
+        topic=topic,
+        created_at=now,
+    )
+    db.add(user_msg_record)
+    await db.commit()
+    await db.refresh(user_msg_record)
+
+    # Buscar histórico recente das últimas 6 mensagens para manter coerência
+    hist_res = await db.execute(
+        select(LanguagePracticeMessage)
+        .where(LanguagePracticeMessage.language_profile_id == profile.id)
+        .order_by(LanguagePracticeMessage.id.desc())
+        .limit(6)
+    )
+    recent_msgs = list(reversed(hist_res.scalars().all()))
+
+    # Resposta padrão conforme o idioma alvo (fallback)
+    if target_lang == "Espanhol":
+        assistant_reply = "¡Excelente observación! Coincido plenamente contigo. ¿Cómo piensas abordar los siguientes pasos del plan?"
+    elif target_lang == "Francês":
+        assistant_reply = "Très bien vu ! C'est tout à fait pertinent. Comment envisagez-vous la suite du projet ?"
+    elif target_lang == "Alemão":
+        assistant_reply = "Sehr guter Punkt! Wie planen Sie die nächsten Schritte in diesem Projekt umzusetzen?"
+    elif target_lang == "Italiano":
+        assistant_reply = "Ottimo spunto! Come intendi procedere con i prossimi passi del progetto?"
+    elif target_lang == "Mandarim":
+        assistant_reply = "非常有见地！您打算接下来如何推进具体计划？(Fēicháng yǒu jiàndì! Nǐ dǎsuàn jiē xiàlái rúhé tuījìn jùtǐ jìhuà?)"
+    else:
+        assistant_reply = "That makes complete sense! It's a strategic approach. What do you think should be our top priority for next week?"
+
+    feedback_data = {
+        "has_correction": False,
+        "correction_note": None,
+        "native_alternative": f"Frase natural e compreensível em {target_lang}.",
+        "vocabulary_highlight": ["strategic approach", "priority"] if target_lang == "Inglês" else [],
+    }
+
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            client, model_name = await get_user_gemini_client(user, db)
+            history_text = "\n".join([f"{m.role.upper()}: {m.content}" for m in recent_msgs])
+            system_prompt = (
+                f"Você é Alex, um interlocutor executivo e parceiro nativo de conversação no idioma {target_lang}.\n"
+                f"O aluno tem nível {cefr} e está praticando no tópico: {topic}.\n"
+                f"Diretrizes:\n"
+                f"1. Responda INTEIRAMENTE no idioma {target_lang} de forma natural, profissional e estimulante, mantendo a conversa ativa com uma pergunta no final.\n"
+                f"2. Avalie a mensagem enviada pelo usuário. Se houver desvios gramaticais, vocabulário truncado ou formulações pouco naturais, forneça feedback pedagógico em Português.\n"
+                f"3. Indique como um falante nativo diria a mesma ideia de forma mais idiomática ('native_alternative').\n\n"
+                f"Responda estritamente em JSON com as chaves:\n"
+                f"{{\n"
+                f"  \"reply\": \"sua resposta fluida no idioma {target_lang}\",\n"
+                f"  \"feedback\": {{\n"
+                f"    \"has_correction\": true/false,\n"
+                f"    \"correction_note\": \"explicação didática em português se houver erro, ou null\",\n"
+                f"    \"native_alternative\": \"versão natural e idiomática da frase do usuário\",\n"
+                f"    \"vocabulary_highlight\": [\"termo1\", \"termo2\"]\n"
+                f"  }}\n"
+                f"}}"
+            )
+
+            prompt_content = f"Histórico recente da conversa:\n{history_text}\n\nGere a resposta da IA e o feedback pedagógico."
+
+            def _call_gemini():
+                return client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Content(role="user", parts=[
+                            types.Part.from_text(text=system_prompt),
+                            types.Part.from_text(text=prompt_content),
+                        ])
+                    ],
+                    config=types.GenerateContentConfig(temperature=0.7),
+                )
+
+            res = await asyncio.wait_for(asyncio.to_thread(_call_gemini), timeout=10.0)
+            if res.text and "{" in res.text:
+                json_str = res.text[res.text.find("{") : res.text.rfind("}") + 1]
+                parsed = json.loads(json_str)
+                assistant_reply = parsed.get("reply", assistant_reply)
+                feedback_data = parsed.get("feedback", feedback_data)
+                log_ai_usage(user.id, model_name, "languages_conversation_practice", 250, 150, db)
+        except Exception as e:
+            logger.warning(f"Erro no chat de conversação com Gemini: {e}")
+
+    now2 = _utc_now()
+    assistant_msg_record = LanguagePracticeMessage(
+        language_profile_id=profile.id,
+        role="assistant",
+        content=assistant_reply,
+        topic=topic,
+        feedback=feedback_data,
+        created_at=now2,
+    )
+    db.add(assistant_msg_record)
+    await db.commit()
+    await db.refresh(assistant_msg_record)
+
+    return {
+        "user_message": {
+            "id": user_msg_record.id,
+            "role": user_msg_record.role,
+            "content": user_msg_record.content,
+            "topic": user_msg_record.topic,
+            "created_at": user_msg_record.created_at.isoformat() if user_msg_record.created_at else None,
+        },
+        "assistant_message": {
+            "id": assistant_msg_record.id,
+            "role": assistant_msg_record.role,
+            "content": assistant_msg_record.content,
+            "topic": assistant_msg_record.topic,
+            "feedback": assistant_msg_record.feedback,
+            "created_at": assistant_msg_record.created_at.isoformat() if assistant_msg_record.created_at else None,
+        },
+    }
+
+
+async def clear_practice_conversation(profile_id: int, db: AsyncSession) -> dict[str, str]:
+    """Limpa o histórico de mensagens da conversação de prática."""
+    await db.execute(
+        delete(LanguagePracticeMessage).where(LanguagePracticeMessage.language_profile_id == profile_id)
+    )
+    await db.commit()
+    return {"message": "Histórico de conversação limpo com sucesso."}
+

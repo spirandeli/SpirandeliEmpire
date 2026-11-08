@@ -243,10 +243,10 @@ async function toggleAutomation(automation) {
       <!-- Top Action Bar -->
       <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <!-- Navegação por Abas -->
-        <div class="flex items-center space-x-2 overflow-x-auto">
+        <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
           <button
             @click="activeTab = 'growth'"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
             :class="activeTab === 'growth' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>⚡</span>
@@ -254,7 +254,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'canvas'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition shrink-0 min-h-[38px]"
             :class="activeTab === 'canvas' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             Business Model Canvas & Marca
@@ -263,7 +263,7 @@ async function toggleAutomation(automation) {
           <button
             v-if="isDarkChannel"
             @click="activeTab = 'dark_studio'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
             :class="activeTab === 'dark_studio' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>🎬</span>
@@ -275,7 +275,7 @@ async function toggleAutomation(automation) {
           <button
             v-else
             @click="activeTab = 'tiktok'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
             :class="activeTab === 'tiktok' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Vitrine TikTok Shop</span>
@@ -285,7 +285,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'automations'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
             :class="activeTab === 'automations' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Automações Cron</span>
@@ -295,7 +295,7 @@ async function toggleAutomation(automation) {
           </button>
           <button
             @click="activeTab = 'tasks'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px]"
             :class="activeTab === 'tasks' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
           >
             <span>Operações & Tarefas</span>
@@ -306,10 +306,10 @@ async function toggleAutomation(automation) {
         </div>
 
         <!-- Botões de Ação Rápida -->
-        <div class="flex items-center space-x-2">
+        <div class="flex flex-wrap items-center gap-2">
           <button
             @click="isChatDrawerOpen = true"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 min-h-[38px] flex-1 sm:flex-initial justify-center"
           >
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>Conversar com COO IA</span>
@@ -317,7 +317,7 @@ async function toggleAutomation(automation) {
 
           <button
             @click="handleToggleStatus"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl border transition"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl border transition min-h-[38px] flex-1 sm:flex-initial text-center"
             :class="business.status === 'active'
               ? 'bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20'
               : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20'"

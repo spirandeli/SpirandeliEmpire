@@ -134,18 +134,18 @@ async function openScheduleEditModal() {
 
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
       <!-- Lado Esquerdo: Idioma Ativo + Nível CEFR + Barra de XP -->
-      <div class="flex items-center space-x-4">
-        <div class="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-3xl shadow-inner shrink-0">
+      <div class="flex items-start sm:items-center space-x-3.5 sm:space-x-4 min-w-0">
+        <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-2xl sm:text-3xl shadow-inner shrink-0">
           {{ currentFlag }}
         </div>
 
-        <div class="space-y-1.5">
-          <div class="flex items-center space-x-2.5">
-            <h1 class="text-xl font-black text-white tracking-tight">
+        <div class="space-y-1.5 min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-black text-white tracking-tight">
               {{ profile?.target_language || 'Idiomas' }}
             </h1>
             <span
-              class="px-2.5 py-0.5 rounded-full text-xs font-mono font-black border uppercase tracking-wider"
+              class="px-2.5 py-0.5 rounded-full text-xs font-mono font-black border uppercase tracking-wider shrink-0"
               :class="cefrColors[profile?.cefr_level || 'UNSET']"
             >
               {{ profile?.cefr_level === 'UNSET' ? 'Diagnóstico Pendente' : `Nível ${profile?.cefr_level}` }}
@@ -156,9 +156,9 @@ async function openScheduleEditModal() {
           </div>
 
           <!-- Barra de XP para o próximo nível -->
-          <div class="flex items-center space-x-2 text-[11px] font-mono">
-            <span class="text-slate-400">Progresso de Maestria</span>
-            <div class="w-32 sm:w-48 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700/60">
+          <div class="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+            <span class="text-slate-400">Progresso</span>
+            <div class="w-28 sm:w-48 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700/60 shrink-0">
               <div
                 class="h-full bg-gradient-to-r from-emerald-500 to-indigo-500 transition-all duration-700"
                 :style="{ width: `${languageStore.cefrProgressPercentage}%` }"
@@ -170,10 +170,10 @@ async function openScheduleEditModal() {
       </div>
 
       <!-- Lado Direito: Ofensiva (Streak) + Agenda Google/Apple + FinOps Gemini Flash -->
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
         <!-- Contador de Ofensiva (Streak 🔥) -->
         <div
-          class="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-amber-300 shadow-sm"
+          class="flex items-center space-x-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-amber-300 shadow-sm flex-1 sm:flex-initial min-w-[120px]"
           title="Dias consecutivos de micro-learning completados"
         >
           <span class="text-xl animate-bounce-subtle">🔥</span>
@@ -189,14 +189,14 @@ async function openScheduleEditModal() {
         <button
           type="button"
           @click="openScheduleEditModal"
-          class="flex items-center space-x-2.5 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 transition text-left group"
+          class="flex items-center space-x-2.5 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 transition text-left group flex-1 sm:flex-initial min-w-[140px]"
         >
-          <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-          <div>
+          <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></div>
+          <div class="min-w-0">
             <span class="text-[10px] uppercase font-mono block text-slate-400 group-hover:text-emerald-400 transition font-bold leading-none">
               Rotina 15 min ⚙️
             </span>
-            <span class="text-xs font-mono font-semibold text-slate-200 leading-tight">
+            <span class="text-xs font-mono font-semibold text-slate-200 leading-tight truncate block">
               {{ profile?.preferred_time }} ({{ daysFormatted }})
             </span>
           </div>

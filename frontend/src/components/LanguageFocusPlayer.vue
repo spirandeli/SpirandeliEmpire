@@ -162,7 +162,7 @@ function speakText(text) {
 <template>
   <div class="space-y-6">
     <!-- Top Player Bar com Timer Regressivo de 15 Minutos e Seletor de Blocos -->
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-md sticky top-4 z-20">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-md md:sticky md:top-4 z-20">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <!-- Timer Regressivo 15:00 -->
         <div class="flex items-center space-x-3">

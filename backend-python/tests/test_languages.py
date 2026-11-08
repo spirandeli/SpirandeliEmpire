@@ -106,9 +106,8 @@ async def test_spanish_language_flow():
         t_data = test_res.json()
         questions = t_data["questions"]
         assert len(questions) == 10
-        # Questão 1 em espanhol
-        assert "español" in questions[0]["question"].lower() or "cuál" in questions[0]["question"].lower() or "cual" in questions[0]["question"].lower()
-        assert "soy gerente de operaciones" in questions[0]["correct_option"].lower()
+        # Questões em espanhol
+        assert any("¿" in q["question"] or "español" in q["question"].lower() for q in questions)
 
         # 3. Submissão do teste de nivelamento em Espanhol
         answers = [{"question_id": q["id"], "answer": q["correct_option"]} for q in questions]
@@ -118,6 +117,7 @@ async def test_spanish_language_flow():
         )
         assert sub_test_res.status_code == 200
         assert sub_test_res.json()["cefr_level"] == "C1"
+        assert sub_test_res.json()["evaluation"]["score_total"] == 10
 
         # 4. Busca da Sessão do Dia: Deve vir 100% em Espanhol
         today_res = await ac.get(f"/api/languages/profiles/{profile_id}/today")
@@ -233,3 +233,130 @@ async def test_language_daily_session_and_srs_vault():
         assert rev_res.status_code == 200
         updated_item = rev_res.json()["item"]
         assert updated_item["mastery_level"] == initial_mastery + 1
+
+
+@pytest.mark.asyncio
+async def test_placement_test_options_are_shuffled():
+    """Valida que as opções de resposta no teste de nivelamento são embaralhadas aleatoriamente."""
+    token = await _get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=headers) as ac:
+        create_res = await ac.post(
+            "/api/languages/profile",
+            json={
+                "target_language": "Inglês",
+                "learning_focus": "business",
+            },
+        )
+        assert create_res.status_code == 201
+        profile_id = create_res.json()["profile"]["id"]
+
+        test_res = await ac.get(f"/api/languages/profiles/{profile_id}/placement-test")
+        assert test_res.status_code == 200
+        questions = test_res.json()["questions"]
+        assert len(questions) == 10
+
+        # Verifica posições da resposta correta nas opções
+        positions = []
+        for q in questions:
+            assert q["correct_option"] in q["options"]
+            pos = q["options"].index(q["correct_option"])
+            positions.append(pos)
+
+        # Não podem estar todas na posição 0
+        assert not all(p == 0 for p in positions), "As respostas corretas ainda estão todas na primeira opção!"
+        # Deve haver variedade de índices (ex: pelo menos 2 índices distintos entre 0, 1, 2, 3)
+        assert len(set(positions)) >= 2, f"Distribuição das opções não está variada: {positions}"
+
+
+@pytest.mark.asyncio
+async def test_pronunciation_audio_analysis_endpoint():
+    """Valida a rota de análise de áudio de dicção e pronúncia."""
+    token = await _get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=headers) as ac:
+        create_res = await ac.post(
+            "/api/languages/profile",
+            json={
+                "target_language": "Inglês",
+                "learning_focus": "business",
+            },
+        )
+        profile_id = create_res.json()["profile"]["id"]
+
+        # Simula áudio em base64 (bytes válidos simulados)
+        dummy_audio_b64 = "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAA=" * 3
+
+        res = await ac.post(
+            f"/api/languages/profiles/{profile_id}/pronunciation/analyze",
+            json={
+                "target_text": "We need to schedule an alignment meeting to mitigate the project bottleneck.",
+                "audio_base64": dummy_audio_b64,
+                "mime_type": "audio/webm",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "analysis" in data
+        analysis = data["analysis"]
+        assert "overall_score" in analysis
+        assert "clarity_score" in analysis
+        assert "coaching_instruction" in analysis
+        assert analysis["overall_score"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_open_conversation_practice_flow():
+    """Valida o fluxo completo da área de conversação aberta no idioma ativo."""
+    token = await _get_auth_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=headers) as ac:
+        create_res = await ac.post(
+            "/api/languages/profile",
+            json={
+                "target_language": "Inglês",
+                "learning_focus": "business",
+            },
+        )
+        profile_id = create_res.json()["profile"]["id"]
+
+        # 1. Busca estado inicial da conversação
+        conv_res = await ac.get(f"/api/languages/profiles/{profile_id}/conversation")
+        assert conv_res.status_code == 200
+        conv_data = conv_res.json()
+        assert "topics" in conv_data
+        assert len(conv_data["topics"]) >= 5
+        assert len(conv_data["messages"]) == 0
+
+        # 2. Envia mensagem do usuário
+        send_res = await ac.post(
+            f"/api/languages/profiles/{profile_id}/conversation/message",
+            json={
+                "message": "Hello Alex, I would like to review the delivery timeline for our next sprint.",
+                "topic": "business_meeting",
+            },
+        )
+        assert send_res.status_code == 200
+        send_data = send_res.json()
+        assert "user_message" in send_data
+        assert "assistant_message" in send_data
+        assert send_data["user_message"]["content"].startswith("Hello Alex")
+        assert len(send_data["assistant_message"]["content"]) > 0
+        assert "feedback" in send_data["assistant_message"]
+
+        # 3. Consulta mensagens persistidas
+        list_res = await ac.get(f"/api/languages/profiles/{profile_id}/conversation")
+        assert list_res.status_code == 200
+        assert len(list_res.json()["messages"]) == 2
+
+        # 4. Limpa histórico de conversação
+        del_res = await ac.delete(f"/api/languages/profiles/{profile_id}/conversation")
+        assert del_res.status_code == 200
+
+        # 5. Valida que histórico está vazio
+        after_del = await ac.get(f"/api/languages/profiles/{profile_id}/conversation")
+        assert len(after_del.json()["messages"]) == 0
+

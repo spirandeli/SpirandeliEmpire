@@ -19,6 +19,7 @@ from src.models.language import (
     LanguageProfile,
     LanguageDailySession,
     LanguageVocabularyVault,
+    LanguagePracticeMessage,
 )
 
 __all__ = [
@@ -43,5 +44,6 @@ __all__ = [
     "LanguageProfile",
     "LanguageDailySession",
     "LanguageVocabularyVault",
+    "LanguagePracticeMessage",
 ]
 

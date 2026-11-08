@@ -82,13 +82,13 @@ async function handleStartNewTrainingSession() {
         <!-- Header de Gamificação, Ofensiva e Agenda Google/Apple -->
         <LanguageHeader v-if="profile" />
 
-        <!-- Navegação por Abas -->
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div class="flex items-center space-x-2">
+        <!-- Navegação por Abas (Responsiva com scroll horizontal no mobile) -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
+          <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0 w-full sm:w-auto">
             <button
               type="button"
               @click="activeTab = 'daily_lesson'"
-              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
               :class="activeTab === 'daily_lesson'
                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
@@ -105,7 +105,7 @@ async function handleStartNewTrainingSession() {
             <button
               type="button"
               @click="activeTab = 'vault'"
-              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
               :class="activeTab === 'vault'
                 ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
@@ -122,7 +122,7 @@ async function handleStartNewTrainingSession() {
             <button
               type="button"
               @click="activeTab = 'diagnosis'"
-              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
               :class="activeTab === 'diagnosis'
                 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
@@ -135,7 +135,7 @@ async function handleStartNewTrainingSession() {
           <button
             type="button"
             @click="showOnboardingModal = true"
-            class="text-xs font-mono text-slate-400 hover:text-emerald-400 transition flex items-center space-x-1"
+            class="text-xs font-mono text-slate-400 hover:text-emerald-400 transition flex items-center space-x-1 shrink-0 self-start sm:self-auto min-h-[36px]"
           >
             <span>+ Trocar Idioma / Rotina</span>
           </button>

@@ -39,6 +39,7 @@ class LanguageProfile(Base):
     user = relationship("User", back_populates="language_profile")
     daily_sessions = relationship("LanguageDailySession", back_populates="language_profile", cascade="all, delete-orphan")
     vault_items = relationship("LanguageVocabularyVault", back_populates="language_profile", cascade="all, delete-orphan")
+    practice_messages = relationship("LanguagePracticeMessage", back_populates="language_profile", cascade="all, delete-orphan")
 
 
 class LanguageDailySession(Base):
@@ -74,4 +75,18 @@ class LanguageVocabularyVault(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     language_profile = relationship("LanguageProfile", back_populates="vault_items")
+
+
+class LanguagePracticeMessage(Base):
+    __tablename__ = "language_practice_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    language_profile_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("language_profiles.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="user") # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    topic: Mapped[str] = mapped_column(String(100), default="free_chat")
+    feedback: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())
+
+    language_profile = relationship("LanguageProfile", back_populates="practice_messages")
 

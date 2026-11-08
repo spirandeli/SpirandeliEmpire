@@ -201,11 +201,11 @@ async function syncCalendarNow() {
           <h1 class="text-xl font-bold text-white tracking-tight">Cockpit Executivo & Supervisão</h1>
           <p class="text-xs text-slate-400 mt-0.5">Operações Autônomas · Gemini 3.8 Co-Pilot</p>
         </div>
-        <div class="flex items-center space-x-2.5">
+        <div class="flex flex-wrap items-center gap-2">
           <button
             @click="handleProvisionShowcase"
             :disabled="provisioningDemo"
-            class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm"
+            class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm min-h-[38px] flex-1 sm:flex-initial"
             title="Carrega ou cria um novo showcase de demonstração com dados de TikTok Shop e ROI"
           >
             <span v-if="provisioningDemo" class="animate-spin h-3.5 w-3.5 border-2 border-emerald-400 border-t-transparent rounded-full"></span>
@@ -214,7 +214,7 @@ async function syncCalendarNow() {
           </button>
           <button
             @click="isChatDrawerOpen = true"
-            class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm shadow-emerald-500/20"
+            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm shadow-emerald-500/20 min-h-[38px] flex-1 sm:flex-initial"
           >
             <span>💬 Falar com COO IA</span>
           </button>
