@@ -171,16 +171,51 @@ async function handleStartNewTrainingSession() {
             </div>
           </div>
 
+          <!-- Se o Nivelamento Diagnóstico ainda estiver pendente -->
+          <div
+            v-else-if="languageStore.isPlacementNeeded"
+            class="bg-slate-900 border border-indigo-500/30 rounded-2xl p-8 text-center space-y-5 shadow-2xl relative overflow-hidden"
+          >
+            <div class="absolute -top-10 -right-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-3xl mx-auto shadow-inner text-white">
+              🎯
+            </div>
+            <div class="space-y-2 max-w-lg mx-auto">
+              <span class="text-xs font-mono uppercase tracking-widest text-indigo-400 font-bold">Nivelamento Diagnóstico Pendente</span>
+              <h3 class="text-xl font-bold text-white">Calibre seu Nível CEFR Oficial</h3>
+              <p class="text-xs text-slate-300 leading-relaxed">
+                Para liberar seus 3 blocos diários de 15 minutos adaptados à sua rotina, complete o teste diagnóstico rápido (10 questões de A1 a C1).
+              </p>
+            </div>
+            <div>
+              <button
+                type="button"
+                @click="showPlacementModal = true"
+                class="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-emerald-500/20 transition flex items-center space-x-2 mx-auto"
+              >
+                <span>Fazer Teste de Nivelamento Agora (10 Questões)</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Player Focado dos 3 Blocos de 15 Minutos -->
           <LanguageFocusPlayer
             v-else-if="currentSession"
             @completed="handleStartNewTrainingSession"
           />
 
-          <!-- Loading da Sessão Diária -->
-          <div v-else class="p-16 text-center space-y-3 bg-slate-900/60 border border-slate-800 rounded-2xl">
+          <!-- Loading da Sessão Diária com Botão de Recarregar -->
+          <div v-else class="p-16 text-center space-y-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
             <div class="w-10 h-10 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mx-auto"></div>
             <p class="text-xs font-mono text-slate-400">Preparando seus 3 blocos dinâmicos com Gemini 3.8 Flash...</p>
+            <button
+              type="button"
+              @click="handleStartNewTrainingSession"
+              class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition inline-flex items-center space-x-1.5"
+            >
+              <span>Recarregar Sessão</span>
+            </button>
           </div>
         </div>
 

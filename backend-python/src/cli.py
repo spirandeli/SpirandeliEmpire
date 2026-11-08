@@ -250,6 +250,10 @@ def main():
     # Subcomando: generate-daily-lessons
     subparsers.add_parser("generate-daily-lessons", help="Gera as micro-sessões de 15 minutos para perfis de idiomas")
 
+    # Subcomando: index-knowledge
+    p_ik = subparsers.add_parser("index-knowledge", help="Indexa ou re-indexa a base de conhecimento RAG no ChromaDB")
+    p_ik.add_argument("--force", action="store_true", help="Limpa o índice anterior e re-indexa tudo")
+
     args = parser.parse_args()
 
     if args.command == "seed":
@@ -264,6 +268,10 @@ def main():
         asyncio.run(cli_optimize_growth(business_id=args.business_id))
     elif args.command == "generate-daily-lessons":
         asyncio.run(cli_generate_daily_lessons())
+    elif args.command == "index-knowledge":
+        from src.services.knowledge_service import index_all_knowledge
+        res = asyncio.run(index_all_knowledge(force=args.force))
+        print("Indexação de conhecimento concluída:", res)
 
 
 if __name__ == "__main__":

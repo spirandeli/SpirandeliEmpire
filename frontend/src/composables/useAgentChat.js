@@ -6,6 +6,17 @@ export function useAgentChat() {
   const messages = ref([])
   const loading = ref(false)
   const error = ref(null)
+  const agentStatus = ref(null)
+
+  async function fetchAgentStatus() {
+    try {
+      const res = await api.get('/agent/status')
+      agentStatus.value = res.data
+      return agentStatus.value
+    } catch {
+      agentStatus.value = null
+    }
+  }
 
   async function loadOrCreateConversation(businessId = null, contextType = null) {
     loading.value = true
@@ -38,7 +49,7 @@ export function useAgentChat() {
       messages.value = []
       return conversation.value
     } catch (err) {
-      error.value = err.response?.data?.message || 'Falha ao carregar conversa com o agente.'
+      error.value = err.response?.data?.message || 'Falha ao carregar conversa com o Jeffrey.'
       throw err
     } finally {
       loading.value = false
@@ -69,7 +80,6 @@ export function useAgentChat() {
 
       // Substitui / anexa as mensagens retornadas pelo backend (incluindo tool calls e resposta do modelo)
       const newMsgs = response.data.new_messages || []
-      // Remove o temporário e adiciona as oficiais
       messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
       messages.value.push(...newMsgs)
 
@@ -79,7 +89,7 @@ export function useAgentChat() {
 
       return response.data.data
     } catch (err) {
-      error.value = err.response?.data?.message || 'Erro ao comunicar com o Gemini 3.8.'
+      error.value = err.response?.data?.message || 'Erro ao comunicar com o Jeffrey (Gemini).'
       throw err
     } finally {
       loading.value = false
@@ -91,8 +101,9 @@ export function useAgentChat() {
     messages,
     loading,
     error,
+    agentStatus,
+    fetchAgentStatus,
     loadOrCreateConversation,
     sendMessage,
   }
 }
-

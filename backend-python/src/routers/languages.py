@@ -15,6 +15,13 @@ from src.models import (
     LanguageVocabularyVault,
     User,
 )
+from src.services.language_service import (
+    get_placement_test_payload,
+    evaluate_placement_test,
+    get_or_create_today_session,
+    evaluate_daily_session_submission,
+    review_vault_item,
+)
 
 router = APIRouter(prefix="/languages", tags=["Languages"])
 
@@ -53,6 +60,10 @@ class AddVaultWordRequest(BaseModel):
     context_example: Optional[str] = None
 
 
+class VaultReviewRequest(BaseModel):
+    remembered: bool = True
+
+
 async def _get_profile(profile_id: int, user: User, db: AsyncSession) -> LanguageProfile:
     res = await db.execute(
         select(LanguageProfile).where(
@@ -85,6 +96,19 @@ async def get_profile(
     vault_count = len(profile.vault_items)
     due_count = len([w for w in profile.vault_items if w.next_review_date <= today])
 
+    # FinOps: Consulta agregado real de tokens e custos consumidos em idiomas
+    ai_stats_res = await db.execute(
+        select(
+            func.coalesce(func.sum(AiUsageLog.total_tokens), 0),
+            func.coalesce(func.sum(AiUsageLog.estimated_cost_usd), 0.0),
+            func.count(AiUsageLog.id),
+        ).where(
+            AiUsageLog.user_id == current_user.id,
+            AiUsageLog.context.like("language%"),
+        )
+    )
+    ai_tokens, ai_cost, ai_calls = ai_stats_res.one()
+
     return {
         "profile": {
             "id": profile.id,
@@ -95,6 +119,7 @@ async def get_profile(
             "preferred_time": profile.preferred_time,
             "daily_duration_minutes": profile.daily_duration_minutes,
             "streak_days": profile.streak_days,
+            "weaknesses_diagnosis": profile.weaknesses_diagnosis,
             "is_active": profile.is_active,
         },
         "has_profile": True,
@@ -102,9 +127,9 @@ async def get_profile(
             "due_reviews_count": due_count,
             "total_vault_words": vault_count,
             "streak_days": profile.streak_days,
-            "flash_tokens_used": 0,
-            "flash_cost_usd": 0.0,
-            "flash_calls_count": 0,
+            "flash_tokens_used": int(ai_tokens or 0),
+            "flash_cost_usd": float(ai_cost or 0.0),
+            "flash_calls_count": int(ai_calls or 0),
         },
     }
 
@@ -115,7 +140,7 @@ async def store_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Desativa perfis anteriores
+    # Desativa perfis anteriores do usuário
     prev_res = await db.execute(
         select(LanguageProfile).where(LanguageProfile.user_id == current_user.id)
     )
@@ -167,7 +192,7 @@ async def update_schedule(
     profile.preferred_time = payload.preferred_time
     profile.updated_at = _utc_now()
     await db.commit()
-    return {"message": "Agenda atualizada com sucesso!"}
+    return {"message": "Agenda atualizada com sucesso!", "profile": profile}
 
 
 @router.get("/profiles/{profile_id}/placement-test")
@@ -177,30 +202,7 @@ async def get_placement_test(
     db: AsyncSession = Depends(get_db),
 ):
     profile = await _get_profile(profile_id, current_user, db)
-    # Retorna teste diagnóstico com questões adaptativas
-    return {
-        "profile_id": profile.id,
-        "language": profile.target_language,
-        "questions": [
-            {
-                "id": 1,
-                "type": "multiple_choice",
-                "question": "Which sentence is correct in a business meeting?",
-                "options": [
-                    "Let's touch base next week.",
-                    "Let's touching base next week.",
-                    "We touching base next week.",
-                    "We base touch next week.",
-                ],
-            },
-            {
-                "id": 2,
-                "type": "fill_gap",
-                "question": "The company decided to ______ the new marketing strategy next quarter.",
-                "options": ["implement", "implementation", "implementing", "implemented"],
-            },
-        ],
-    }
+    return get_placement_test_payload(profile)
 
 
 @router.post("/profiles/{profile_id}/placement-test")
@@ -211,25 +213,31 @@ async def submit_placement_test(
     db: AsyncSession = Depends(get_db),
 ):
     profile = await _get_profile(profile_id, current_user, db)
-    profile.cefr_level = "B2" # Determinado via teste
-    profile.updated_at = _utc_now()
-    await db.commit()
 
-    evaluation = {
-        "cefr_level": "B2",
-        "executive_summary": "Boa base gramatical com vocabulário fluido em contextos gerais e técnicos.",
-        "blind_spots": [
-            "Uso de preposições em phrasal verbs corporativos",
-            "Entonação e clareza em negociações sob pressão",
-        ],
-        "recommended_study_plan": "Foco diário de 15 minutos em micro-desafios de business pitch e negociações internacionais.",
-    }
+    # Formata respostas recebidas (lista ou dicionário)
+    formatted_answers: list[dict[str, Any]] = []
+    if isinstance(payload.answers, list):
+        formatted_answers = payload.answers
+    elif isinstance(payload.answers, dict):
+        formatted_answers = [
+            {"question_id": int(k), "answer": str(v)}
+            for k, v in payload.answers.items()
+        ]
+
+    diag = await evaluate_placement_test(profile, formatted_answers, current_user, db)
 
     return {
         "message": "Nivelamento concluído com sucesso!",
-        "cefr_level": "B2",
-        "diagnosis": "Boa base gramatical com foco recomendado em vocabulário executivo e negociação.",
-        "evaluation": evaluation,
+        "cefr_level": diag["cefr_level"],
+        "diagnosis": diag["executive_summary"],
+        "evaluation": diag,
+        "profile": {
+            "id": profile.id,
+            "target_language": profile.target_language,
+            "cefr_level": profile.cefr_level,
+            "streak_days": profile.streak_days,
+            "weaknesses_diagnosis": profile.weaknesses_diagnosis,
+        },
     }
 
 
@@ -240,38 +248,7 @@ async def get_today_session(
     db: AsyncSession = Depends(get_db),
 ):
     profile = await _get_profile(profile_id, current_user, db)
-    today = date.today()
-
-    res = await db.execute(
-        select(LanguageDailySession).where(
-            LanguageDailySession.language_profile_id == profile.id,
-            LanguageDailySession.scheduled_date == today,
-        )
-    )
-    session = res.scalar_one_or_none()
-
-    if not session:
-        # Cria sessão para hoje se não existir
-        now = _utc_now()
-        session = LanguageDailySession(
-            language_profile_id=profile.id,
-            scheduled_date=today,
-            status="ready",
-            lesson_payload={
-                "topic": "Pitch de Negócios e Apresentação de Valor",
-                "vocabulary": [
-                    {"term": "Value proposition", "translation": "Proposta de valor"},
-                    {"term": "Return on investment", "translation": "Retorno sobre investimento"},
-                ],
-                "scenario": "Apresentando sua operação para um novo parceiro estratégico.",
-            },
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
-
+    session = await get_or_create_today_session(profile, current_user, db)
     return {"session": session}
 
 
@@ -294,42 +271,28 @@ async def submit_daily_session(
     if not session:
         raise HTTPException(status_code=404, detail="Sessão não encontrada.")
 
-    now = _utc_now()
-    session.status = "completed"
-    session.score = 90
-    session.time_spent_seconds = payload.time_spent_seconds or 900
-    session.completed_at = now
-    session.user_answers = payload.answers
-    session.ai_feedback = {
-        "overall_score": 90,
-        "positives": ["Excelente clareza", "Vocabulário corporativo adequado"],
-        "improvements": ["Pratique a entonação de encerramento"],
-    }
-
-    profile.streak_days = (profile.streak_days or 0) + 1
-    profile.last_activity_date = date.today()
-    profile.updated_at = now
-
-    await db.commit()
-
-    evaluation = {
-        "score": 90,
-        "overall_score": 90,
-        "positives": ["Excelente clareza", "Vocabulário corporativo adequado"],
-        "improvements": ["Pratique a entonação de encerramento"],
-    }
+    user_answers = payload.user_answers or payload.answers or {}
+    result = await evaluate_daily_session_submission(
+        profile=profile,
+        session=session,
+        user_answers=user_answers,
+        time_spent=payload.time_spent_seconds or 900,
+        user=current_user,
+        db=db,
+    )
 
     return {
         "message": "Parabéns! Sessão diária concluída.",
-        "score": 90,
-        "streak_days": profile.streak_days,
+        "score": result["score"],
+        "streak_days": result["streak_days"],
+        "session": result["session"],
         "profile": {
             "id": profile.id,
             "streak_days": profile.streak_days,
             "target_language": profile.target_language,
             "cefr_level": profile.cefr_level,
         },
-        "evaluation": evaluation,
+        "evaluation": result["evaluation"],
     }
 
 
@@ -352,8 +315,8 @@ async def get_vault(
         "items": items,
         "stats": {
             "total": len(items),
-            "mastered": len([i for i in items if i.mastery_level >= 5]),
-            "learning": len([i for i in items if i.mastery_level < 5]),
+            "mastered": len([i for i in items if (i.mastery_level or 0) >= 5]),
+            "learning": len([i for i in items if (i.mastery_level or 0) < 5]),
             "due_today": len([i for i in items if i.next_review_date <= today]),
         },
     }
@@ -385,6 +348,32 @@ async def add_vault_word(
     return {"message": "Palavra adicionada ao cofre com sucesso!", "item": item}
 
 
+@router.post("/profiles/{profile_id}/vault/{vault_id}/review")
+async def review_vault_word_endpoint(
+    profile_id: int,
+    vault_id: int,
+    payload: VaultReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await _get_profile(profile_id, current_user, db)
+    res = await db.execute(
+        select(LanguageVocabularyVault).where(
+            LanguageVocabularyVault.id == vault_id,
+            LanguageVocabularyVault.language_profile_id == profile.id,
+        )
+    )
+    item = res.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item do cofre não encontrado.")
+
+    review_vault_item(item, payload.remembered)
+    await db.commit()
+    await db.refresh(item)
+
+    return {"message": "Revisão registrada com sucesso!", "item": item}
+
+
 @router.delete("/profiles/{profile_id}/vault/{vault_id}")
 async def delete_vault_word(
     profile_id: int,
@@ -404,4 +393,3 @@ async def delete_vault_word(
         await db.delete(item)
         await db.commit()
     return {"message": "Palavra removida do cofre."}
-

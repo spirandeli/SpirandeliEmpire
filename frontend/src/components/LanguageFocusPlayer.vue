@@ -139,6 +139,24 @@ async function handleFinishLesson() {
     startTimer()
   }
 }
+
+function speakText(text) {
+  if (!window.speechSynthesis || !text) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(text)
+  const lang = languageStore.profile?.target_language
+  const langCodeMap = {
+    Inglês: 'en-US',
+    Espanhol: 'es-ES',
+    Francês: 'fr-FR',
+    Alemão: 'de-DE',
+    Italiano: 'it-IT',
+    Mandarim: 'zh-CN',
+  }
+  utterance.lang = langCodeMap[lang] || 'en-US'
+  utterance.rate = 0.95
+  window.speechSynthesis.speak(utterance)
+}
 </script>
 
 <template>
@@ -255,9 +273,19 @@ async function handleFinishLesson() {
             </p>
           </div>
 
-          <!-- Correção Natural / Nativa -->
+          <!-- Correção Natural / Nativa com Áudio -->
           <div class="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/40 space-y-2">
-            <span class="text-[10px] font-mono uppercase text-emerald-400 font-bold block">Correção Natural / Nativa:</span>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono uppercase text-emerald-400 font-bold block">Correção Natural / Nativa:</span>
+              <button
+                type="button"
+                @click="speakText(evaluationFeedback.block3_active_evaluation.natural_native_version)"
+                class="w-6 h-6 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 flex items-center justify-center text-xs transition"
+                title="Ouvir versão nativa"
+              >
+                🔊
+              </button>
+            </div>
             <p class="text-xs text-emerald-200 font-mono font-semibold">
               "{{ evaluationFeedback.block3_active_evaluation.natural_native_version }}"
             </p>
@@ -321,8 +349,18 @@ async function handleFinishLesson() {
             class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3"
           >
             <div class="flex items-center justify-between">
-              <span class="text-xs font-mono font-bold text-slate-400">Termo em Foco: <strong class="text-white">{{ item.term }}</strong></span>
-              <span v-if="item.context_sentence" class="text-xs text-slate-400 italic">{{ item.context_sentence }}</span>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-mono font-bold text-slate-400">Termo em Foco: <strong class="text-white">{{ item.term }}</strong></span>
+                <button
+                  type="button"
+                  @click="speakText(item.context_sentence || item.term)"
+                  class="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs transition"
+                  title="Ouvir pronúncia"
+                >
+                  🔊
+                </button>
+              </div>
+              <span v-if="item.context_sentence" class="text-xs text-slate-400 italic hidden sm:inline">{{ item.context_sentence }}</span>
             </div>
 
             <p class="text-xs font-bold text-slate-200">{{ item.prompt }}</p>
@@ -372,9 +410,20 @@ async function handleFinishLesson() {
 
         <!-- Texto / Micro-diálogo (máx 120 palavras) -->
         <div class="p-5 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 space-y-2">
-          <div class="flex items-center space-x-2 text-xs font-mono font-bold text-indigo-300">
-            <span>📖</span>
-            <span>{{ block2.scenario_title || 'Cenário Executivo' }}</span>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2 text-xs font-mono font-bold text-indigo-300">
+              <span>📖</span>
+              <span>{{ block2.scenario_title || 'Cenário Executivo' }}</span>
+            </div>
+            <button
+              type="button"
+              @click="speakText(block2.scenario_text)"
+              class="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-mono flex items-center space-x-1.5 transition"
+              title="Ouvir diálogo completo"
+            >
+              <span>🔊</span>
+              <span>Ouvir Diálogo</span>
+            </button>
           </div>
           <p class="text-xs text-slate-200 leading-relaxed font-serif whitespace-pre-line">
             {{ block2.scenario_text }}

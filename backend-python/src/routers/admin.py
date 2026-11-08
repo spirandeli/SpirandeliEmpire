@@ -179,3 +179,25 @@ async def reset_usage(
         "tokens_used_this_month": 0,
     }
 
+
+@router.post("/knowledge/reindex")
+async def reindex_knowledge_endpoint(
+    force: bool = True,
+    current_admin: User = Depends(require_admin),
+):
+    from src.services.knowledge_service import index_all_knowledge
+    result = await index_all_knowledge(force=force)
+    return {
+        "message": "Base de conhecimento re-indexada com sucesso.",
+        "data": result,
+    }
+
+
+@router.get("/knowledge/stats")
+async def knowledge_stats_endpoint(
+    current_admin: User = Depends(require_admin),
+):
+    from src.services.knowledge_service import get_knowledge_stats
+    return {"data": get_knowledge_stats()}
+
+

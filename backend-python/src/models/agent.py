@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.mysql import BIGINT as MYSQL_BIGINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.database import Base
 
@@ -39,7 +40,7 @@ class AgentConversation(Base):
 
     user = relationship("User", back_populates="conversations")
     business = relationship("Business")
-    messages = relationship("AgentMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="AgentMessage.id")
+    messages = relationship("AgentMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="AgentMessage.id", lazy="selectin")
 
 
 class AgentMessage(Base):
@@ -111,4 +112,22 @@ class AiUsageLog(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class AgentMemory(Base):
+    __tablename__ = "agent_memories"
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(MYSQL_BIGINT(unsigned=True), "mysql"), primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger().with_variant(MYSQL_BIGINT(unsigned=True), "mysql"), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    business_id: Mapped[Optional[int]] = mapped_column(BigInteger().with_variant(MYSQL_BIGINT(unsigned=True), "mysql"), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True)
+    category: Mapped[str] = mapped_column(String(48), default="fact") # fact, preference, strategy, guideline, decision
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    importance: Mapped[int] = mapped_column(SmallInteger, default=5) # 1 a 10
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
+    business = relationship("Business")
+
 

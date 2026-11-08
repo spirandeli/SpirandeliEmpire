@@ -41,9 +41,18 @@ const nextCefrLevel = computed(() => {
 const daysFormatted = computed(() => {
   const days = profile.value?.study_days || []
   if (days.includes('ALL') || days.length === 7) return 'Todos os dias'
-  const map = { MON: 'Seg', TUE: 'Ter', WED: 'Qua', THU: 'Qui', FRI: 'Sex', SAT: 'Sáb', SUN: 'Dom' }
+  const map = {
+    MON: 'Seg', TUE: 'Ter', WED: 'Qua', THU: 'Qui', FRI: 'Sex', SAT: 'Sáb', SUN: 'Dom',
+    1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom',
+    '1': 'Seg', '2': 'Ter', '3': 'Qua', '4': 'Qui', '5': 'Sex', '6': 'Sáb', '7': 'Dom',
+  }
   return days.map((d) => map[d] || d).join(', ')
 })
+
+function isDaySelected(dayCode, dayInt) {
+  const days = profile.value?.study_days || []
+  return days.includes(dayCode) || days.includes(dayInt) || days.includes(String(dayInt))
+}
 
 async function openScheduleEditModal() {
   if (!profile.value) return
@@ -62,25 +71,25 @@ async function openScheduleEditModal() {
           <label class="block font-bold text-slate-200 mb-1">Dias de Estudo:</label>
           <div class="grid grid-cols-4 gap-2 text-center text-xs">
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="MON" ${profile.value.study_days?.includes('MON') ? 'checked' : ''}> <span>Seg</span>
+              <input type="checkbox" name="swal-days" value="MON" ${isDaySelected('MON', 1) ? 'checked' : ''}> <span>Seg</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="TUE" ${profile.value.study_days?.includes('TUE') ? 'checked' : ''}> <span>Ter</span>
+              <input type="checkbox" name="swal-days" value="TUE" ${isDaySelected('TUE', 2) ? 'checked' : ''}> <span>Ter</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="WED" ${profile.value.study_days?.includes('WED') ? 'checked' : ''}> <span>Qua</span>
+              <input type="checkbox" name="swal-days" value="WED" ${isDaySelected('WED', 3) ? 'checked' : ''}> <span>Qua</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="THU" ${profile.value.study_days?.includes('THU') ? 'checked' : ''}> <span>Qui</span>
+              <input type="checkbox" name="swal-days" value="THU" ${isDaySelected('THU', 4) ? 'checked' : ''}> <span>Qui</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="FRI" ${profile.value.study_days?.includes('FRI') ? 'checked' : ''}> <span>Sex</span>
+              <input type="checkbox" name="swal-days" value="FRI" ${isDaySelected('FRI', 5) ? 'checked' : ''}> <span>Sex</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="SAT" ${profile.value.study_days?.includes('SAT') ? 'checked' : ''}> <span>Sáb</span>
+              <input type="checkbox" name="swal-days" value="SAT" ${isDaySelected('SAT', 6) ? 'checked' : ''}> <span>Sáb</span>
             </label>
             <label class="cursor-pointer border border-slate-700 rounded-lg p-2 bg-slate-900 flex items-center justify-center space-x-1">
-              <input type="checkbox" name="swal-days" value="SUN" ${profile.value.study_days?.includes('SUN') ? 'checked' : ''}> <span>Dom</span>
+              <input type="checkbox" name="swal-days" value="SUN" ${isDaySelected('SUN', 7) ? 'checked' : ''}> <span>Dom</span>
             </label>
           </div>
         </div>

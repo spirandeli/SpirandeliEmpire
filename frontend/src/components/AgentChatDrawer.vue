@@ -26,6 +26,7 @@ const {
 
 const inputText = ref('')
 const messagesContainer = ref(null)
+const expandedTools = ref({})
 
 watch(
   () => props.isOpen,
@@ -36,6 +37,29 @@ watch(
     }
   }
 )
+
+function toggleToolExpand(msgId) {
+  expandedTools.value[msgId] = !expandedTools.value[msgId]
+}
+
+function getToolBadge(toolName) {
+  if (toolName?.includes('vps') || toolName?.includes('docker')) {
+    return { label: 'Infra / VPS', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' }
+  }
+  if (toolName?.includes('venture')) {
+    return { label: 'Venture / Negócio', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' }
+  }
+  if (toolName?.includes('task') || toolName?.includes('kanban')) {
+    return { label: 'Kanban Workflow', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+  }
+  if (toolName?.includes('approval')) {
+    return { label: 'Supervisão Humana', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' }
+  }
+  if (toolName?.includes('knowledge')) {
+    return { label: 'RAG Base', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' }
+  }
+  return { label: 'Operação', color: 'bg-slate-700/50 text-slate-300 border-slate-600' }
+}
 
 async function handleSend() {
   if (!inputText.value.trim() || loading.value) return
@@ -71,15 +95,20 @@ function scrollToBottom() {
     <!-- Drawer Panel -->
     <div class="relative w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col h-full z-10 animate-in slide-in-from-right duration-200">
       <!-- Drawer Header -->
-      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
         <div class="flex items-center space-x-3">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow">
-            ✨
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 via-indigo-600 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-500/20">
+            ⚡
           </div>
           <div>
-            <h2 class="text-sm font-bold text-white">COO Virtual (Gemini 3.8)</h2>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-sm font-bold text-white">Jeffrey · COO Executivo</h2>
+              <span class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Gemini 3.8 Flash
+              </span>
+            </div>
             <p class="text-[11px] text-slate-400 font-mono">
-              {{ conversation?.business ? `Contexto: ${conversation.business.name}` : 'Modo Incubadora de Negócios' }}
+              {{ conversation?.business ? `Venture: ${conversation.business.name}` : 'Modo Incubadora & Infraestrutura Geral' }}
             </p>
           </div>
         </div>
@@ -95,36 +124,36 @@ function scrollToBottom() {
       </div>
 
       <!-- Quick Action Pills -->
-      <div class="p-3 bg-slate-950/30 border-b border-slate-800/80 flex items-center space-x-2 overflow-x-auto text-[11px]">
+      <div class="p-2.5 bg-slate-950/40 border-b border-slate-800/80 flex items-center space-x-2 overflow-x-auto text-[11px] no-scrollbar">
         <button
-          @click="handleQuickPrompt('Estruture um novo modelo de negócio digital lucrativo no nicho de utilidades')"
-          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition"
+          @click="handleQuickPrompt('Jeffrey, faça uma auditoria rápida na nossa VPS e liste os contêineres Docker ativos.')"
+          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition flex items-center space-x-1"
         >
-          💡 Conceber Negócio
+          <span>🖥️ Auditar VPS & Docker</span>
         </button>
         <button
-          @click="handleQuickPrompt('Minere 3 produtos vencedores com alta comissão na TikTok Shop e crie os roteiros')"
-          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition"
+          @click="handleQuickPrompt('Estruture uma nova venture no nicho de utilidades virais para o TikTok Shop.')"
+          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 transition flex items-center space-x-1"
         >
-          🔥 Minerar TikTok Shop
+          <span>💡 Criar Venture</span>
         </button>
         <button
-          @click="handleQuickPrompt('Consulte minha agenda de hoje e me diga quais são os melhores horários livres para gravação')"
-          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition"
+          @click="handleQuickPrompt('Consulte a base de conhecimento e me explique as métricas de mineração e roteiro do TikTok Shop.')"
+          class="shrink-0 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition flex items-center space-x-1"
         >
-          📅 Checar Agenda
+          <span>📚 RAG Base de Negócios</span>
         </button>
       </div>
 
       <!-- Messages Stream -->
       <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
         <div v-if="messages.length === 0" class="text-center py-12 text-slate-500">
-          <div class="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center mx-auto mb-3 text-slate-400 text-xl">
+          <div class="w-12 h-12 rounded-2xl bg-slate-800/60 flex items-center justify-center mx-auto mb-3 text-slate-400 text-2xl shadow-inner border border-slate-700/50">
             🤖
           </div>
-          <p class="font-semibold text-slate-300">Como posso acelerar sua operação hoje?</p>
-          <p class="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-            Posso conceber empreendimentos, minerar produtos, escrever roteiros virais e organizar sua agenda.
+          <p class="font-bold text-slate-200">Jeffrey operacional e pronto para despachar.</p>
+          <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+            Posso auditar telemetria da VPS, inspecionar contêineres Docker, conceber ventures, movimentar tarefas no Kanban e consultar a base de conhecimento.
           </p>
         </div>
 
@@ -136,32 +165,60 @@ function scrollToBottom() {
             </div>
           </div>
 
-          <!-- Mensagem do Modelo (Gemini) -->
+          <!-- Mensagem do Modelo (Jeffrey) -->
           <div v-else-if="msg.role === 'model'" class="flex justify-start">
-            <div class="max-w-[90%] bg-slate-800/90 text-slate-200 border border-slate-700/60 px-4 py-3 rounded-2xl rounded-tl-sm shadow space-y-2">
+            <div class="max-w-[92%] bg-slate-800/90 text-slate-200 border border-slate-700/60 px-4 py-3 rounded-2xl rounded-tl-sm shadow space-y-2">
               <div class="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
-                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                <span>COO Virtual</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span class="font-semibold text-slate-300">Jeffrey (COO)</span>
                 <span v-if="msg.latency_ms">· {{ msg.latency_ms }}ms</span>
               </div>
-              <p v-if="msg.content" class="whitespace-pre-wrap leading-relaxed text-sm text-slate-100">{{ msg.content }}</p>
+              <p v-if="msg.content" class="whitespace-pre-wrap leading-relaxed text-sm text-slate-100 font-sans">{{ msg.content }}</p>
             </div>
           </div>
 
-          <!-- Mensagem de Tool (Execução de Ferramenta do Agente) -->
-          <div v-else-if="msg.role === 'tool'" class="flex justify-start">
-            <div class="w-full bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs font-mono">
-              <div class="flex items-center justify-between text-slate-400 mb-1.5">
-                <div class="flex items-center space-x-1.5 text-indigo-400 font-semibold">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
-                  <span>Tool: {{ msg.tool_name }}</span>
+          <!-- Mensagem de Tool (Execução de Ferramenta ReAct) -->
+          <div v-else-if="msg.role === 'tool'" class="flex justify-start w-full">
+            <div class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs font-mono transition">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-semibold border" :class="getToolBadge(msg.tool_name).color">
+                    {{ getToolBadge(msg.tool_name).label }}
+                  </span>
+                  <span class="text-slate-300 font-bold">{{ msg.tool_name }}</span>
                 </div>
-                <span :class="msg.tool_failed ? 'text-rose-400' : 'text-emerald-400'">
-                  {{ msg.tool_failed ? 'Falha' : 'Sucesso' }}
-                </span>
+                <div class="flex items-center space-x-2">
+                  <span v-if="msg.latency_ms" class="text-slate-500 text-[10px]">{{ msg.latency_ms }}ms</span>
+                  <span
+                    class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                    :class="msg.tool_failed ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'"
+                  >
+                    {{ msg.tool_failed ? 'Falha' : 'Sucesso' }}
+                  </span>
+                  <button
+                    @click="toggleToolExpand(msg.id)"
+                    class="text-slate-400 hover:text-slate-200 text-[11px] underline ml-1"
+                  >
+                    {{ expandedTools[msg.id] ? 'Recolher' : 'Detalhes' }}
+                  </button>
+                </div>
               </div>
-              <div v-if="msg.tool_result?.message" class="text-slate-300 font-sans">
+
+              <!-- Resumo amigável -->
+              <div v-if="msg.tool_result?.message" class="text-slate-300 font-sans text-xs bg-slate-900/50 p-2 rounded-lg border border-slate-800">
                 {{ msg.tool_result.message }}
+              </div>
+
+              <!-- Payload Detalhado Expansível -->
+              <div v-if="expandedTools[msg.id]" class="mt-2.5 pt-2 border-t border-slate-800/80 space-y-2 text-[11px]">
+                <div v-if="msg.tool_args && Object.keys(msg.tool_args).length > 0">
+                  <span class="text-slate-500 block mb-0.5">Parâmetros Enviados:</span>
+                  <pre class="bg-slate-900 p-2 rounded text-slate-300 overflow-x-auto text-[10px]">{{ JSON.stringify(msg.tool_args, null, 2) }}</pre>
+                </div>
+                <div>
+                  <span class="text-slate-500 block mb-0.5">Resultado da Execução:</span>
+                  <pre class="bg-slate-900 p-2 rounded text-slate-300 overflow-x-auto text-[10px]">{{ JSON.stringify(msg.tool_result, null, 2) }}</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -169,14 +226,14 @@ function scrollToBottom() {
 
         <!-- Loading Indicator com Feedback Visual de Estados Assíncronos -->
         <div v-if="loading" class="flex flex-col space-y-2">
-          <div class="bg-slate-800/90 border border-indigo-500/30 px-4 py-3 rounded-2xl rounded-tl-sm flex items-center space-x-3 text-xs text-slate-300 shadow-lg shadow-indigo-500/10">
+          <div class="bg-slate-800/90 border border-indigo-500/40 px-4 py-3 rounded-2xl rounded-tl-sm flex items-center space-x-3 text-xs text-slate-300 shadow-lg shadow-indigo-500/10">
             <span class="relative flex h-2.5 w-2.5">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
               <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
             </span>
             <div class="space-y-0.5">
-              <span class="font-bold text-indigo-300">Gemini 3.8 em execução</span>
-              <p class="text-[11px] text-slate-400">Analisando estratégias, estruturando canvas ou despachando tools...</p>
+              <span class="font-bold text-indigo-300">Jeffrey ReAct Loop em execução</span>
+              <p class="text-[11px] text-slate-400">Raciocinando estratégias, consultando ferramentas ou sintetizando diretrizes...</p>
             </div>
           </div>
           <!-- Skeleton Loader -->
@@ -192,19 +249,19 @@ function scrollToBottom() {
       </div>
 
       <!-- Input Bar -->
-      <div class="p-4 border-t border-slate-800 bg-slate-950/70">
+      <div class="p-4 border-t border-slate-800 bg-slate-950/80">
         <form @submit.prevent="handleSend" class="flex items-center space-x-2">
           <input
             v-model="inputText"
             type="text"
-            placeholder="Digite suas instruções ou peça ao COO..."
+            placeholder="Instrua o Jeffrey (ex: 'Audite a VPS', 'Crie um negócio no TikTok Shop')..."
             class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
             :disabled="loading"
           />
           <button
             type="submit"
             :disabled="loading || !inputText.trim()"
-            class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 font-semibold text-sm text-white transition flex items-center justify-center shrink-0"
+            class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 font-semibold text-sm text-white transition flex items-center justify-center shrink-0 shadow"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
           </button>
@@ -213,4 +270,3 @@ function scrollToBottom() {
     </div>
   </div>
 </template>
-

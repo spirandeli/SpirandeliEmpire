@@ -11,6 +11,7 @@ from src.models.agent import (
     AgentLog,
     AgentLearning,
     AiUsageLog,
+    AgentMemory,
 )
 from src.models.calendar import CalendarEvent
 from src.models.growth import ConversionEvent, OptimizationCycle
@@ -35,6 +36,7 @@ __all__ = [
     "AgentLog",
     "AgentLearning",
     "AiUsageLog",
+    "AgentMemory",
     "CalendarEvent",
     "ConversionEvent",
     "OptimizationCycle",

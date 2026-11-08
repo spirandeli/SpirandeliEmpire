@@ -93,6 +93,36 @@ async function handleDeleteWord(item) {
     swal.toast('Palavra removida do cofre.', 'success')
   }
 }
+
+async function handleReviewWord(item, remembered) {
+  try {
+    await languageStore.reviewVaultWord(item.id, remembered)
+    swal.toast(
+      remembered ? `Maestria de "${item.term_or_phrase}" aumentada!` : `"${item.term_or_phrase}" agendada para amanhã.`,
+      'success'
+    )
+  } catch (err) {
+    swal.error('Erro na revisão', err.response?.data?.message || 'Falha ao atualizar SRS.')
+  }
+}
+
+function speakText(text) {
+  if (!window.speechSynthesis || !text) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(text)
+  const lang = languageStore.profile?.target_language
+  const langCodeMap = {
+    Inglês: 'en-US',
+    Espanhol: 'es-ES',
+    Francês: 'fr-FR',
+    Alemão: 'de-DE',
+    Italiano: 'it-IT',
+    Mandarim: 'zh-CN',
+  }
+  utterance.lang = langCodeMap[lang] || 'en-US'
+  utterance.rate = 0.95
+  window.speechSynthesis.speak(utterance)
+}
 </script>
 
 <template>
@@ -168,7 +198,17 @@ async function handleDeleteWord(item) {
       >
         <div class="space-y-1.5">
           <div class="flex items-start justify-between">
-            <h4 class="font-bold text-sm text-white">{{ item.term_or_phrase }}</h4>
+            <div class="flex items-center space-x-2">
+              <h4 class="font-bold text-sm text-white">{{ item.term_or_phrase }}</h4>
+              <button
+                type="button"
+                @click="speakText(item.context_example || item.term_or_phrase)"
+                class="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs transition"
+                title="Ouvir pronúncia"
+              >
+                🔊
+              </button>
+            </div>
             <button
               type="button"
               @click="handleDeleteWord(item)"
@@ -184,6 +224,26 @@ async function handleDeleteWord(item) {
           <p v-if="item.context_example" class="text-[11px] text-slate-400 italic pt-1 font-serif line-clamp-2">
             "{{ item.context_example }}"
           </p>
+        </div>
+
+        <!-- Ações de Revisão Rápida SRS -->
+        <div class="pt-2 flex items-center justify-between gap-2 border-t border-slate-800/80">
+          <button
+            type="button"
+            @click="handleReviewWord(item, true)"
+            class="flex-1 py-1 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold font-mono transition flex items-center justify-center space-x-1"
+            title="Lembrei perfeitamente (Aumenta Maestria)"
+          >
+            <span>✓ Lembrei</span>
+          </button>
+          <button
+            type="button"
+            @click="handleReviewWord(item, false)"
+            class="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold font-mono transition flex items-center justify-center space-x-1"
+            title="Preciso praticar mais (Revisa amanhã)"
+          >
+            <span>↺ Praticar</span>
+          </button>
         </div>
 
         <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono">

@@ -207,7 +207,8 @@ function formatTokens(num) {
         </div>
 
         <div class="rounded-2xl border border-slate-800 overflow-hidden bg-slate-900 shadow-xl">
-          <div class="overflow-x-auto">
+          <!-- Tabela Desktop -->
+          <div class="hidden md:block overflow-x-auto">
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800 font-bold">
                 <tr>
@@ -318,6 +319,97 @@ function formatTokens(num) {
               </tbody>
             </table>
           </div>
+
+          <!-- Cards Mobile para Usuários e Cotas -->
+          <div class="md:hidden divide-y divide-slate-800">
+            <div v-for="u in stats.users" :key="u.id" class="p-4 space-y-3 bg-slate-900">
+              <!-- Top: Nome e Status -->
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="font-bold text-white text-sm flex items-center space-x-2">
+                    <span>{{ u.name }}</span>
+                    <span v-if="u.is_admin" class="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 text-[9px] font-mono font-bold">ADMIN</span>
+                  </div>
+                  <div class="text-xs text-slate-400 font-mono mt-0.5">{{ u.email }}</div>
+                </div>
+                <span
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0"
+                  :class="u.is_ai_active
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-300'"
+                >
+                  {{ u.is_ai_active ? '● Ativa' : '○ Bloqueada' }}
+                </span>
+              </div>
+
+              <!-- Barra de Progresso de Cota -->
+              <div class="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-400">Consumo de Cota</span>
+                  <span class="font-mono font-bold" :class="u.usage_percentage >= 90 ? 'text-rose-400' : 'text-slate-200'">
+                    {{ u.usage_percentage }}%
+                  </span>
+                </div>
+                <div class="h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
+                  <div
+                    class="h-full rounded-full transition-all duration-300"
+                    :class="{
+                      'bg-emerald-400': u.usage_percentage < 70,
+                      'bg-amber-400': u.usage_percentage >= 70 && u.usage_percentage < 90,
+                      'bg-rose-500': u.usage_percentage >= 90
+                    }"
+                    :style="{ width: `${u.usage_percentage}%` }"
+                  ></div>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+                  <span>{{ formatTokens(u.tokens_used_this_month) }}</span>
+                  <span>Lim: {{ formatTokens(u.monthly_token_limit) }}</span>
+                </div>
+              </div>
+
+              <!-- Métricas Secundárias -->
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="p-2.5 rounded-xl bg-slate-950/40 border border-slate-800/60">
+                  <span class="text-slate-500 block text-[10px]">Custo IA</span>
+                  <span class="font-mono font-bold text-emerald-400 text-sm">${{ u.cost_usd.toFixed(3) }}</span>
+                  <span class="text-[10px] text-slate-500 block">R$ {{ u.cost_brl.toFixed(2) }}</span>
+                </div>
+                <div class="p-2.5 rounded-xl bg-slate-950/40 border border-slate-800/60">
+                  <span class="text-slate-500 block text-[10px]">Atividade</span>
+                  <span class="font-semibold text-slate-200">{{ u.businesses_count }} ventures</span>
+                  <span class="text-[10px] text-slate-400 block">{{ u.tasks_count }} tarefas</span>
+                </div>
+              </div>
+
+              <!-- Ações Touch-Friendly -->
+              <div class="pt-1 flex items-center space-x-2">
+                <button
+                  @click="handleToggleKillSwitch(u)"
+                  class="flex-1 py-2.5 rounded-xl text-xs font-semibold border transition text-center min-h-[44px] flex items-center justify-center"
+                  :class="u.is_ai_active
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'"
+                >
+                  {{ u.is_ai_active ? 'Pausar IA' : 'Ativar IA' }}
+                </button>
+                <button
+                  @click="handleEditLimit(u)"
+                  class="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700 min-h-[44px] flex items-center justify-center"
+                >
+                  Editar Cota
+                </button>
+                <button
+                  @click="handleResetUsage(u)"
+                  class="p-2.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white border border-slate-700 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  title="Zerar ciclo de consumo"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -370,7 +462,8 @@ function formatTokens(num) {
       <section class="space-y-3">
         <h3 class="text-sm font-bold text-white uppercase tracking-wider">Audit Trail em Tempo Real (Últimas Chamadas)</h3>
         <div class="rounded-2xl border border-slate-800 overflow-hidden bg-slate-900 font-mono text-[11px]">
-          <div class="overflow-x-auto">
+          <!-- Tabela Desktop -->
+          <div class="hidden md:block overflow-x-auto">
             <table class="w-full text-left">
               <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] border-b border-slate-800 font-bold">
                 <tr>
@@ -397,6 +490,23 @@ function formatTokens(num) {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Cards Mobile para Audit Trail -->
+          <div class="md:hidden divide-y divide-slate-800">
+            <div v-for="log in stats.recent_logs" :key="log.id" class="p-3 space-y-1.5 bg-slate-900">
+              <div class="flex items-center justify-between">
+                <span class="text-white font-bold text-xs">{{ log.user_name }}</span>
+                <span class="text-emerald-400 font-bold">${{ log.estimated_cost_usd.toFixed(4) }}</span>
+              </div>
+              <div class="flex items-center justify-between text-[10px] text-slate-400">
+                <span class="px-1.5 py-0.5 rounded bg-slate-950 text-indigo-300 font-semibold border border-slate-800">{{ log.model }}</span>
+                <span class="text-slate-500">{{ new Date(log.created_at).toLocaleTimeString() }} ({{ log.latency_ms ? `${log.latency_ms}ms` : 'ok' }})</span>
+              </div>
+              <div class="text-[10px] text-slate-300 truncate">
+                <span class="text-slate-500">Contexto:</span> {{ log.context }} · <span class="text-slate-500">Negócio:</span> {{ log.business_name || 'Geral' }}
+              </div>
+            </div>
           </div>
         </div>
       </section>

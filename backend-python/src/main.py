@@ -22,6 +22,14 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Auto-indexação da base de conhecimento RAG caso vazia
+    try:
+        from src.services.knowledge_service import get_knowledge_stats, index_all_knowledge
+        stats = get_knowledge_stats()
+        if stats.get("indexed_chunks", 0) == 0:
+            await index_all_knowledge(force=False)
+    except Exception:
+        pass
     yield
 
 

@@ -12,8 +12,9 @@ const swal = useSwal()
 const selectedBusinessId = ref('')
 const selectedAssignee = ref('')
 const showCreateModal = ref(false)
-const showLogsDrawer = ref(true)
+const showLogsDrawer = ref(false)
 const isCreatingTask = ref(false)
+const activeMobileCol = ref('all')
 
 const newTask = ref({
   business_id: '',
@@ -223,12 +224,40 @@ function getColumnBadgeColor(status) {
         </button>
       </div>
 
+      <!-- Mobile Column Switcher (Tabs Horizontais) -->
+      <div class="md:hidden flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
+        <button
+          @click="activeMobileCol = 'all'"
+          class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border transition shrink-0 min-h-[40px]"
+          :class="activeMobileCol === 'all'
+            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+            : 'bg-slate-900 text-slate-400 border-slate-800'"
+        >
+          Todas
+        </button>
+        <button
+          v-for="col in taskStore.boardColumns"
+          :key="col.status"
+          @click="activeMobileCol = col.status"
+          class="px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border transition shrink-0 flex items-center space-x-1.5 min-h-[40px]"
+          :class="activeMobileCol === col.status
+            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+            : 'bg-slate-900 text-slate-400 border-slate-800'"
+        >
+          <span>{{ getColumnTitle(col.status) }}</span>
+          <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300">
+            {{ col.count || col.tasks?.length || 0 }}
+          </span>
+        </button>
+      </div>
+
       <!-- Kanban Board (5 Colunas) -->
       <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
         <div
           v-for="col in taskStore.boardColumns"
           :key="col.status"
-          class="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col min-h-[550px]"
+          class="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col min-h-[450px]"
+          :class="{'hidden md:flex': activeMobileCol !== 'all' && activeMobileCol !== col.status}"
         >
           <!-- Cabeçalho da Coluna -->
           <div class="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
@@ -385,15 +414,18 @@ function getColumnBadgeColor(status) {
       </div>
     </div>
 
-    <!-- Modal Nova Tarefa -->
+    <!-- Modal Nova Tarefa (Bottom Sheet no Mobile) -->
     <div
       v-if="showCreateModal"
-      class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+      class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
-      <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4">
+      <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto safe-bottom">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 class="text-base font-bold text-white">Criar Nova Tarefa Operacional</h3>
-          <button @click="showCreateModal = false" class="text-slate-400 hover:text-white">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <h3 class="text-base font-bold text-white">Nova Tarefa Operacional</h3>
+          </div>
+          <button @click="showCreateModal = false" class="text-slate-400 hover:text-white p-2 min-h-[44px] min-w-[44px] flex items-center justify-center">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -408,7 +440,7 @@ function getColumnBadgeColor(status) {
               type="text"
               required
               placeholder="Ex: Gravar vídeo do produto vencedor X"
-              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
+              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
             />
           </div>
 
@@ -416,7 +448,7 @@ function getColumnBadgeColor(status) {
             <label class="block text-xs font-semibold text-slate-300 mb-1">Venture / Negócio</label>
             <select
               v-model="newTask.business_id"
-              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
+              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
             >
               <option value="">Selecione o negócio (ou padrão do venture ativo)</option>
               <option v-for="b in businessStore.businesses" :key="b.id" :value="b.id">
@@ -425,12 +457,12 @@ function getColumnBadgeColor(status) {
             </select>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">Atribuído a (Executor)</label>
               <select
                 v-model="newTask.assignee"
-                class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
+                class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="agent">🤖 Agente (Gemini 3.8)</option>
                 <option value="user">👤 Humano (Você)</option>
@@ -440,7 +472,7 @@ function getColumnBadgeColor(status) {
               <label class="block text-xs font-semibold text-slate-300 mb-1">Prioridade</label>
               <select
                 v-model="newTask.priority"
-                class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
+                class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value="low">Baixa</option>
                 <option value="medium">Média</option>
@@ -456,7 +488,7 @@ function getColumnBadgeColor(status) {
               v-model="newTask.description"
               rows="3"
               placeholder="Instruções específicas para execução..."
-              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
+              class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
             ></textarea>
           </div>
 
@@ -464,14 +496,14 @@ function getColumnBadgeColor(status) {
             <button
               type="button"
               @click="showCreateModal = false"
-              class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+              class="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white min-h-[44px]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               :disabled="isCreatingTask"
-              class="px-4 py-2 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20 disabled:opacity-50 flex items-center space-x-1.5"
+              class="px-5 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition shadow-md shadow-emerald-400/20 disabled:opacity-50 flex items-center space-x-1.5 min-h-[44px]"
             >
               <span v-if="isCreatingTask" class="animate-spin h-3.5 w-3.5 border-2 border-slate-950 border-t-transparent rounded-full"></span>
               <span>{{ isCreatingTask ? 'Criando...' : 'Criar Tarefa' }}</span>

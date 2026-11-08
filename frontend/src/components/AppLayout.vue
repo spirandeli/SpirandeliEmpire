@@ -5,6 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useApprovalStore } from '@/stores/approvals'
 import { useSwal } from '@/composables/useSwal'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
+import MobileBottomNav from '@/components/MobileBottomNav.vue'
+import MobileDrawer from '@/components/MobileDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -13,6 +15,7 @@ const approvalStore = useApprovalStore()
 const swal = useSwal()
 
 const isChatOpen = ref(false)
+const isMobileDrawerOpen = ref(false)
 const selectedBusinessId = ref(null)
 
 onMounted(async () => {
@@ -52,8 +55,8 @@ function openChat(businessId = null) {
 
 <template>
   <div class="min-h-screen bg-slate-950 text-slate-100 flex font-sans antialiased selection:bg-emerald-500 selection:text-white">
-    <!-- Sidebar -->
-    <aside class="w-64 bg-slate-900/90 border-r border-slate-800 flex flex-col shrink-0">
+    <!-- Desktop Sidebar (Oculta em Mobile) -->
+    <aside class="hidden md:flex w-64 bg-slate-900/90 border-r border-slate-800 flex-col shrink-0">
       <!-- Logo & Status -->
       <div class="h-16 border-b border-slate-800 flex items-center justify-between px-5">
         <div class="flex items-center space-x-3">
@@ -183,23 +186,41 @@ function openChat(businessId = null) {
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
       <!-- Top Header -->
-      <header class="h-16 bg-slate-900/60 backdrop-blur border-b border-slate-800 flex items-center justify-between px-8">
-        <div class="flex-1 flex items-center justify-between min-w-0 mr-4">
-          <slot name="header">
-            <slot name="header-title">
-              <h1 class="text-base font-bold text-white tracking-tight">SpirandeliEmpire</h1>
+      <header class="h-16 bg-slate-900/60 backdrop-blur border-b border-slate-800 flex items-center justify-between px-4 md:px-8 safe-top">
+        <!-- Lado Esquerdo Header: Logo no Mobile + Slot Header -->
+        <div class="flex-1 flex items-center min-w-0 mr-3 space-x-3">
+          <!-- Logo & Drawer trigger visível apenas no mobile -->
+          <button
+            @click="isMobileDrawerOpen = true"
+            class="md:hidden flex items-center space-x-2 p-1.5 -ml-1 rounded-xl bg-slate-800/80 text-white min-h-[40px] shrink-0"
+            title="Menu e Opções"
+          >
+            <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs">
+              S
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+            </svg>
+          </button>
+
+          <div class="truncate">
+            <slot name="header">
+              <slot name="header-title">
+                <h1 class="text-sm md:text-base font-bold text-white tracking-tight truncate">SpirandeliEmpire</h1>
+              </slot>
             </slot>
-          </slot>
+          </div>
         </div>
 
-        <div class="flex items-center space-x-4 shrink-0">
-          <!-- Kill-Switch Global do Agente -->
-          <div class="flex items-center space-x-2.5 bg-slate-950 px-3.5 py-1.5 rounded-full border border-slate-800">
-            <span class="text-xs font-medium text-slate-300">Autonomia dos Workers:</span>
+        <div class="flex items-center space-x-2 md:space-x-4 shrink-0">
+          <!-- Kill-Switch Global do Agente (Desktop: completo / Mobile: badge compacto) -->
+          <div class="hidden sm:flex items-center space-x-2.5 bg-slate-950 px-3.5 py-1.5 rounded-full border border-slate-800">
+            <span class="text-xs font-medium text-slate-300">Autonomia:</span>
             <button
               @click="handleToggleKillSwitch"
               class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="authStore.isAgentEnabled ? 'bg-emerald-500' : 'bg-slate-700'"
+              :title="authStore.isAgentEnabled ? 'Pausar workers' : 'Ativar workers'"
             >
               <span
                 class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
@@ -208,10 +229,22 @@ function openChat(businessId = null) {
             </button>
           </div>
 
-          <!-- Botão rápido de Chat com Agente -->
+          <!-- Status badge simplificado para telas menores que 'sm' -->
+          <button
+            @click="handleToggleKillSwitch"
+            class="sm:hidden flex items-center space-x-1.5 px-2.5 py-1.5 rounded-full border border-slate-800 bg-slate-950 text-[10px] font-mono min-h-[36px]"
+          >
+            <span
+              class="w-2 h-2 rounded-full"
+              :class="authStore.isAgentEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"
+            ></span>
+            <span class="text-slate-300">{{ authStore.isAgentEnabled ? 'ONLINE' : 'PAUSED' }}</span>
+          </button>
+
+          <!-- Botão rápido de Chat com Agente (Desktop) -->
           <button
             @click="openChat(null)"
-            class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 flex items-center space-x-2 transition"
+            class="hidden md:flex px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 items-center space-x-2 transition"
           >
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>COO IA</span>
@@ -219,13 +252,27 @@ function openChat(businessId = null) {
         </div>
       </header>
 
-      <!-- Main Body -->
-      <main class="flex-1 overflow-y-auto p-8">
+      <!-- Main Body com padding responsivo e compensação da bottom bar -->
+      <main class="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
         <slot />
       </main>
     </div>
 
-    <!-- Gaveta Lateral de Chat com Gemini 3.8 -->
+    <!-- Mobile Bottom Navigation Bar (Apenas Mobile) -->
+    <MobileBottomNav
+      @open-chat="openChat(null)"
+      @open-drawer="isMobileDrawerOpen = true"
+    />
+
+    <!-- Mobile Drawer (Menu Lateral Mobile) -->
+    <MobileDrawer
+      :is-open="isMobileDrawerOpen"
+      @close="isMobileDrawerOpen = false"
+      @toggle-kill-switch="handleToggleKillSwitch"
+      @logout="handleLogout"
+    />
+
+    <!-- Gaveta Lateral de Chat com Gemini 3.8 (Universal) -->
     <AgentChatDrawer
       :is-open="isChatOpen"
       :business-id="selectedBusinessId"

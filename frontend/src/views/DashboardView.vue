@@ -25,10 +25,20 @@ const integrations = ref([])
 const syncingCalendar = ref(false)
 const isChatDrawerOpen = ref(false)
 const provisioningDemo = ref(false)
+const jeffreyStatus = ref(null)
 
 onMounted(async () => {
   await loadDashboardData()
 })
+
+async function fetchJeffreyStatus() {
+  try {
+    const res = await api.get('/agent/status')
+    jeffreyStatus.value = res.data
+  } catch {
+    jeffreyStatus.value = null
+  }
+}
 
 async function handleProvisionShowcase() {
   provisioningDemo.value = true
@@ -52,6 +62,7 @@ async function loadDashboardData() {
       businessStore.fetchBusinesses({ per_page: 5 }),
       taskStore.fetchBoard(),
       fetchIntegrations(),
+      fetchJeffreyStatus(),
     ])
   } finally {
     loading.value = false
@@ -290,6 +301,129 @@ async function syncCalendarNow() {
               Gerenciar Conexões &rarr;
             </router-link>
           </p>
+        </div>
+      </section>
+
+      <!-- Jeffrey COO Operational Cockpit & Status Widget -->
+      <section v-if="jeffreyStatus" class="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 shadow-lg relative overflow-hidden">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 via-indigo-600 to-cyan-500 flex items-center justify-center text-white text-lg font-bold shadow-md shadow-indigo-500/20">
+              ⚡
+            </div>
+            <div>
+              <div class="flex items-center space-x-2.5">
+                <h3 class="text-base font-bold text-white tracking-tight">Jeffrey · Cockpit COO Autônomo</h3>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>{{ jeffreyStatus.agent?.model || 'Gemini 3.8 Flash' }}</span>
+                </span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  ReAct Loop Ativo
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Supervisão de infraestrutura, ventures e despacho de tarefas operacionais com memória contextual.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button
+              @click="fetchJeffreyStatus"
+              class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition"
+              title="Atualizar telemetria do Jeffrey"
+            >
+              🔄 Atualizar
+            </button>
+            <button
+              @click="isChatDrawerOpen = true"
+              class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-indigo-600 hover:from-emerald-400 hover:to-indigo-500 text-white text-xs font-semibold shadow transition flex items-center space-x-1.5"
+            >
+              <span>💬 Abrir Chat Executivo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry & Subsystem Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mt-4 text-xs">
+          <!-- Host VPS -->
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="font-medium">Telemetria Host</span>
+              <span class="w-2 h-2 rounded-full" :class="jeffreyStatus.vps?.status === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'"></span>
+            </div>
+            <div class="text-slate-100 font-mono font-bold text-sm">
+              CPU: {{ jeffreyStatus.vps?.cpu?.percent }}%
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+              RAM: {{ jeffreyStatus.vps?.memory?.percent }}% · Disco: {{ jeffreyStatus.vps?.disk?.percent }}%
+            </div>
+          </div>
+
+          <!-- Docker Engine -->
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="font-medium">Docker Engine</span>
+              <span class="w-2 h-2 rounded-full" :class="jeffreyStatus.docker_connected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
+            </div>
+            <div class="text-slate-100 font-mono font-bold text-sm">
+              {{ jeffreyStatus.docker_connected ? 'Socket Conectado' : 'Socket Offline' }}
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+              Modo seguro (:ro)
+            </div>
+          </div>
+
+          <!-- RAG Base de Conhecimento -->
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="font-medium">RAG Base Oficial</span>
+              <span class="text-indigo-400 font-mono text-[10px]">ChromaDB</span>
+            </div>
+            <div class="text-slate-100 font-mono font-bold text-sm">
+              {{ jeffreyStatus.knowledge_base?.indexed_chunks || 0 }} Chunks
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+              {{ jeffreyStatus.knowledge_base?.document_files_count || 0 }} documentos indexados
+            </div>
+          </div>
+
+          <!-- Memórias de Longo Prazo -->
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="font-medium">Memórias Estratégicas</span>
+              <span class="text-purple-400 font-mono text-[10px]">MySQL</span>
+            </div>
+            <div class="text-slate-100 font-mono font-bold text-sm">
+              {{ jeffreyStatus.memory_count || 0 }} Diretrizes
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+              Preferências & Fatos Chave
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Autonomous Actions Feed -->
+        <div v-if="jeffreyStatus.recent_actions && jeffreyStatus.recent_actions.length > 0" class="mt-4 pt-3 border-t border-slate-800/60">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Últimas Ações Autônomas do Jeffrey</span>
+            <span class="text-[10px] text-slate-500 font-mono">Auditoria de Execução</span>
+          </div>
+          <div class="space-y-1.5">
+            <div
+              v-for="action in jeffreyStatus.recent_actions.slice(0, 3)"
+              :key="action.id"
+              class="flex items-center justify-between p-2 rounded-lg bg-slate-950/40 border border-slate-800/60 text-xs"
+            >
+              <div class="flex items-center space-x-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                <span class="text-slate-200 font-medium">{{ action.message }}</span>
+                <span v-if="action.duration_ms" class="text-[10px] text-slate-500 font-mono">({{ action.duration_ms }}ms)</span>
+              </div>
+              <span class="text-[10px] text-slate-500 font-mono">{{ action.created_at ? new Date(action.created_at).toLocaleTimeString() : '' }}</span>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -89,7 +89,7 @@ export const useLanguageStore = defineStore('language', () => {
     sessionLoading.value = true
     try {
       const response = await api.get(`/languages/profiles/${profile.value.id}/placement-test`)
-      placementTest.value = response.data.placement_test
+      placementTest.value = response.data.placement_test || response.data
       return placementTest.value
     } finally {
       sessionLoading.value = false
@@ -165,6 +165,19 @@ export const useLanguageStore = defineStore('language', () => {
     vaultStats.value.total = Math.max(0, vaultStats.value.total - 1)
   }
 
+  async function reviewVaultWord(wordId, remembered = true) {
+    if (!profile.value?.id) return
+    const response = await api.post(`/languages/profiles/${profile.value.id}/vault/${wordId}/review`, {
+      remembered,
+    })
+    const idx = vaultItems.value.findIndex((item) => item.id === wordId)
+    if (idx !== -1) {
+      vaultItems.value[idx] = response.data.item
+    }
+    await fetchVault()
+    return response.data
+  }
+
   return {
     profile,
     hasProfile,
@@ -189,5 +202,6 @@ export const useLanguageStore = defineStore('language', () => {
     fetchVault,
     addVaultWord,
     deleteVaultWord,
+    reviewVaultWord,
   }
 })

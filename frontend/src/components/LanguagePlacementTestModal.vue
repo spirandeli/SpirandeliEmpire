@@ -93,6 +93,24 @@ async function handleSubmitTest() {
 function finishAndStartLessons() {
   emit('completed')
 }
+
+function speakText(text) {
+  if (!window.speechSynthesis || !text) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(text)
+  const lang = languageStore.profile?.target_language
+  const langCodeMap = {
+    Inglês: 'en-US',
+    Espanhol: 'es-ES',
+    Francês: 'fr-FR',
+    Alemão: 'de-DE',
+    Italiano: 'it-IT',
+    Mandarim: 'zh-CN',
+  }
+  utterance.lang = langCodeMap[lang] || 'en-US'
+  utterance.rate = 0.95
+  window.speechSynthesis.speak(utterance)
+}
 </script>
 
 <template>
@@ -143,6 +161,20 @@ function finishAndStartLessons() {
         <div class="w-12 h-12 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin mx-auto"></div>
         <h4 class="font-bold text-white text-sm">O Gemini 3.8 Flash está gerando seus desafios adaptativos...</h4>
         <p class="text-xs text-slate-400">Criando questões personalizadas para o seu idioma e foco.</p>
+      </div>
+
+      <!-- Fallback quando não há questões carregadas -->
+      <div v-else-if="questions.length === 0 && !evaluationResult" class="p-12 text-center space-y-4">
+        <span class="text-3xl block">⚠️</span>
+        <h4 class="font-bold text-white text-sm">Não foi possível carregar as questões adaptativas.</h4>
+        <p class="text-xs text-slate-400">Verifique a conexão e tente novamente.</p>
+        <button
+          type="button"
+          @click="languageStore.fetchPlacementTest()"
+          class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition"
+        >
+          Carregar Questões
+        </button>
       </div>
 
       <!-- TELA DE RESULTADO / DIAGNÓSTICO (Após Submissão) -->
@@ -202,10 +234,20 @@ function finishAndStartLessons() {
           {{ currentQuestion.scenario }}
         </div>
 
-        <!-- Pergunta -->
-        <h4 class="text-sm font-bold text-white leading-relaxed">
-          {{ currentQuestion.question }}
-        </h4>
+        <!-- Pergunta com Botão de Áudio -->
+        <div class="flex items-start justify-between gap-3">
+          <h4 class="text-sm font-bold text-white leading-relaxed">
+            {{ currentQuestion.question }}
+          </h4>
+          <button
+            type="button"
+            @click.stop="speakText(currentQuestion.question)"
+            class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center shrink-0 transition"
+            title="Ouvir pronúncia da pergunta"
+          >
+            🔊
+          </button>
+        </div>
 
         <!-- Opções -->
         <div class="space-y-2.5">

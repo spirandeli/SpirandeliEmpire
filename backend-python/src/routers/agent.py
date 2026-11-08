@@ -1,16 +1,20 @@
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from src.config import get_settings
 from src.database import get_db
 from src.dependencies import get_current_user, verify_ai_access
-from src.models import AgentConversation, AgentLog, AgentMessage, Business, User
-from src.services.gemini_service import reply_to_user
+from src.models import AgentConversation, AgentLog, AgentMemory, AgentMessage, Business, User
+from src.services.jeffrey_orchestrator import JeffreyOrchestrator
 
+settings = get_settings()
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
 
@@ -66,6 +70,10 @@ def _format_message(m: AgentMessage) -> dict[str, Any]:
         "role": m.role,
         "content": m.content,
         "tool_name": m.tool_name,
+        "tool_args": m.tool_args,
+        "tool_result": m.tool_result,
+        "tool_failed": m.tool_failed,
+        "latency_ms": m.latency_ms,
         "created_at": m.created_at.isoformat() if m.created_at else None,
     }
 
@@ -133,7 +141,6 @@ async def store_conversation(
     await db.commit()
     await db.refresh(conv)
     conv.business = business
-    conv.messages = []
 
     return {"data": _format_conversation(conv)}
 
@@ -173,12 +180,62 @@ async def send_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversa não encontrada.")
 
     conv.user = current_user
-    final_reply, new_msgs = await reply_to_user(conv, payload.message, db)
+    orchestrator = JeffreyOrchestrator(conv, db)
+    final_reply, new_msgs = await orchestrator.execute_turn(payload.message)
 
     return {
         "data": _format_message(final_reply),
         "conversation": _format_conversation(conv),
         "new_messages": [_format_message(m) for m in new_msgs],
+    }
+
+
+@router.get("/status")
+async def get_agent_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.services.knowledge_service import get_knowledge_stats
+    from src.services.agent_tools.vps_tool import get_vps_telemetry
+
+    mem_count_res = await db.execute(
+        select(func.count(AgentMemory.id)).where(AgentMemory.user_id == current_user.id)
+    )
+    mem_count = mem_count_res.scalar() or 0
+
+    logs_res = await db.execute(
+        select(AgentLog)
+        .where(AgentLog.user_id == current_user.id)
+        .order_by(AgentLog.id.desc())
+        .limit(5)
+    )
+    recent_logs = list(logs_res.scalars().all())
+
+    docker_ok = os.path.exists("/var/run/docker.sock")
+
+    return {
+        "agent": {
+            "name": "Jeffrey",
+            "role": "COO Executivo",
+            "model": settings.GEMINI_MODEL,
+            "status": "operational",
+            "react_engine": "active",
+        },
+        "knowledge_base": get_knowledge_stats(),
+        "memory_count": mem_count,
+        "docker_connected": docker_ok,
+        "vps": get_vps_telemetry(),
+        "recent_actions": [
+            {
+                "id": l.id,
+                "event": l.event,
+                "message": l.message,
+                "context": l.context,
+                "duration_ms": l.duration_ms,
+                "created_at": l.created_at.isoformat() if l.created_at else None,
+            }
+            for l in recent_logs
+        ],
     }
 
 
