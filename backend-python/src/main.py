@@ -22,6 +22,15 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Auto-criação de tabelas que ainda não existem
+    try:
+        from src.database import engine, Base
+        import src.models
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        print(f"Warning initializing database tables: {e}")
+
     # Auto-indexação da base de conhecimento RAG caso vazia
     try:
         from src.services.knowledge_service import get_knowledge_stats, index_all_knowledge

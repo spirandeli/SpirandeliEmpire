@@ -34,7 +34,12 @@ logger = logging.getLogger("abvos.jeffrey_orchestrator")
 settings = get_settings()
 
 MAX_REACT_STEPS = 5
-FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3-flash-preview"]
+FALLBACK_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3-flash-preview",
+]
 
 
 def _utc_now() -> datetime:
@@ -146,13 +151,21 @@ class JeffreyOrchestrator:
     def __init__(self, conversation: AgentConversation, db: AsyncSession):
         self.conversation = conversation
         self.db = db
-        self.user = conversation.user
-        self.business = conversation.business
+        self.user = getattr(conversation, "user", None)
+        self.business = getattr(conversation, "business", None)
 
     async def execute_turn(self, user_message_text: str) -> tuple[AgentMessage, list[AgentMessage]]:
         """Executa o turno do usuário no ciclo ReAct completo."""
         now = _utc_now()
         created_messages: list[AgentMessage] = []
+
+        # Garante carregamento assíncrono seguro de user e business sem lazy load
+        if not self.user and self.conversation.user_id:
+            u_res = await self.db.execute(select(User).where(User.id == self.conversation.user_id))
+            self.user = u_res.scalar_one_or_none()
+        if not self.business and self.conversation.business_id:
+            b_res = await self.db.execute(select(Business).where(Business.id == self.conversation.business_id))
+            self.business = b_res.scalar_one_or_none()
 
         # 1. Salva mensagem do usuário
         user_msg = AgentMessage(

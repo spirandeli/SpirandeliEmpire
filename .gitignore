@@ -22,6 +22,9 @@ frontend/node_modules/
 frontend/dist/
 .phpunit.cache/
 .phpunit.result.cache
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # Logs e sessões
 *.log

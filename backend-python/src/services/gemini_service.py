@@ -28,6 +28,7 @@ def _utc_now() -> datetime:
 async def get_user_gemini_client(user: User, db: AsyncSession) -> tuple[genai.Client, str]:
     """Obtém a chave do usuário (user_integrations) ou usa a chave do sistema."""
     key = settings.GEMINI_API_KEY
+    model = settings.GEMINI_MODEL or "gemini-3.5-flash"
 
     res = await db.execute(
         select(UserIntegration).where(
@@ -39,15 +40,25 @@ async def get_user_gemini_client(user: User, db: AsyncSession) -> tuple[genai.Cl
     integ = res.scalar_one_or_none()
     if integ and integ.credentials:
         try:
-            key = decrypt_secret(integ.credentials)
+            decrypted = decrypt_secret(integ.credentials)
+            if decrypted:
+                key = decrypted
         except Exception:
             pass
+        if integ.meta and isinstance(integ.meta, dict) and integ.meta.get("model"):
+            model = integ.meta.get("model")
+
+    # Mapeamento / normalização de modelos
+    if model in ("gemini-3.8", "gemini-3.8-flash"):
+        model = "gemini-3.5-flash"
+    elif model in ("gemini-3.5", "gemini-3.0"):
+        model = "gemini-3.5-flash"
 
     if not key:
         raise ValueError("Chave de API do Gemini não configurada.")
 
     client = genai.Client(api_key=key)
-    return client, settings.GEMINI_MODEL
+    return client, model
 
 
 COO_SYSTEM_PROMPT = """Você é o Diretor de Operações (COO) Autônomo e Co-Pilot Estratégico do SpirandeliEmpire (ABVOS).
@@ -93,15 +104,25 @@ async def reply_to_user(
     reply_text = ""
     try:
         client, model_name = await get_user_gemini_client(user, db)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=COO_SYSTEM_PROMPT,
-                temperature=0.7,
-            ),
-        )
-        reply_text = response.text or "Entendido. Como posso avançar na sua operação?"
+        candidate_models = [model_name, "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"]
+        last_exc = None
+        for cand in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=cand,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=COO_SYSTEM_PROMPT,
+                        temperature=0.7,
+                    ),
+                )
+                reply_text = response.text or "Entendido. Como posso avançar na sua operação?"
+                break
+            except Exception as ex:
+                last_exc = ex
+                continue
+        if not reply_text and last_exc:
+            raise last_exc
     except Exception as e:
         reply_text = f"Olá! Registrei sua mensagem: \"{message_text}\". (Modo Co-Pilot ativo)."
 

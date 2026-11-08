@@ -38,8 +38,8 @@ class AgentConversation(Base):
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    user = relationship("User", back_populates="conversations")
-    business = relationship("Business")
+    user = relationship("User", back_populates="conversations", lazy="selectin")
+    business = relationship("Business", lazy="selectin")
     messages = relationship("AgentMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="AgentMessage.id", lazy="selectin")
 
 
