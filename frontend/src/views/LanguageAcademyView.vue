@@ -8,11 +8,13 @@ import LanguageOnboardingModal from '@/components/LanguageOnboardingModal.vue'
 import LanguagePlacementTestModal from '@/components/LanguagePlacementTestModal.vue'
 import LanguageFocusPlayer from '@/components/LanguageFocusPlayer.vue'
 import VocabularyVaultTab from '@/components/VocabularyVaultTab.vue'
+import LanguagePronunciationTab from '@/components/LanguagePronunciationTab.vue'
+import LanguageConversationTab from '@/components/LanguageConversationTab.vue'
 
 const languageStore = useLanguageStore()
 const swal = useSwal()
 
-const activeTab = ref('daily_lesson') // daily_lesson, vault, diagnosis
+const activeTab = ref('daily_lesson') // daily_lesson, pronunciation, conversation, vault, diagnosis
 const showOnboardingModal = ref(false)
 const showPlacementModal = ref(false)
 
@@ -104,10 +106,32 @@ async function handleStartNewTrainingSession() {
 
             <button
               type="button"
+              @click="activeTab = 'pronunciation'"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
+              :class="activeTab === 'pronunciation'
+                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
+            >
+              <span>🎙️ Dicção & Pronúncia</span>
+            </button>
+
+            <button
+              type="button"
+              @click="activeTab = 'conversation'"
+              class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
+              :class="activeTab === 'conversation'
+                ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
+            >
+              <span>💬 Conversação Aberta</span>
+            </button>
+
+            <button
+              type="button"
               @click="activeTab = 'vault'"
               class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 min-h-[40px]"
               :class="activeTab === 'vault'
-                ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm'
+                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-sm'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
             >
               <span>📦 Cofre SRS</span>
@@ -219,12 +243,22 @@ async function handleStartNewTrainingSession() {
           </div>
         </div>
 
-        <!-- ABA 2: Cofre de Vocabulário & Repetição Espaçada -->
+        <!-- ABA 2: Treino de Dicção & Pronúncia (IA Multimodal) -->
+        <div v-if="activeTab === 'pronunciation'">
+          <LanguagePronunciationTab />
+        </div>
+
+        <!-- ABA 3: Área Aberta de Conversação no Idioma Selecionado -->
+        <div v-if="activeTab === 'conversation'">
+          <LanguageConversationTab />
+        </div>
+
+        <!-- ABA 4: Cofre de Vocabulário & Repetição Espaçada -->
         <div v-if="activeTab === 'vault'">
           <VocabularyVaultTab />
         </div>
 
-        <!-- ABA 3: Diagnóstico CEFR & Fraquezas -->
+        <!-- ABA 5: Diagnóstico CEFR & Fraquezas -->
         <div v-if="activeTab === 'diagnosis'" class="space-y-6">
           <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">

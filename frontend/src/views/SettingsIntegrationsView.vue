@@ -193,7 +193,7 @@ function copyToClipboard(text) {
 <template>
   <AppLayout>
     <template #header>
-      <div>
+      <div class="hidden sm:block">
         <h1 class="text-xl font-bold text-white tracking-tight">Cofre de Integrações & IA</h1>
         <p class="text-xs text-slate-400 mt-0.5">Gestão Criptografada de Chaves de API, Tokens OAuth e Protocolos de Calendário</p>
       </div>

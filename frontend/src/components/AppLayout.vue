@@ -68,7 +68,7 @@ function openChat(businessId = null) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-950 text-slate-100 flex font-sans antialiased selection:bg-emerald-500 selection:text-white">
+  <div class="h-screen h-[100dvh] bg-slate-950 text-slate-100 flex font-sans antialiased selection:bg-emerald-500 selection:text-white overflow-hidden">
     <!-- Desktop Sidebar (Oculta em Mobile) -->
     <aside class="hidden md:flex w-64 bg-slate-900/90 border-r border-slate-800 flex-col shrink-0">
       <!-- Logo & Status -->
@@ -279,8 +279,8 @@ function openChat(businessId = null) {
 
       <!-- Main Body com padding responsivo e compensação da bottom bar -->
       <main class="flex-1 overflow-y-auto p-4 md:p-8 pb-28 md:pb-8">
-        <!-- Cabeçalho da Página no Mobile (Renderizado fluidamente no topo do conteúdo) -->
-        <div v-if="$slots.header" class="md:hidden mb-5 pb-3 border-b border-slate-800/80">
+        <!-- Ações do Cabeçalho no Mobile (Renderizado fluidamente no topo do conteúdo, sem borda se vazio) -->
+        <div v-if="$slots.header" class="md:hidden empty:hidden mb-4">
           <slot name="header" />
         </div>
         <slot />

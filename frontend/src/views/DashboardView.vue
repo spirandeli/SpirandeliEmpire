@@ -197,7 +197,7 @@ async function syncCalendarNow() {
   <AppLayout>
     <template #header>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
-        <div>
+        <div class="hidden sm:block">
           <h1 class="text-xl font-bold text-white tracking-tight">Cockpit Executivo & Supervisão</h1>
           <p class="text-xs text-slate-400 mt-0.5">Operações Autônomas · Gemini 3.8 Co-Pilot</p>
         </div>

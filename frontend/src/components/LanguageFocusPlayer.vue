@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useLanguageStore } from '@/stores/language'
 import { useSwal } from '@/composables/useSwal'
+import AudioRecorder from '@/components/AudioRecorder.vue'
 
 const emit = defineEmits(['completed'])
 
@@ -21,6 +22,8 @@ const activeBlock = ref(1)
 const block1Answers = ref({})
 const block2Answers = ref({})
 const block3Input = ref('')
+const block3Mode = ref('text') // text or audio
+const audioPronunciationScore = ref(null)
 
 // Feedback da avaliação
 const evaluationFeedback = ref(null)
@@ -137,6 +140,24 @@ async function handleFinishLesson() {
   } catch (err) {
     swal.error('Erro ao avaliar sessão', err.response?.data?.message || 'Falha ao enviar respostas.')
     startTimer()
+  }
+}
+
+async function handleBlock3AudioRecorded({ base64, mimeType }) {
+  try {
+    const analysis = await languageStore.analyzePronunciation({
+      target_text: block3.value?.scenario_prompt || 'Resposta executiva em ' + (languageStore.profile?.target_language || 'inglês'),
+      audio_base64: base64,
+      mime_type: mimeType,
+    })
+
+    audioPronunciationScore.value = analysis.overall_score
+    if (analysis.transcription) {
+      block3Input.value = analysis.transcription
+    }
+    swal.toast(`Áudio gravado e transcrito! Dicção: ${analysis.overall_score}/100`, 'success')
+  } catch (err) {
+    swal.error('Erro ao analisar áudio', err.response?.data?.message || 'Falha ao processar áudio.')
   }
 }
 
@@ -507,8 +528,49 @@ function speakText(text) {
           </div>
         </div>
 
-        <!-- Área de Escrita / Input do Usuário -->
-        <div class="space-y-2">
+        <!-- Seletor de Modo de Resposta (Texto vs Áudio) -->
+        <div class="flex items-center space-x-2 border-b border-slate-800 pb-2">
+          <button
+            type="button"
+            @click="block3Mode = 'text'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5"
+            :class="block3Mode === 'text'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              : 'text-slate-400 hover:text-white'"
+          >
+            <span>✍️ Resposta em Texto</span>
+          </button>
+
+          <button
+            type="button"
+            @click="block3Mode = 'audio'"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5"
+            :class="block3Mode === 'audio'
+              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+              : 'text-slate-400 hover:text-white'"
+          >
+            <span>🎙️ Gravar Resposta em Áudio</span>
+            <span v-if="audioPronunciationScore" class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono">
+              {{ audioPronunciationScore }}/100
+            </span>
+          </button>
+        </div>
+
+        <!-- MODO 1: Gravador de Áudio -->
+        <div v-if="block3Mode === 'audio'" class="space-y-3">
+          <AudioRecorder
+            submit-label="Analisar Pronúncia & Usar como Resposta"
+            @recorded="handleBlock3AudioRecorded"
+          />
+
+          <div v-if="block3Input" class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+            <span class="text-[10px] font-mono uppercase text-slate-400 font-bold block">Transcrição da sua resposta:</span>
+            <p class="text-xs text-white font-serif">"{{ block3Input }}"</p>
+          </div>
+        </div>
+
+        <!-- MODO 2: Área de Escrita / Input do Usuário -->
+        <div v-else class="space-y-2">
           <div class="flex items-center justify-between text-xs font-mono">
             <label class="font-bold text-slate-300">Sua Resposta no Idioma (2 a 4 frases):</label>
             <span class="text-slate-400">{{ block3Input.length }} caracteres</span>

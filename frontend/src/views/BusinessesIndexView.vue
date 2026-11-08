@@ -167,7 +167,7 @@ async function handleDelete(biz) {
   <AppLayout>
     <template #header>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
-        <div>
+        <div class="hidden sm:block">
           <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight">Hub de Negócios & Ventures</h1>
           <p class="text-xs text-slate-400 mt-0.5">Gestão de Empresas Digitais Autônomas</p>
         </div>

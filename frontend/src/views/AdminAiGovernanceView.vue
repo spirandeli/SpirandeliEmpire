@@ -119,7 +119,7 @@ function formatTokens(num) {
   <AppLayout>
     <template #header>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
-        <div>
+        <div class="hidden sm:block">
           <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight flex flex-wrap items-center gap-2">
             <span>Governança de IA & FinOps</span>
             <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold">

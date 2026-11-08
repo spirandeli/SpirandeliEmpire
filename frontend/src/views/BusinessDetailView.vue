@@ -213,18 +213,18 @@ async function toggleAutomation(automation) {
 <template>
   <AppLayout>
     <template #header>
-      <div class="flex items-center space-x-3">
-        <router-link to="/businesses" class="text-slate-400 hover:text-white transition">
+      <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+        <router-link to="/businesses" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center" title="Voltar aos negócios">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </router-link>
-        <div>
-          <h1 class="text-xl font-bold text-white tracking-tight flex items-center space-x-2">
-            <span>{{ business.name || 'Carregando negócio...' }}</span>
+        <div class="min-w-0 flex-1">
+          <h1 class="text-base sm:text-xl font-bold text-white tracking-tight flex items-center space-x-2 truncate">
+            <span class="truncate">{{ business.name || 'Carregando negócio...' }}</span>
             <span
               v-if="business.status"
-              class="px-2 py-0.5 text-[10px] font-bold rounded-full border"
+              class="px-2 py-0.5 text-[10px] font-bold rounded-full border shrink-0"
               :class="business.status === 'active'
                 ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                 : 'bg-slate-800 text-slate-400 border-slate-700'"
@@ -232,7 +232,7 @@ async function toggleAutomation(automation) {
               {{ business.status === 'active' ? 'Ativo' : 'Pausado' }}
             </span>
           </h1>
-          <p class="text-xs text-slate-400 mt-0.5">
+          <p class="text-xs text-slate-400 mt-0.5 truncate">
             Nicho: <span class="text-slate-200 font-semibold">{{ business.niche || 'Geral' }}</span> · Modelo: <span class="text-slate-200">{{ business.business_model || 'TikTok Shop Affiliate' }}</span>
           </p>
         </div>
