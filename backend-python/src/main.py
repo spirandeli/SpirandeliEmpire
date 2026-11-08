@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from src.config import get_settings
+from src.services.media.media_settings import STORAGE_MEDIA_DIR
 from src.routers import (
     admin,
     agent,
@@ -128,3 +130,12 @@ app.include_router(integrations.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(media.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
+
+# Rotas compatíveis sob o prefixo /api/v1
+app.include_router(tasks.router, prefix="/api/v1")
+app.include_router(media.router, prefix="/api/v1")
+app.include_router(approvals.router, prefix="/api/v1")
+
+# Rota estática direta para inspeção/download de mídia
+if STORAGE_MEDIA_DIR.exists():
+    app.mount("/media", StaticFiles(directory=str(STORAGE_MEDIA_DIR)), name="media-static")

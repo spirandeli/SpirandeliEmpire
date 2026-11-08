@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
+import TaskMediaGallery from '@/components/TaskMediaGallery.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useApprovalStore } from '@/stores/approvals'
 import { useBusinessStore } from '@/stores/business'
@@ -97,6 +98,27 @@ const isAppleConnected = computed(() => {
 
 function toggleExpand(id) {
   expandedCardId.value = expandedCardId.value === id ? null : id
+}
+
+function getItemVideoUrl(item) {
+  if (!item?.payload) return null
+  const p = item.payload
+  return (
+    p?.result?.video_url ||
+    p?.video_url ||
+    p?.result?.media?.video?.url ||
+    p?.media?.video?.url ||
+    null
+  )
+}
+
+function hasMediaDeliverable(item) {
+  if (!item) return false
+  if (getItemVideoUrl(item)) return true
+  const p = item.payload
+  if (p?.result?.media?.scenes?.length || p?.media?.scenes?.length || p?.result?.media?.images_generated?.length) return true
+  if (item.type === 'rendered_dark_video' || (item.type === 'task_deliverable' && item.task_id)) return true
+  return false
 }
 
 function selectHook(itemId, hookIdx) {
@@ -520,14 +542,36 @@ async function syncCalendarNow() {
                       >
                         Base: {{ item.payload?.parent_tracking_code }} (ROI: {{ item.payload?.parent_roi_score || 0 }})
                       </span>
+                      <span
+                        v-if="hasMediaDeliverable(item)"
+                        class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center space-x-1"
+                      >
+                        <span>🎬</span>
+                        <span>Vídeo 9:16 Gerado</span>
+                      </span>
                     </div>
                     <h3 class="text-base font-bold text-white mt-1">{{ item.title }}</h3>
                     <p class="text-xs text-slate-400 mt-0.5">{{ item.summary }}</p>
                   </div>
                 </div>
 
-                <!-- Ações Imediatas (1-clique Approve + Botão Copiar) -->
+                <!-- Ações Imediatas (1-clique Approve + Botão Copiar + Download Direto) -->
                 <div class="flex flex-wrap items-center gap-2 shrink-0">
+                  <!-- Botão de Download Rápido do Vídeo -->
+                  <a
+                    v-if="getItemVideoUrl(item)"
+                    :href="getItemVideoUrl(item).includes('?') ? `${getItemVideoUrl(item)}&download=true` : `${getItemVideoUrl(item)}?download=true`"
+                    download
+                    target="_blank"
+                    title="Baixar Vídeo Final .mp4"
+                    class="px-3 py-2 text-xs font-bold rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition flex items-center space-x-1.5"
+                  >
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>Baixar Vídeo</span>
+                  </a>
+
                   <button
                     @click="copyScriptToClipboard(item)"
                     title="Copiar Roteiro e Hooks"
@@ -543,7 +587,7 @@ async function syncCalendarNow() {
                     @click="toggleExpand(item.id)"
                     class="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center space-x-1"
                   >
-                    <span>{{ expandedCardId === item.id ? 'Recolher' : 'Examinar Roteiro' }}</span>
+                    <span>{{ expandedCardId === item.id ? 'Recolher' : (hasMediaDeliverable(item) ? 'Visualizar Vídeo & Cenas' : 'Examinar Roteiro') }}</span>
                     <svg
                       class="w-4 h-4 transition-transform duration-200"
                       :class="expandedCardId === item.id ? 'rotate-180' : ''"
@@ -573,7 +617,7 @@ async function syncCalendarNow() {
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                     </svg>
-                    <span>Aprovar</span>
+                    <span>{{ hasMediaDeliverable(item) ? 'Aprovar e Publicar' : 'Aprovar' }}</span>
                   </button>
 
                   <button
@@ -590,6 +634,12 @@ async function syncCalendarNow() {
 
               <!-- Corpo Expansível com Roteiro e Análise -->
               <div v-if="expandedCardId === item.id" class="p-6 bg-slate-950/60 border-t border-slate-800/80 space-y-6">
+                <!-- Galeria Multimídia do Entregável (Player de Vídeo 9:16, Áudio e Grid de 20 Cenas) -->
+                <TaskMediaGallery
+                  v-if="hasMediaDeliverable(item)"
+                  :task-id="item.task_id"
+                  :initial-media="item.payload"
+                />
                 <!-- Dados do Produto Minerado -->
                 <div v-if="item.payload?.product" class="p-4 rounded-xl bg-slate-900 border border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div class="flex items-center space-x-3 md:col-span-2">

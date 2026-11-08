@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import { useSwal } from '@/composables/useSwal'
+import TaskMediaGallery from '@/components/TaskMediaGallery.vue'
 
 marked.setOptions({
   gfm: true,
@@ -322,99 +323,12 @@ function getPriorityBadge(priority) {
 
           <!-- Caso HAJA entregável produzido -->
           <template v-else>
-            <!-- BLOCO 1: PLAYER DE VÍDEO 9:16 & MÍDIAS VERTICAIS -->
-            <div
-              v-if="videoUrl"
-              class="p-4 rounded-2xl bg-gradient-to-b from-indigo-950/40 via-slate-900 to-slate-950 border border-indigo-500/30 space-y-3.5 shadow-xl"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                  <span class="text-lg">🎬</span>
-                  <div>
-                    <h3 class="text-sm font-bold text-white">Vídeo Vertical 9:16 Renderizado</h3>
-                    <p class="text-[10px] text-slate-400">Pronto para TikTok Shop, YouTube Shorts e Instagram Reels</p>
-                  </div>
-                </div>
-                <div class="flex items-center space-x-1.5 text-[10px] font-mono">
-                  <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">1080x1920</span>
-                  <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    {{ task.result?.media?.video?.duration_seconds || '60' }}s
-                  </span>
-                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                    {{ task.result?.media?.video?.size_mb || '0' }} MB
-                  </span>
-                </div>
-              </div>
-
-              <!-- Player de Vídeo 9:16 com proporção elegante -->
-              <div class="flex justify-center bg-black/80 rounded-xl p-3 border border-slate-800/80">
-                <video
-                  :src="videoUrl"
-                  controls
-                  playsinline
-                  class="max-h-[360px] sm:max-h-[420px] w-auto rounded-lg shadow-2xl border border-slate-700/60"
-                ></video>
-              </div>
-
-              <!-- Botões de Ação e Download -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                <a
-                  :href="videoUrl"
-                  download
-                  target="_blank"
-                  class="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] text-center flex items-center justify-center space-x-1.5 transition shadow-md shadow-emerald-500/20"
-                >
-                  <span>📥</span>
-                  <span>Baixar Vídeo (.mp4)</span>
-                </a>
-
-                <a
-                  v-if="audioUrl"
-                  :href="audioUrl"
-                  download
-                  target="_blank"
-                  class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] text-center flex items-center justify-center space-x-1.5 transition shadow-sm"
-                >
-                  <span>🎙️</span>
-                  <span>Baixar Áudio (.mp3)</span>
-                </a>
-
-                <a
-                  v-if="srtUrl"
-                  :href="srtUrl"
-                  download
-                  target="_blank"
-                  class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] text-center flex items-center justify-center space-x-1.5 transition border border-slate-700"
-                >
-                  <span>📝</span>
-                  <span>Legendas (.srt)</span>
-                </a>
-              </div>
-
-              <!-- Galeria de Cenas Visuais Geradas -->
-              <div v-if="imagesList.length > 0" class="pt-3 border-t border-slate-800/80">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Cenas Visuais Geradas ({{ imagesList.length }} frames 9:16):
-                  </span>
-                  <span class="text-[10px] text-slate-500">Clique para expandir</span>
-                </div>
-                <div class="flex space-x-2 overflow-x-auto pb-1.5">
-                  <div
-                    v-for="(imgUrl, iIdx) in imagesList"
-                    :key="iIdx"
-                    @click="activeImagePreview = imgUrl"
-                    class="shrink-0 w-20 h-32 rounded-xl overflow-hidden border border-slate-800 hover:border-emerald-500 cursor-pointer transition shadow-md group relative"
-                    :title="`Cena ${iIdx + 1} (Clique para ampliar)`"
-                  >
-                    <img :src="imgUrl" :alt="`Cena ${iIdx + 1}`" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                    <span class="absolute bottom-1 right-1 text-[9px] bg-black/70 text-white px-1 rounded font-mono">
-                      #{{ iIdx + 1 }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <!-- BLOCO 1: PLAYER DE VÍDEO 9:16, ÁUDIO & GRID DE 20 CENAS -->
+            <TaskMediaGallery
+              :task-id="task.id"
+              :business-id="task.business_id"
+              :initial-media="task"
+            />
 
             <!-- BLOCO 2: RESUMO EXECUTIVO -->
             <div v-if="task.result?.summary" class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">

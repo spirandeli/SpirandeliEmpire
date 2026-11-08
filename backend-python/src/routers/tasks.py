@@ -15,6 +15,7 @@ from src.schemas.task import (
     TaskUpdateRequest,
 )
 from src.services.task_executor_service import execute_agent_task
+from src.routers.media import scan_task_media_dir
 
 logger = logging.getLogger("abvos.routers.tasks")
 
@@ -258,6 +259,36 @@ async def show(
 ):
     task = await _get_user_task(task_id, current_user, db)
     return {"data": _format_task(task)}
+
+
+@router.get("/{task_id}/media")
+async def get_task_media(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retorna a lista e manifesto completo dos arquivos de mídia gerados para a tarefa,
+    incluindo URLs de streaming nativo para player e links diretos de download.
+    """
+    task = await _get_user_task(task_id, current_user, db)
+    manifest = scan_task_media_dir(task_id=task.id, business_id=task.business_id)
+
+    # Enriquecimento com metadados adicionais do resultado registrado na tarefa
+    if task.result and isinstance(task.result, dict):
+        manifest["task_title"] = task.title
+        manifest["task_status"] = task.status
+        if "media" in task.result and isinstance(task.result["media"], dict):
+            media_info = task.result["media"]
+            if manifest.get("video") and "video" in media_info:
+                manifest["video"]["duration_seconds"] = media_info["video"].get("duration_seconds", 60.0)
+                manifest["video"]["resolution"] = media_info["video"].get("resolution", "1080x1920")
+                manifest["video"]["aspect_ratio"] = media_info["video"].get("aspect_ratio", "9:16")
+            if manifest.get("audio") and "audio" in media_info:
+                manifest["audio"]["duration_seconds"] = media_info["audio"].get("duration_seconds")
+                manifest["audio"]["provider"] = media_info["audio"].get("provider", "ElevenLabs / EdgeTTS")
+
+    return {"data": manifest}
 
 
 @router.patch("/{task_id}/move")
