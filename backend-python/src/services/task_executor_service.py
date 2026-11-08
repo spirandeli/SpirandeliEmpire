@@ -1,5 +1,6 @@
 import json
 import logging
+import secrets
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Any
@@ -147,8 +148,9 @@ Produza agora o entregável final estruturado."""
         if items:
             for idx, it in enumerate(items[:10]):
                 script_body = it.get("script") or it.get("description") or parsed_output.get("markdown_content", "")
+                unique_code = f"DK-{business.id}-{task.id}-{secrets.token_hex(3)}"
                 asset = ContentAsset(
-                    tracking_code=f"DK-{business.id}-{task.id}-{idx+1}",
+                    tracking_code=unique_code,
                     business_id=business.id,
                     type="dark_script_short",
                     platform="youtube_shorts",
@@ -174,8 +176,9 @@ Produza agora o entregável final estruturado."""
                 assets_created.append(asset.title)
         else:
             # Cria 1 asset abrangente com o markdown gerado
+            unique_code = f"DK-{business.id}-{task.id}-{secrets.token_hex(3)}"
             asset = ContentAsset(
-                tracking_code=f"DK-{business.id}-{task.id}-0",
+                tracking_code=unique_code,
                 business_id=business.id,
                 type="video_script",
                 platform="youtube_shorts",
