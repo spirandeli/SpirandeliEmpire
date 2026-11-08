@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.agent_tools.vps_tool import get_vps_telemetry
 from src.services.agent_tools.docker_tool import list_docker_containers, get_docker_container_logs
 from src.services.agent_tools.venture_tool import list_user_ventures, create_business_venture
-from src.services.agent_tools.task_workflow_tool import create_kanban_task, move_kanban_task, submit_to_approval_queue
+from src.services.agent_tools.task_workflow_tool import create_kanban_task, move_kanban_task, execute_kanban_task, submit_to_approval_queue
 from src.services.agent_tools.knowledge_tool import search_knowledge_tool
 
 logger = logging.getLogger("abvos.agent_tools")
@@ -48,6 +48,11 @@ TOOL_METADATA = {
         "category": "task",
         "description": "Movimentando tarefa no fluxo de trabalho...",
     },
+    "execute_kanban_task": {
+        "title": "Executar Tarefa com IA Worker",
+        "category": "task",
+        "description": "Executando entregável da tarefa com Gemini 3.8...",
+    },
     "submit_to_approval_queue": {
         "title": "Submeter à Supervisão Humana",
         "category": "governance",
@@ -70,6 +75,7 @@ TOOL_DISPATCH_TABLE: dict[str, Callable[..., Any]] = {
     "create_business_venture": create_business_venture,
     "create_kanban_task": create_kanban_task,
     "move_kanban_task": move_kanban_task,
+    "execute_kanban_task": execute_kanban_task,
     "submit_to_approval_queue": submit_to_approval_queue,
     "search_knowledge_tool": search_knowledge_tool,
 }
@@ -168,10 +174,21 @@ def get_gemini_tools_declarations() -> list[dict[str, Any]]:
                     "task_id": {"type": "INTEGER", "description": "ID da tarefa."},
                     "new_status": {
                         "type": "STRING",
-                        "description": "Novo status ('backlog', 'ready', 'in_progress', 'supervision', 'done', 'blocked').",
+                        "description": "Novo status ('backlog', 'ready', 'in_progress_agent', 'awaiting_supervision', 'todo_user', 'done').",
                     },
                 },
                 "required": ["task_id", "new_status"],
+            },
+        },
+        {
+            "name": "execute_kanban_task",
+            "description": "Executa imediatamente uma tarefa do Kanban usando a IA Worker (Gemini 3.8). Produz os entregáveis reais (roteiros em 5 atos, prompts visuais para Midjourney/Leonardo, textos de narração TTS ou planos de ação) e submete à Fila de Supervisão Humana.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "task_id": {"type": "INTEGER", "description": "ID da tarefa cadastrada no Kanban."},
+                },
+                "required": ["task_id"],
             },
         },
         {

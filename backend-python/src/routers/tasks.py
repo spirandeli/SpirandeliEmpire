@@ -13,6 +13,7 @@ from src.schemas.task import (
     TaskResponse,
     TaskUpdateRequest,
 )
+from src.services.task_executor_service import execute_agent_task
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -291,6 +292,56 @@ async def update(
     await db.refresh(task)
 
     return {"data": _format_task(task)}
+
+
+@router.post("/{task_id}/execute")
+async def execute(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        res = await execute_agent_task(db, task_id, current_user)
+        return {"message": "Tarefa executada com sucesso pelo IA Worker!", **res}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao executar tarefa com IA: {str(e)}",
+        )
+
+
+@router.post("/execute-pending")
+async def execute_pending(
+    business_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Task.id).where(
+        Task.user_id == current_user.id,
+        Task.assignee == "agent",
+        Task.status.in_(["in_progress_agent", "backlog", "ready", "in_progress"]),
+        Task.deleted_at.is_(None),
+    )
+    if business_id:
+        query = query.where(Task.business_id == business_id)
+
+    res = await db.execute(query.order_by(Task.id.asc()).limit(10))
+    task_ids = res.scalars().all()
+
+    executed = []
+    errors = []
+    for tid in task_ids:
+        try:
+            r = await execute_agent_task(db, tid, current_user)
+            executed.append({"task_id": tid, "status": r["status"], "summary": r["summary"]})
+        except Exception as e:
+            errors.append({"task_id": tid, "error": str(e)})
+
+    return {
+        "message": f"{len(executed)} tarefas executadas com sucesso.",
+        "executed": executed,
+        "errors": errors,
+    }
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

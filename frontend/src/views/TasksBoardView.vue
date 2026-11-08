@@ -4,6 +4,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
+import { api } from '@/services/api'
 
 const taskStore = useTaskStore()
 const businessStore = useBusinessStore()
@@ -15,6 +16,9 @@ const showCreateModal = ref(false)
 const showLogsDrawer = ref(false)
 const isCreatingTask = ref(false)
 const activeMobileCol = ref('all')
+const executingTaskId = ref(null)
+const selectedTaskResult = ref(null)
+const showTaskResultModal = ref(false)
 
 const newTask = ref({
   business_id: '',
@@ -99,6 +103,30 @@ async function handleMove(task, targetStatus) {
     swal.error('Movimento não permitido', err.response?.data?.message || err.message)
     await loadBoard()
   }
+}
+
+async function handleExecuteTask(task) {
+  executingTaskId.value = task.id
+  try {
+    const res = await api.post(`/tasks/${task.id}/execute`)
+    swal.toast(res.data?.message || 'Tarefa executada com sucesso pelo IA Worker!', 'success')
+    await loadBoard()
+  } catch (err) {
+    swal.error('Erro ao executar tarefa', err.response?.data?.detail || err.message)
+  } finally {
+    executingTaskId.value = null
+  }
+}
+
+function viewTaskResult(task) {
+  selectedTaskResult.value = task
+  showTaskResultModal.value = true
+}
+
+function copyText(text) {
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  swal.toast('Copiado para a área de transferência!', 'success')
 }
 
 async function handleDeleteTask(task) {
@@ -333,6 +361,31 @@ function getColumnBadgeColor(status) {
                 Venture: <strong class="text-slate-400">{{ task.business.name }}</strong>
               </div>
 
+              <!-- Ações da IA Worker -->
+              <div v-if="task.result || (task.assignee === 'agent' && task.status !== 'done')" class="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  v-if="task.result"
+                  @click="viewTaskResult(task)"
+                  class="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold flex items-center space-x-1 transition"
+                  title="Visualizar entregável produzido"
+                >
+                  <span>📄</span>
+                  <span>Ver Entregável</span>
+                </button>
+
+                <button
+                  v-if="task.assignee === 'agent' && task.status !== 'done'"
+                  @click="handleExecuteTask(task)"
+                  :disabled="executingTaskId === task.id"
+                  class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold flex items-center space-x-1 transition shadow-sm disabled:opacity-50"
+                  :title="task.result ? 'Reexecutar tarefa com IA' : 'Executar tarefa com IA Worker'"
+                >
+                  <span v-if="executingTaskId === task.id" class="animate-spin">⏳</span>
+                  <span v-else>⚡</span>
+                  <span>{{ executingTaskId === task.id ? 'Gerando...' : (task.result ? 'Reexecutar' : 'Executar IA') }}</span>
+                </button>
+              </div>
+
               <!-- Controles Rápidos de Movimentação -->
               <div class="pt-2 border-t border-slate-900 flex items-center justify-between text-[11px]">
                 <div class="flex items-center space-x-1">
@@ -521,6 +574,86 @@ function getColumnBadgeColor(status) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- MODAL: Visualizar Entregável da Tarefa -->
+    <div
+      v-if="showTaskResultModal && selectedTaskResult"
+      class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div class="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4 my-8 max-h-[85vh] flex flex-col">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Entregável do IA Worker (Gemini 3.8)</span>
+            <h3 class="text-base font-bold text-white mt-1">{{ selectedTaskResult.title }}</h3>
+          </div>
+          <button @click="showTaskResultModal = false" class="text-slate-400 hover:text-white p-2">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-slate-300 text-xs leading-relaxed">
+          <div v-if="selectedTaskResult.result?.summary" class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+            <h4 class="text-slate-400 font-semibold mb-1">Resumo Executivo:</h4>
+            <p class="text-slate-200">{{ selectedTaskResult.result.summary }}</p>
+          </div>
+
+          <div v-if="selectedTaskResult.result?.markdown_content" class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono whitespace-pre-wrap">
+            {{ selectedTaskResult.result.markdown_content }}
+          </div>
+
+          <div v-if="selectedTaskResult.result?.items?.length" class="space-y-3">
+            <h4 class="text-sm font-bold text-white">Itens & Cenas Detalhadas:</h4>
+            <div
+              v-for="(it, idx) in selectedTaskResult.result.items"
+              :key="idx"
+              class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2"
+            >
+              <div class="flex items-center justify-between">
+                <strong class="text-white text-xs">{{ idx + 1 }}. {{ it.title }}</strong>
+                <span v-if="it.description" class="text-slate-500 text-[10px]">{{ it.description }}</span>
+              </div>
+              <p v-if="it.script" class="text-slate-200 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 text-[11px]">
+                <span class="text-emerald-400 font-semibold block mb-0.5">Narração / TTS:</span>
+                {{ it.script }}
+              </p>
+              <div v-if="it.visual_prompt" class="bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/20 text-[11px] text-indigo-300">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-[10px] uppercase text-indigo-400">Prompt Visual (Midjourney/Leonardo):</span>
+                  <button @click="copyText(it.visual_prompt)" class="text-[10px] text-indigo-300 hover:text-white underline">Copiar Prompt</button>
+                </div>
+                <code class="font-mono text-[10px] select-all">{{ it.visual_prompt }}</code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0">
+          <button
+            @click="copyText(selectedTaskResult.result?.markdown_content || selectedTaskResult.result?.summary)"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+          >
+            📋 Copiar Todo o Conteúdo
+          </button>
+          <div class="flex items-center space-x-2">
+            <button
+              v-if="selectedTaskResult.status === 'awaiting_supervision'"
+              @click="handleMove(selectedTaskResult, 'done'); showTaskResultModal = false"
+              class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition"
+            >
+              ✓ Aprovar Entregável
+            </button>
+            <button
+              @click="showTaskResultModal = false"
+              class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </AppLayout>

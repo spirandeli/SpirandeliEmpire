@@ -125,6 +125,40 @@ async def move_kanban_task(
     }
 
 
+async def execute_kanban_task(
+    db: AsyncSession,
+    user_id: int,
+    task_id: int,
+) -> dict[str, Any]:
+    """Executa imediatamente uma tarefa do Kanban usando a IA Worker (Gemini 3.8), gerando o entregável prático (roteiro, prompts de imagem, assets ou planejamento) e enviando para a Fila de Supervisão.
+
+    Args:
+        task_id: ID da tarefa cadastrada no Kanban a ser executada.
+
+    Returns:
+        Resultado detalhado da execução da tarefa.
+    """
+    from src.models import User
+    from src.services.task_executor_service import execute_agent_task
+
+    user_res = await db.execute(select(User).where(User.id == user_id))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        return {"error": "Usuário não encontrado."}
+
+    try:
+        res = await execute_agent_task(db, task_id, user)
+        return {
+            "success": True,
+            "message": f"Tarefa #{task_id} executada com sucesso pelo IA Worker! Entregável gerado e pronto para supervisão.",
+            "deliverable": res.get("summary"),
+            "status": res.get("status"),
+            "assets_created": res.get("assets_created"),
+        }
+    except Exception as e:
+        return {"error": f"Falha ao executar tarefa #{task_id} com IA Worker: {str(e)}"}
+
+
 async def submit_to_approval_queue(
     db: AsyncSession,
     user_id: int,
