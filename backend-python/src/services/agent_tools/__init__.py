@@ -134,7 +134,7 @@ def get_gemini_tools_declarations() -> list[dict[str, Any]]:
                     "name": {"type": "STRING", "description": "Nome comercial da venture."},
                     "archetype": {
                         "type": "STRING",
-                        "description": "Arquétipo ('affiliate_tiktok', 'dropshipping', 'saas', 'custom').",
+                        "description": "Arquétipo ('affiliate_tiktok', 'canal_dark', 'dropshipping', 'saas', 'custom').",
                     },
                     "niche": {"type": "STRING", "description": "Nicho de atuação."},
                     "description": {"type": "STRING", "description": "Resumo do negócio ou tese de validação."},

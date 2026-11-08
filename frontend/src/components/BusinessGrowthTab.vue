@@ -191,6 +191,8 @@ function formatBRL(val) {
 
 function getArchetypeLabel(arch) {
   const map = {
+    canal_dark: '🎬 Canal Dark (YouTube & TikTok)',
+    dark_channel_automation: '🎬 Canal Dark (YouTube & TikTok)',
     affiliate_tiktok: 'Afiliados & TikTok Shop',
     infoproduct: 'Infoprodutos & Lançamentos',
     saas: 'SaaS & Assinaturas',

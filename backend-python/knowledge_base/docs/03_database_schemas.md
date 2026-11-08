@@ -6,7 +6,7 @@ Representa uma venture digital independente dentro do sistema.
 - `user_id` (BIGINT UNSIGNED, FK): Dono do negócio.
 - `name` (VARCHAR 255): Nome comercial da venture.
 - `slug` (VARCHAR 255): Slug identificador URL.
-- `type` / `archetype` (VARCHAR 48): Tipo de negócio (`affiliate_tiktok`, `dropshipping`, `saas`, `custom`).
+- `type` / `archetype` (VARCHAR 48): Tipo de negócio (`affiliate_tiktok`, `canal_dark`, `dropshipping`, `saas`, `custom`).
 - `north_star_metric` (VARCHAR 48): Métrica primária (`commission_volume`, `mrr`, `net_profit`).
 - `target_kpi_value` (DECIMAL 12,2): Alvo numérico de faturamento ou volume.
 - `status` (VARCHAR 32): `draft`, `active`, `paused`, `archived`.

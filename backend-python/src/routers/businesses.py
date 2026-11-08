@@ -24,6 +24,13 @@ from src.schemas.business import (
     BusinessCreateRequest,
     BusinessResponse,
     BusinessUpdateRequest,
+    DarkScriptCreateRequest,
+    DarkScriptResponse,
+)
+from src.services.dark_channel_service import (
+    generate_dark_script,
+    list_dark_scripts,
+    mine_dark_channel_topics,
 )
 
 router = APIRouter(prefix="/businesses", tags=["Businesses"])
@@ -125,13 +132,57 @@ async def store(
         slug = f"{slug}-{secrets.token_hex(2)}"
 
     now = _utc_now()
+    archetype = payload.archetype or "affiliate_tiktok"
+    biz_type = payload.type or "custom"
+    north_star = payload.north_star_metric or "commission_volume"
+    canvas = payload.canvas or {}
+    brand_rules = payload.brand_rules or {}
+
+    if archetype in ("canal_dark", "dark_channel"):
+        archetype = "canal_dark"
+        if biz_type == "custom":
+            biz_type = "dark_channel_automation"
+        if not payload.north_star_metric or payload.north_star_metric == "commission_volume":
+            north_star = "monthly_views"
+        if not canvas:
+            canvas = {
+                "value_propositions": [
+                    "Vídeos magnéticos sem rosto de alta retenção no YouTube e TikTok.",
+                    "Monetização escalável com AdSense, Creator Rewards e produtos de afiliados.",
+                ],
+                "customer_segments": [
+                    "Espectadores no YouTube e TikTok fascinados por narrativas imersivas e curiosidades.",
+                ],
+                "channels": [
+                    "YouTube Shorts",
+                    "YouTube Vídeos Longos (8-12 min)",
+                    "TikTok Vídeos Virais",
+                ],
+                "revenue_streams": [
+                    "YouTube AdSense (RPM R$ 20 a R$ 60)",
+                    "TikTok Creator Rewards Program",
+                    "Comissões de infoprodutos no comentário fixado",
+                ],
+                "key_activities": [
+                    "Mineração de temas de alto volume de buscas e baixa concorrência",
+                    "Geração de roteiros em 5 atos e ganchos de 3 segundos com Gemini 3.8",
+                    "Geração de imagens Midjourney e narração sintética",
+                    "Aprovação na Fila de Supervisão e postagem",
+                ],
+            }
+        if not brand_rules:
+            brand_rules = {
+                "tone_of_voice": "Misterioso, imersivo, com ritmo dinâmico, quebra de padrões e storytelling de alta retenção.",
+                "target_audience": "Audiência de vídeos rápidos e documentários no YouTube e TikTok Brasil.",
+            }
+
     business = Business(
         user_id=current_user.id,
         name=payload.name,
         slug=slug,
-        type=payload.type or "custom",
-        archetype=payload.archetype or "affiliate_tiktok",
-        north_star_metric=payload.north_star_metric or "commission_volume",
+        type=biz_type,
+        archetype=archetype,
+        north_star_metric=north_star,
         target_kpi_value=payload.target_kpi_value or Decimal("0.00"),
         niche=payload.niche,
         description=payload.description,
@@ -139,13 +190,33 @@ async def store(
         automation_enabled=True,
         activated_at=now,
         webhook_secret_token=secrets.token_urlsafe(32),
-        canvas=payload.canvas or {},
-        brand_rules=payload.brand_rules or {},
+        canvas=canvas,
+        brand_rules=brand_rules,
         goals=payload.goals or {},
         created_at=now,
         updated_at=now,
     )
     db.add(business)
+    await db.flush()
+
+    # Cria automação inicial para Canal Dark
+    if archetype == "canal_dark":
+        auto_dark = BusinessAutomation(
+            business_id=business.id,
+            type="dark_channel_mining",
+            name="Mineração Diária de Pautas & Temas Virais (08:00)",
+            cron_expression="0 8 * * *",
+            is_enabled=True,
+            config={
+                "niche": business.niche or "Mistérios & Curiosidades",
+                "target_platforms": ["youtube_shorts", "tiktok", "youtube_long"],
+                "min_predicted_ctr": 8.0,
+            },
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(auto_dark)
+
     await db.commit()
     await db.refresh(business)
 
@@ -457,5 +528,44 @@ async def delete_automation(
     await db.delete(auto)
     await db.commit()
     return None
+
+
+# ==========================================
+# ENDPOINTS DO ESTÚDIO DARK (YOUTUBE / TIKTOK)
+# ==========================================
+
+@router.post("/{business_id}/dark-studio/generate-script", status_code=status.HTTP_201_CREATED)
+async def create_dark_script(
+    business_id: int,
+    payload: DarkScriptCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    biz = await _get_user_business(business_id, current_user, db)
+    script_data = await generate_dark_script(db, current_user, biz, payload)
+    return {"status": "success", "data": script_data}
+
+
+@router.get("/{business_id}/dark-studio/scripts")
+async def get_dark_scripts(
+    business_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    biz = await _get_user_business(business_id, current_user, db)
+    items = await list_dark_scripts(db, biz.id)
+    return {"data": items}
+
+
+@router.get("/{business_id}/dark-studio/topics")
+async def get_dark_topics(
+    business_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    biz = await _get_user_business(business_id, current_user, db)
+    topics = await mine_dark_channel_topics(biz)
+    return {"data": topics}
+
 
 

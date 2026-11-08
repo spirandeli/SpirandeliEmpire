@@ -276,3 +276,192 @@ async def provision_starter_kit(user: User, db: AsyncSession) -> Business:
     await db.commit()
     await db.refresh(business)
     return business
+
+
+async def provision_dark_channel_kit(user: User, db: AsyncSession) -> Business:
+    """
+    Provisiona um Venture completo demonstrativo do arquétipo Canal Dark
+    (YouTube / TikTok) com roteiro de alta retenção, prompts visuais de B-Roll,
+    fila de aprovação, tarefas Kanban e metas de visualizações/AdSense.
+    """
+    first_name = (user.name or "Showcase").split()[0]
+    suffix = _random_str(4)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    business = Business(
+        user_id=user.id,
+        name=f"Mistérios da História · {first_name}",
+        slug=f"misterios-dark-{user.id}-{suffix}",
+        type="dark_channel_automation",
+        archetype="canal_dark",
+        status="active",
+        automation_enabled=True,
+        activated_at=now,
+        niche="História Oculta & Mistérios Não Resolvidos",
+        description="Canal Dark de alta retenção no YouTube e TikTok focado em narrativas imersivas e monetização mista (AdSense + Afiliados).",
+        north_star_metric="monthly_views",
+        target_kpi_value=Decimal("500000.00"),  # 500k views mensais
+        webhook_secret_token=secrets.token_urlsafe(30),
+        canvas={
+            "value_propositions": [
+                "Vídeos magnéticos sem rosto com retenção média superior a 70% nos primeiros 30 segundos.",
+                "Monetização escalável através do YouTube AdSense, Creator Rewards e vendas de produtos físicos/digitais no comentário fixado.",
+            ],
+            "customer_segments": [
+                "Público de 18 a 45 anos fascinado por história militar, conspirações e arqueologia misteriosa.",
+            ],
+            "channels": [
+                "YouTube Shorts & YouTube Vídeos Longos (8-12 min)",
+                "TikTok Orgânico",
+            ],
+            "revenue_streams": [
+                "YouTube AdSense (RPM médio de R$ 25,00 por mil visualizações)",
+                "TikTok Creator Rewards Program",
+                "Comissões de afiliados em livros e cursos de história/arqueologia",
+            ],
+        },
+        brand_rules={
+            "tone_of_voice": "Solene, enigmático, imersivo, com ritmo dinâmico e pausas dramáticas pontuais.",
+            "target_audience": "Amantes de mistérios, documentários históricos e curiosidades no Brasil e países lusófonos.",
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(business)
+    await db.flush()
+
+    # Automação de Mineração de Temas
+    automation = BusinessAutomation(
+        business_id=business.id,
+        type="dark_channel_mining",
+        name="Mineração Diária de Pautas Virais Dark (08:00)",
+        cron_expression="0 8 * * *",
+        is_enabled=True,
+        next_run_at=now + timedelta(hours=8),
+        config={
+            "niche": business.niche,
+            "min_predicted_ctr": 9.5,
+            "target_platforms": ["youtube_shorts", "tiktok", "youtube_long"],
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(automation)
+
+    # Roteiro Short Dark Modelo
+    asset_code_short = f"DARK-{_random_str(6).upper()}"
+    short_scenes = [
+        {
+            "scene_number": 1,
+            "timestamp": "00:00 - 00:04",
+            "narration": "O homem que você está vendo na tela enganou o exército mais poderoso do planeta com tanques infláveis.",
+            "visual_prompt": "Cinematic archival 1944 style, hyper-realistic inflatable Sherman tank being carried by two soldiers, astonishing visual illusion, dramatic war haze, 35mm photograph, Kodak film grain --ar 9:16",
+            "b_roll_description": "Corte rápido revelando dois soldados levantando um tanque falso no nevoeiro",
+            "on_screen_text": "O EXÉRCITO FANTASMA DE 1944 🚨",
+        },
+        {
+            "scene_number": 2,
+            "timestamp": "00:04 - 00:25",
+            "narration": "Conhecido como o Exército Fantasma, esta divisão secreta utilizava efeitos sonoros de alta fidelidade e cenografia para salvar milhares de vidas.",
+            "visual_prompt": "Secret audio truck with massive loudspeakers in dark European forest at night, moody volumetric lighting, intense dramatic contrast, neo-noir realism --ar 9:16",
+            "b_roll_description": "Caminhões com autofalantes gigantes transmitindo barulho de blindados no meio da floresta",
+            "on_screen_text": "ÁUDIO DE ALTA POTÊNCIA",
+        },
+        {
+            "scene_number": 3,
+            "timestamp": "00:25 - 00:55",
+            "narration": "A missão permaneceu ultrassecreta por mais de 50 anos... e a genialidade desse plano quase não pôde ser revelada ao mundo.",
+            "visual_prompt": "Close up of confidential military declassification stamp pressing onto top secret document, atmospheric dust, intense warm spotlight in darkness --ar 9:16",
+            "b_roll_description": "Carimbo de desclassificação sendo aplicado em relatórios secretos",
+            "on_screen_text": "SEGREDO DE 50 ANOS",
+        },
+    ]
+
+    short_asset = ContentAsset(
+        business_id=business.id,
+        tracking_code=asset_code_short,
+        type="dark_script_short",
+        platform="youtube_shorts",
+        title="O Exército Fantasma que Enganou uma Guerra",
+        body="O homem que você está vendo na tela enganou o exército mais poderoso do planeta com tanques infláveis. Conhecido como o Exército Fantasma, esta divisão secreta utilizava efeitos sonoros de alta fidelidade e cenografia para salvar milhares de vidas. A missão permaneceu ultrassecreta por mais de 50 anos.",
+        content={
+            "hook": "O homem que você está vendo enganou um exército com tanques infláveis.",
+            "cta": "Inscreva-se no canal para mais histórias secretas.",
+            "scenes": short_scenes,
+            "seo_tags": ["misterios", "segundaguerra", "curiosidades", "fatosreais", "canaldark"],
+            "suggested_music": "Dark Suspense Drone 90 BPM with low cello",
+            "voice_persona": "Voz grave e solene, estilo documentário investigativo",
+        },
+        version=1,
+        funnel_stage="tof_attraction",
+        total_views=142000,
+        total_clicks=3820,
+        total_leads=410,
+        total_sales_count=48,
+        total_revenue_brl=Decimal("2390.40"),
+        roi_score=Decimal("94.20"),
+        status="supervision",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(short_asset)
+    await db.flush()
+
+    # Proposta na Fila de Aprovação
+    approval = ApprovalQueue(
+        business_id=business.id,
+        user_id=user.id,
+        type="dark_script_approval",
+        title=f"Roteiro Canal Dark: {short_asset.title}",
+        summary="Roteiro Short de 55 segundos com 3 cenas e prompts de imagem Midjourney prontos para renderização.",
+        payload={
+            "content_asset_id": short_asset.id,
+            "tracking_code": asset_code_short,
+            "format_type": "short",
+            "platform": "youtube_shorts",
+            "scenes": short_scenes,
+        },
+        status="pending",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(approval)
+    await db.flush()
+    short_asset.approval_queue_id = approval.id
+
+    # Tarefas no Kanban
+    task1 = Task(
+        business_id=business.id,
+        user_id=user.id,
+        title="Renderizar Imagens e Gerar Voz: Exército Fantasma",
+        description="Copiar prompts visuais para o Midjourney/Leonardo e sintetizar narração com voz solene no ElevenLabs.",
+        assignee="agent",
+        status="supervision",
+        priority="high",
+        source="agent",
+        agent_action="dark_channel_production",
+        payload={"content_asset_id": short_asset.id, "approval_id": approval.id},
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(task1)
+    approval.task_id = task1.id
+
+    task2 = Task(
+        business_id=business.id,
+        user_id=user.id,
+        title="Configurar Capas e Títulos de Alto CTR (A/B Test)",
+        description="Criar 3 variações de thumbnail com cores contrastantes e tipografia de impacto para teste A/B no YouTube Studio.",
+        assignee="user",
+        status="in_progress",
+        priority="medium",
+        source="agent",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(task2)
+
+    await db.commit()
+    await db.refresh(business)
+    return business
+

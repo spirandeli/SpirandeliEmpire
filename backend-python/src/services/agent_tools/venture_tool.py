@@ -56,8 +56,8 @@ async def create_business_venture(
 
     Args:
         name: Nome comercial do negócio (ex: 'TikTok Gadgets Brasil').
-        archetype: Arquétipo do negócio ('affiliate_tiktok', 'dropshipping', 'saas', 'custom').
-        niche: Nicho de mercado (ex: 'Casa Conectada & Iluminação 3D').
+        archetype: Arquétipo do negócio ('affiliate_tiktok', 'canal_dark', 'dropshipping', 'saas', 'custom').
+        niche: Nicho de mercado (ex: 'Mistérios & Curiosidades' ou 'Casa Conectada').
         description: Breve descrição ou tese de validação do negócio.
         target_kpi_value: Meta financeira ou de volume (ex: 10000.00).
 
@@ -67,6 +67,36 @@ async def create_business_venture(
     slug_base = _slugify(name)
     slug = f"{slug_base}-{user_id}"
 
+    if archetype in ("canal_dark", "dark_channel"):
+        north_star = "monthly_views"
+        canvas_defaults = {
+            "value_proposition": f"Canal Dark sem rosto de alta retenção no nicho de {niche or 'Mistérios e Curiosidades'} operado por IA.",
+            "customer_segments": [
+                "Espectadores no YouTube e TikTok atraídos por narrativas imersivas",
+                "Consumidores de vídeos curtos de curiosidades e fatos",
+            ],
+            "channels": ["YouTube Shorts", "YouTube Vídeos Longos", "TikTok Orgânico"],
+            "revenue_streams": [
+                "YouTube AdSense (RPM estimado de R$ 20 a R$ 60)",
+                "TikTok Creator Rewards Program",
+                "Vendas de infoprodutos e e-books no comentário fixado",
+            ],
+        }
+    elif archetype == "affiliate_tiktok":
+        north_star = "commission_volume"
+        canvas_defaults = {
+            "value_proposition": f"Operação validada no nicho de {niche or 'produtos virais'}",
+            "customer_segments": ["Consumidores mobile no TikTok", "Compradores por impulso"],
+            "channels": ["TikTok Shop", "Instagram Reels"],
+        }
+    else:
+        north_star = "revenue"
+        canvas_defaults = {
+            "value_proposition": f"Operação validada no nicho de {niche or 'geral'}",
+            "customer_segments": ["Clientes alvo"],
+            "channels": ["Canais digitais"],
+        }
+
     biz = Business(
         user_id=user_id,
         name=name,
@@ -75,15 +105,11 @@ async def create_business_venture(
         archetype=archetype,
         niche=niche,
         description=description,
-        north_star_metric="commission_volume" if archetype == "affiliate_tiktok" else "revenue",
+        north_star_metric=north_star,
         target_kpi_value=Decimal(str(target_kpi_value)),
         status="active",
         automation_enabled=True,
-        canvas={
-            "value_proposition": f"Operação validada no nicho de {niche or 'produtos virais'}",
-            "customer_segments": ["Consumidores mobile no TikTok", "Compradores por impulso"],
-            "channels": ["TikTok Shop", "Instagram Reels"],
-        },
+        canvas=canvas_defaults,
     )
     db.add(biz)
     await db.commit()

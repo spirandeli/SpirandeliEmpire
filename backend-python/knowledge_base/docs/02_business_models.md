@@ -18,3 +18,28 @@
 - **Estratégia de Validação**: Construção de MVP lean, landing page de pré-lançamento e aquisição orgânica orientada a conteúdo técnico e demonstrações práticas.
 - **KPIs**: MRR, Churn mensal (< 4%), LTV/CAC ratio (> 3x).
 
+## 4. Canal Dark (YouTube & TikTok Viral)
+- **Identificador de Arquétipo**: `canal_dark`
+- **Proposta de Valor**: Criação de canais de vídeo automatizados sem rosto (Faceless / Dark Channels) no YouTube (Shorts e Vídeos Longos) e TikTok, com produção orientada por inteligência artificial e alta retenção de audiência.
+- **Nichos de Alta Margem e Retenção**: Curiosidades & Mistérios, Fatos Históricos & Guerras, Finanças & Negócios, Estoicismo & Mentalidade, Casos Não Resolvidos, Tecnologia & Futuro.
+- **Estrutura de Conteúdo**:
+  1. *Vídeos Curtos (Shorts / TikTok 30s-60s)*:
+     - Hook hipnótico (0-3s): Pergunta chocante, quebra de expectativa ou afirmação contraintuitiva.
+     - Retenção acelerada (3-45s): Loops abertos rápidos, cortes dinâmicos a cada 2-3s, legendas cinéticas.
+     - Looping Contínuo / CTA (45-60s): Conexão sutil da última frase com a primeira para estimular repetição automática.
+  2. *Vídeos Longos (YouTube 8-15 min)*:
+     - Introdução intrigante (0-45s): Apresentação do mistério ou tese sem entregar a conclusão.
+     - Desenvolvimento em 5 Atos: Escalada de tensão, mini-cliffhangers a cada 90s para sustentar AVD (Average View Duration).
+     - Prompts de B-Roll / Cenas: Prompts visuais detalhados gerados para Midjourney v6, Leonardo, Runway Gen-3 e Pexels.
+     - Direção de Voz IA (ElevenLabs): Especificação de tom (solene, misterioso, enérgico), cadência e pausas dramáticas.
+- **Monetização Mista**:
+  - YouTube AdSense (RPM variando de R$ 15 a R$ 80 dependendo do nicho).
+  - TikTok Creator Rewards Program (baseado em visualizações qualificadas acima de 1 minuto).
+  - Marketing de Afiliados (produtos físicos e digitais no comentário fixado e descrição).
+- **Métricas Chave (KPIs)**:
+  - CTR de Thumbnail / Impressões (> 8.5%).
+  - Taxa de Retenção AVD aos 30 segundos (> 70% em Shorts, > 55% em vídeos longos).
+  - Horas de Exibição / Watch Time total.
+  - Receita Combinada (AdSense + Comissões).
+
+

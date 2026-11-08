@@ -40,6 +40,38 @@ const newBiz = ref({
   tone_of_voice: 'Persuasivo, dinâmico e focado em benefícios imediatos',
 })
 
+function onArchetypeChange() {
+  if (newBiz.value.archetype === 'canal_dark') {
+    if (!newBiz.value.niche) newBiz.value.niche = 'Mistérios & Curiosidades Históricas'
+    newBiz.value.business_model = 'dark_channel_automation'
+    newBiz.value.north_star_metric = 'monthly_views'
+    newBiz.value.target_kpi_value = 250000
+    newBiz.value.tone_of_voice = 'Misterioso, imersivo, com pausas dramáticas e ritmo dinâmico de alta retenção'
+    if (!newBiz.value.description) {
+      newBiz.value.description = 'Canal Dark automatizado com narrativas envolventes no YouTube e TikTok, monetizado via AdSense e Afiliados.'
+    }
+  } else if (newBiz.value.archetype === 'affiliate_tiktok') {
+    newBiz.value.business_model = 'tiktok_shop_affiliate'
+    newBiz.value.north_star_metric = 'commission_volume'
+    newBiz.value.target_kpi_value = 5000
+    newBiz.value.tone_of_voice = 'Persuasivo, dinâmico e focado em benefícios imediatos'
+  }
+}
+
+function getArchetypeDisplay(biz) {
+  const arch = biz.archetype || biz.type
+  if (arch === 'canal_dark' || arch === 'dark_channel_automation') {
+    return '🎬 Canal Dark (YouTube / TikTok)'
+  }
+  if (arch === 'affiliate_tiktok' || arch === 'tiktok_shop_affiliate') {
+    return '🛒 TikTok Shop Afiliados'
+  }
+  if (arch === 'infoproduct') return '📚 Infoprodutos'
+  if (arch === 'saas') return '⚡ SaaS Bootstrapped'
+  if (arch === 'ecommerce') return '📦 E-commerce / Drop'
+  return biz.business_model || arch || 'Venture Digital'
+}
+
 onMounted(async () => {
   await businessStore.fetchBusinesses()
 })
@@ -187,7 +219,7 @@ async function handleDelete(biz) {
             <!-- Top Tags -->
             <div class="flex items-center justify-between">
               <span class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
-                {{ biz.business_model || 'TikTok Shop Affiliate' }}
+                {{ getArchetypeDisplay(biz) }}
               </span>
               <span
                 class="px-2 py-0.5 text-[10px] font-bold rounded-full border flex items-center space-x-1"
@@ -308,8 +340,10 @@ async function handleDelete(biz) {
               <label class="block text-xs font-semibold text-slate-300 mb-1">Arquétipo do Negócio</label>
               <select
                 v-model="newBiz.archetype"
+                @change="onArchetypeChange"
                 class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-emerald-500"
               >
+                <option value="canal_dark">🎬 Canal Dark (YouTube & TikTok Viral)</option>
                 <option value="affiliate_tiktok">Afiliados & TikTok Shop Viral</option>
                 <option value="infoproduct">Infoprodutos & Lançamentos</option>
                 <option value="saas">SaaS & Assinaturas Recorrentes</option>

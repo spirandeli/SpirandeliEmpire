@@ -20,10 +20,97 @@ const miningInProgress = ref(false)
 const tasks = ref([])
 const loadingTasks = ref(false)
 
+// Dark Channel Studio States
+const darkScripts = ref([])
+const darkTopics = ref([])
+const loadingDarkStudio = ref(false)
+const generatingDarkScript = ref(false)
+const showNewScriptModal = ref(false)
+const selectedDarkScript = ref(null)
+const newScriptForm = ref({
+  title: '',
+  topic: '',
+  format_type: 'short',
+  target_platform: 'youtube_shorts',
+  tone: 'Misterioso, instigante e com suspense crescente',
+  visual_style: 'Cinemático 8k hiper-realista, iluminação dramática, Unreal Engine 5 render style',
+  voice_persona: 'Voz masculina profunda e documental, ritmo pausado',
+})
+
+const isDarkChannel = computed(() => {
+  const arch = business.value?.archetype || business.value?.type
+  return arch === 'canal_dark' || arch === 'dark_channel_automation'
+})
+
 onMounted(async () => {
   await loadBusiness()
   await loadTasks()
+  if (isDarkChannel.value) {
+    await loadDarkStudio()
+  }
 })
+
+async function loadDarkStudio() {
+  loadingDarkStudio.value = true
+  try {
+    const [scriptsRes, topicsRes] = await Promise.all([
+      api.get(`/businesses/${businessId}/dark-studio/scripts`),
+      api.get(`/businesses/${businessId}/dark-studio/topics`),
+    ])
+    darkScripts.value = scriptsRes.data.data || []
+    darkTopics.value = topicsRes.data.data || []
+  } catch (err) {
+    console.error('Erro ao carregar estúdio dark:', err)
+  } finally {
+    loadingDarkStudio.value = false
+  }
+}
+
+async function handleGenerateDarkScript() {
+  if (!newScriptForm.value.title.trim() || !newScriptForm.value.topic.trim()) {
+    swal.error('Campos obrigatórios', 'Por favor, informe o título e a premissa/tema do vídeo.')
+    return
+  }
+
+  generatingDarkScript.value = true
+  try {
+    const res = await api.post(`/businesses/${businessId}/dark-studio/generate-script`, newScriptForm.value)
+    swal.toast('Roteiro gerado com sucesso e submetido para supervisão!', 'success')
+    showNewScriptModal.value = false
+    newScriptForm.value = {
+      title: '',
+      topic: '',
+      format_type: 'short',
+      target_platform: 'youtube_shorts',
+      tone: 'Misterioso, instigante e com suspense crescente',
+      visual_style: 'Cinemático 8k hiper-realista, iluminação dramática, Unreal Engine 5 render style',
+      voice_persona: 'Voz masculina profunda e documental, ritmo pausado',
+    }
+    await loadDarkStudio()
+    await loadTasks()
+    if (res.data?.data) {
+      selectedDarkScript.value = res.data.data
+    }
+  } catch (err) {
+    swal.error('Erro ao gerar roteiro', err.response?.data?.message || err.message)
+  } finally {
+    generatingDarkScript.value = false
+  }
+}
+
+function selectTopicForScript(t) {
+  newScriptForm.value.title = t.topic
+  newScriptForm.value.topic = t.hook_angle
+  newScriptForm.value.format_type = t.format_recommended || 'short'
+  newScriptForm.value.target_platform = t.format_recommended === 'long' ? 'youtube_long' : 'youtube_shorts'
+  showNewScriptModal.value = true
+}
+
+function copyPrompt(text) {
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  swal.toast('Prompt copiado para a área de transferência!', 'success')
+}
 
 async function loadBusiness() {
   await businessStore.fetchBusiness(businessId)
@@ -172,7 +259,21 @@ async function toggleAutomation(automation) {
           >
             Business Model Canvas & Marca
           </button>
+          <!-- Aba Dinâmica por Arquétipo: Estúdio Dark ou Vitrine TikTok -->
           <button
+            v-if="isDarkChannel"
+            @click="activeTab = 'dark_studio'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
+            :class="activeTab === 'dark_studio' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+          >
+            <span>🎬</span>
+            <span>Estúdio Dark & Roteiros</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px]">
+              {{ darkScripts.length }}
+            </span>
+          </button>
+          <button
+            v-else
             @click="activeTab = 'tiktok'"
             class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5"
             :class="activeTab === 'tiktok' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
@@ -326,8 +427,187 @@ async function toggleAutomation(automation) {
         </div>
       </div>
 
-      <!-- ABA 2: Vitrine TikTok Shop -->
-      <div v-if="activeTab === 'tiktok'" class="space-y-4">
+      <!-- ABA 2A: Estúdio Dark & Roteiros (Canais Dark / YouTube & TikTok) -->
+      <div v-if="activeTab === 'dark_studio'" class="space-y-6">
+        <!-- Top Banner Estúdio Dark -->
+        <div class="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="px-2.5 py-1 text-[10px] font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                🎬 Arquétipo: Canal Dark / YouTube & TikTok
+              </span>
+              <span class="text-xs text-slate-400">
+                Nicho: <strong class="text-slate-200">{{ business.niche || 'Mistérios & Curiosidades' }}</strong>
+              </span>
+            </div>
+            <h3 class="text-xl font-black text-white mt-2 tracking-tight flex items-center space-x-2">
+              <span>Estúdio de Roteiros & Vídeos Faceless</span>
+              <span class="text-indigo-400 text-sm">● Gemini 3.8 Ativo</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+              Crie roteiros virais completos em 5 atos ou shorts de 60 segundos com hooks hipnóticos, minutagem, narração em português e prompts visuais prontos para Midjourney e Runway.
+            </p>
+          </div>
+
+          <div class="flex items-center space-x-3 shrink-0">
+            <button
+              @click="loadDarkStudio"
+              :disabled="loadingDarkStudio"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
+              title="Recarregar dados do estúdio"
+            >
+              <svg class="w-4 h-4" :class="{'animate-spin': loadingDarkStudio}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button
+              @click="showNewScriptModal = true"
+              class="px-4 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-600/25 flex items-center space-x-2"
+            >
+              <span>⚡</span>
+              <span>Gerar Novo Roteiro com IA</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Seção 1: Pautas e Ideação Viral Mineradas pelo Agente -->
+        <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-bold text-white tracking-tight flex items-center space-x-2">
+                <span>🔥 Pautas & Temas Virais Minerados</span>
+                <span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20 font-bold">Alta Demanda</span>
+              </h4>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Pautas ranqueadas por potencial de clique (CTR previsto) e retenção aos 30 segundos.
+              </p>
+            </div>
+            <span class="text-xs text-slate-500 font-mono">{{ darkTopics.length }} tópicos minerados</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div
+              v-for="(t, idx) in darkTopics"
+              :key="idx"
+              class="p-4 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/40 transition flex flex-col justify-between space-y-3 group"
+            >
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono" :class="t.format_recommended === 'long' ? 'bg-indigo-500/10 text-indigo-300' : 'bg-emerald-500/10 text-emerald-300'">
+                    {{ t.format_recommended === 'long' ? 'Vídeo Longo (8-12m)' : 'Shorts / TikTok (60s)' }}
+                  </span>
+                  <span class="text-[11px] font-bold text-emerald-400 font-mono">CTR: {{ t.predicted_ctr }}</span>
+                </div>
+                <h5 class="text-sm font-bold text-white mt-2 group-hover:text-indigo-300 transition">{{ t.topic }}</h5>
+                <p class="text-xs text-slate-400 mt-1 leading-relaxed">{{ t.hook_angle }}</p>
+              </div>
+
+              <div class="pt-2 border-t border-slate-900 flex items-center justify-between">
+                <span class="text-[10px] text-slate-500">Potencial: <strong class="text-slate-300">{{ t.estimated_views }}</strong></span>
+                <button
+                  @click="selectTopicForScript(t)"
+                  class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-indigo-600/30 text-indigo-200 hover:bg-indigo-600 hover:text-white transition"
+                >
+                  Roteirizar Pauta &rarr;
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção 2: Roteiros Produzidos & Fila de Produção -->
+        <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-sm font-bold text-white tracking-tight">Roteiros Prontos & Supervisão</h4>
+              <p class="text-xs text-slate-400 mt-0.5">Roteiros completos com narração, minutagem e prompts de imagens para IA.</p>
+            </div>
+            <span class="text-xs text-slate-500 font-mono">{{ darkScripts.length }} roteiros</span>
+          </div>
+
+          <!-- Estado Vazio -->
+          <div v-if="darkScripts.length === 0" class="p-12 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-xs text-slate-400 space-y-2">
+            <p>Nenhum roteiro dark gerado ainda para esta venture.</p>
+            <p class="text-slate-500">Clique em "Gerar Novo Roteiro com IA" ou escolha uma das pautas virais acima.</p>
+          </div>
+
+          <!-- Grid de Roteiros -->
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              v-for="s in darkScripts"
+              :key="s.id"
+              class="p-5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-4 shadow-sm"
+            >
+              <div>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase" :class="s.format_type === 'long' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'">
+                      {{ s.format_type === 'long' ? 'YouTube Longo' : 'Shorts / TikTok' }}
+                    </span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      {{ s.status === 'supervision' ? 'Em Supervisão' : s.status }}
+                    </span>
+                  </div>
+                  <span class="text-[10px] text-slate-500 font-mono">{{ s.scenes_count || (s.scenes && s.scenes.length) || 0 }} cenas</span>
+                </div>
+
+                <h5 class="text-base font-bold text-white mt-3">{{ s.title }}</h5>
+
+                <!-- Gancho Destacado -->
+                <div v-if="s.hook" class="mt-2.5 p-3 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-xs">
+                  <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-0.5">Hook Inicial (0-3s):</span>
+                  <p class="text-slate-200 italic font-medium">"{{ s.hook }}"</p>
+                </div>
+
+                <p v-if="s.full_narration" class="text-xs text-slate-400 mt-2.5 line-clamp-2 leading-relaxed">
+                  {{ s.full_narration }}
+                </p>
+
+                <!-- Tags SEO -->
+                <div v-if="s.seo_tags && s.seo_tags.length" class="flex flex-wrap gap-1 mt-3">
+                  <span
+                    v-for="(tag, tidx) in s.seo_tags.slice(0, 5)"
+                    :key="tidx"
+                    class="px-2 py-0.5 rounded text-[10px] bg-slate-900 text-slate-400 font-mono"
+                  >
+                    #{{ tag }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Ações do Card -->
+              <div class="pt-3 border-t border-slate-900 flex items-center justify-between">
+                <span class="text-[10px] text-slate-500 font-mono">
+                  {{ s.created_at ? new Date(s.created_at).toLocaleDateString('pt-BR') : 'Recente' }}
+                </span>
+                <div class="flex items-center space-x-2">
+                  <button
+                    @click="selectedDarkScript = s"
+                    class="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center space-x-1 shadow-sm"
+                  >
+                    <span>Ver Cenas & Prompts</span>
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </button>
+                  <router-link
+                    v-if="s.approval_queue_id"
+                    to="/approvals"
+                    class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition"
+                    title="Aprovar na fila de supervisão"
+                  >
+                    Supervisão &rarr;
+                  </router-link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA 2B: Vitrine TikTok Shop (Apenas para Arquétipos TikTok Affiliate) -->
+      <div v-if="!isDarkChannel && activeTab === 'tiktok'" class="space-y-4">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-base font-bold text-white">Produtos Minerados na TikTok Shop</h3>
@@ -477,6 +757,251 @@ async function toggleAutomation(automation) {
             </div>
             <span class="text-slate-400 font-mono">{{ task.priority }}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 1: Gerar Novo Roteiro Dark com IA -->
+    <div
+      v-if="showNewScriptModal"
+      class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div class="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-4 my-8">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-xl">⚡</span>
+            <div>
+              <h3 class="text-base font-bold text-white">Gerar Roteiro Dark com Gemini 3.8</h3>
+              <p class="text-[11px] text-slate-400">Roteirização hipnótica com minutagem, narração e prompts de IA.</p>
+            </div>
+          </div>
+          <button @click="showNewScriptModal = false" class="text-slate-400 hover:text-white">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form @submit.prevent="handleGenerateDarkScript" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Título do Vídeo (Alto CTR)</label>
+            <input
+              v-model="newScriptForm.title"
+              type="text"
+              required
+              placeholder="Ex: O Exército Fantasma que Enganou uma Guerra Inteira"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Premissa / Tese Central da Pauta</label>
+            <textarea
+              v-model="newScriptForm.topic"
+              rows="2"
+              required
+              placeholder="Ex: Como soldados aliados usaram tanques infláveis e transmissões de rádio falsas para enganar o exército alemão..."
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+            ></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Formato</label>
+              <select
+                v-model="newScriptForm.format_type"
+                class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+              >
+                <option value="short">Short / TikTok (30-60 segundos)</option>
+                <option value="long">Vídeo Longo (8-12 minutos, 5 atos)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Plataforma Principal</label>
+              <select
+                v-model="newScriptForm.target_platform"
+                class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+              >
+                <option value="youtube_shorts">YouTube Shorts</option>
+                <option value="tiktok">TikTok Orgânico</option>
+                <option value="youtube_long">YouTube Vídeo Longo</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Estilo Visual dos Prompts de Imagem (Midjourney / Runway)</label>
+            <input
+              v-model="newScriptForm.visual_style"
+              type="text"
+              placeholder="Ex: Cinemático hiper-realista 8k, iluminação dramática, Unreal Engine 5 render style"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Persona da Voz (ElevenLabs / TTS)</label>
+            <input
+              v-model="newScriptForm.voice_persona"
+              type="text"
+              placeholder="Ex: Voz masculina profunda e documental, ritmo pausado"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div class="pt-3 border-t border-slate-800 flex items-center justify-end space-x-3">
+            <button
+              type="button"
+              @click="showNewScriptModal = false"
+              class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              :disabled="generatingDarkScript"
+              class="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition shadow-md shadow-indigo-600/20 disabled:opacity-50 flex items-center space-x-2"
+            >
+              <span v-if="generatingDarkScript" class="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full"></span>
+              <span>{{ generatingDarkScript ? 'Gerando com Gemini 3.8...' : 'Gerar Roteiro Completo' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Visualizador Detalhado de Roteiro & Cenas de B-Roll -->
+    <div
+      v-if="selectedDarkScript"
+      class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div class="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-5 my-8 max-h-[90vh] flex flex-col">
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                {{ selectedDarkScript.format_type === 'long' ? 'Vídeo Longo (8-12m)' : 'Shorts / TikTok (60s)' }}
+              </span>
+              <span class="text-xs text-slate-400 font-mono">{{ selectedDarkScript.target_platform }}</span>
+            </div>
+            <h3 class="text-lg font-black text-white mt-1">{{ selectedDarkScript.title }}</h3>
+          </div>
+          <button @click="selectedDarkScript = null" class="text-slate-400 hover:text-white p-1">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Conteúdo Scrollável -->
+        <div class="space-y-4 overflow-y-auto pr-1 flex-1">
+          <!-- Hook Card -->
+          <div v-if="selectedDarkScript.hook" class="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/30">
+            <span class="text-[10px] font-black uppercase tracking-wider text-indigo-300 block mb-1">
+              ⚡ Hook Hipnótico Inicial (0 a 3 segundos):
+            </span>
+            <p class="text-sm font-semibold text-white italic">
+              "{{ selectedDarkScript.hook }}"
+            </p>
+          </div>
+
+          <!-- Trilha Sonora & Voz -->
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div v-if="selectedDarkScript.suggested_music" class="p-3 rounded-lg bg-slate-950 border border-slate-800">
+              <span class="text-[10px] text-slate-500 font-bold uppercase block">Trilha de Fundo Sugerida:</span>
+              <p class="text-slate-200 mt-0.5 font-medium">{{ selectedDarkScript.suggested_music }}</p>
+            </div>
+            <div v-if="selectedDarkScript.voice_persona" class="p-3 rounded-lg bg-slate-950 border border-slate-800">
+              <span class="text-[10px] text-slate-500 font-bold uppercase block">Direção de Voz (TTS):</span>
+              <p class="text-slate-200 mt-0.5 font-medium">{{ selectedDarkScript.voice_persona }}</p>
+            </div>
+          </div>
+
+          <!-- Tabela de Cenas / B-Roll Prompts -->
+          <div>
+            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Cenas & Prompts para Midjourney / Runway</span>
+              <span class="text-[10px] text-slate-500">{{ (selectedDarkScript.scenes || []).length }} cenas</span>
+            </h4>
+
+            <div class="space-y-3">
+              <div
+                v-for="(scene, sidx) in (selectedDarkScript.scenes || [])"
+                :key="sidx"
+                class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold text-[10px]">
+                      Cena #{{ scene.scene_number || (sidx + 1) }}
+                    </span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ scene.timestamp }}</span>
+                  </div>
+                  <span v-if="scene.on_screen_text" class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-bold">
+                    Texto: {{ scene.on_screen_text }}
+                  </span>
+                </div>
+
+                <!-- Narração -->
+                <div>
+                  <span class="text-[10px] font-bold uppercase text-slate-500">Narração em Português:</span>
+                  <p class="text-slate-200 mt-0.5 leading-relaxed font-medium">{{ scene.narration }}</p>
+                </div>
+
+                <!-- Prompt Visual para IA -->
+                <div class="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-bold uppercase text-emerald-400 font-mono flex items-center space-x-1">
+                      <span>🎨</span>
+                      <span>Prompt Visual (Midjourney / Runway / Leonardo):</span>
+                    </span>
+                    <button
+                      @click="copyPrompt(scene.visual_prompt)"
+                      class="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 transition flex items-center space-x-1"
+                    >
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                      </svg>
+                      <span>Copiar Prompt</span>
+                    </button>
+                  </div>
+                  <p class="text-slate-300 font-mono text-[11px] leading-relaxed break-words">
+                    {{ scene.visual_prompt }}
+                  </p>
+                </div>
+
+                <div v-if="scene.b_roll_description" class="text-[11px] text-slate-400">
+                  <span class="text-slate-500 font-semibold">Câmera / B-Roll:</span> {{ scene.b_roll_description }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Narração Completa Fluída -->
+          <div v-if="selectedDarkScript.full_narration" class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+            <span class="text-[10px] font-bold uppercase text-slate-500">Texto Integral da Narração:</span>
+            <p class="text-xs text-slate-300 leading-relaxed whitespace-pre-line">{{ selectedDarkScript.full_narration }}</p>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0">
+          <div class="flex items-center space-x-2">
+            <router-link
+              to="/approvals"
+              class="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition flex items-center space-x-1.5"
+            >
+              <span>⚖️</span>
+              <span>Revisar na Fila de Supervisão</span>
+            </router-link>
+          </div>
+          <button
+            @click="selectedDarkScript = null"
+            class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+          >
+            Fechar
+          </button>
         </div>
       </div>
     </div>
