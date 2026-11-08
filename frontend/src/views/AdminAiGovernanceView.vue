@@ -118,20 +118,20 @@ function formatTokens(num) {
 <template>
   <AppLayout>
     <template #header>
-      <div class="flex items-center justify-between w-full">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
         <div>
-          <h1 class="text-xl font-bold text-white tracking-tight flex items-center space-x-2">
-            <span>Governança de IA & FinOps (Painel Admin)</span>
+          <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight flex flex-wrap items-center gap-2">
+            <span>Governança de IA & FinOps</span>
             <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold">
               Root Admin
             </span>
           </h1>
-          <p class="text-xs text-slate-400 mt-0.5">Auditoria de Custos em Tempo Real, Cotas de Tokens e Kill-Switch Preventivo</p>
+          <p class="text-xs text-slate-400 mt-0.5">Auditoria de Custos em Tempo Real, Cotas de Tokens e Kill-Switch</p>
         </div>
         <button
           @click="loadStats"
           :disabled="loading"
-          class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 transition flex items-center space-x-1.5"
+          class="w-full sm:w-auto px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 transition flex items-center justify-center space-x-1.5 min-h-[44px]"
         >
           <span v-if="loading" class="animate-spin h-3.5 w-3.5 border-2 border-slate-400 border-t-transparent rounded-full"></span>
           <span>{{ loading ? 'Atualizando...' : 'Recarregar Auditoria' }}</span>

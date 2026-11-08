@@ -134,16 +134,16 @@ async function handleDelete(biz) {
 <template>
   <AppLayout>
     <template #header>
-      <div class="flex items-center justify-between w-full">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
         <div>
-          <h1 class="text-xl font-bold text-white tracking-tight">Hub de Negócios & Ventures</h1>
+          <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight">Hub de Negócios & Ventures</h1>
           <p class="text-xs text-slate-400 mt-0.5">Gestão de Empresas Digitais Autônomas</p>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             @click="handleProvisionShowcase"
             :disabled="provisioningDemo"
-            class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center space-x-1.5 shadow-sm"
+            class="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center space-x-1.5 shadow-sm min-h-[44px]"
             title="Carregar negócio demonstrativo com produtos e métricas"
           >
             <span v-if="provisioningDemo" class="animate-spin h-3.5 w-3.5 border-2 border-emerald-400 border-t-transparent rounded-full"></span>
@@ -152,14 +152,14 @@ async function handleDelete(biz) {
           </button>
           <button
             @click="isChatDrawerOpen = true"
-            class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2"
+            class="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2 min-h-[44px]"
           >
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>Co-Criar com COO IA</span>
           </button>
           <button
             @click="showCreateModal = true"
-            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center space-x-1.5"
+            class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center space-x-1.5 min-h-[44px]"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />

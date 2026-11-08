@@ -160,14 +160,14 @@ function getColumnBadgeColor(status) {
 <template>
   <AppLayout>
     <template #header>
-      <div class="flex items-center justify-between w-full">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
         <div>
-          <h1 class="text-xl font-bold text-white tracking-tight">Quadro Operacional & Tarefas (Kanban)</h1>
+          <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight">Quadro Operacional & Tarefas (Kanban)</h1>
           <p class="text-xs text-slate-400 mt-0.5">Distribuição Híbrida: Tarefas do Agente Autônomo vs. Ações Humanas</p>
         </div>
         <button
           @click="showCreateModal = true"
-          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center space-x-1.5"
+          class="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center justify-center space-x-1.5 min-h-[44px]"
         >
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -178,16 +178,18 @@ function getColumnBadgeColor(status) {
     </template>
 
     <div class="space-y-6">
-      <!-- Filtros -->
-      <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
-        <div class="flex flex-wrap items-center gap-3">
+      <!-- Filtros Responsivos -->
+      <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-3 w-full">
           <!-- Filtro por Negócio -->
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-slate-400 font-semibold uppercase">Venture:</span>
+          <div class="flex-1">
+            <label class="block text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">
+              Venture:
+            </label>
             <select
               v-model="selectedBusinessId"
               @change="handleFilterChange"
-              class="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500 min-h-[42px]"
             >
               <option value="">Todos os Negócios</option>
               <option v-for="b in businessStore.businesses" :key="b.id" :value="b.id">
@@ -197,12 +199,14 @@ function getColumnBadgeColor(status) {
           </div>
 
           <!-- Filtro por Atribuído a -->
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-slate-400 font-semibold uppercase">Executor:</span>
+          <div class="flex-1">
+            <label class="block text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">
+              Executor:
+            </label>
             <select
               v-model="selectedAssignee"
               @change="handleFilterChange"
-              class="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500 min-h-[42px]"
             >
               <option value="">Todos (IA + Humano)</option>
               <option value="agent">Agente (Gemini 3.8)</option>
@@ -212,43 +216,50 @@ function getColumnBadgeColor(status) {
         </div>
 
         <!-- Toggle do Drawer de Logs -->
-        <button
-          @click="showLogsDrawer = !showLogsDrawer"
-          class="px-3 py-1.5 text-xs font-semibold rounded-xl border transition flex items-center space-x-2"
-          :class="showLogsDrawer
-            ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300'
-            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'"
-        >
-          <span class="w-2 h-2 rounded-full" :class="taskStore.isPollingLogs ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'"></span>
-          <span>{{ showLogsDrawer ? 'Ocultar Terminal de Logs da IA' : 'Ver Terminal de Logs da IA' }}</span>
-        </button>
+        <div class="pt-1 flex sm:justify-end">
+          <button
+            @click="showLogsDrawer = !showLogsDrawer"
+            class="w-full sm:w-auto px-3.5 py-2 text-xs font-semibold rounded-xl border transition flex items-center justify-center space-x-2 min-h-[42px]"
+            :class="showLogsDrawer
+              ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300'
+              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'"
+          >
+            <span class="w-2 h-2 rounded-full" :class="taskStore.isPollingLogs ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'"></span>
+            <span>{{ showLogsDrawer ? 'Ocultar Terminal de Logs da IA' : 'Ver Terminal de Logs da IA' }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Mobile Column Switcher (Tabs Horizontais) -->
-      <div class="md:hidden flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
-        <button
-          @click="activeMobileCol = 'all'"
-          class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border transition shrink-0 min-h-[40px]"
-          :class="activeMobileCol === 'all'
-            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
-            : 'bg-slate-900 text-slate-400 border-slate-800'"
-        >
-          Todas
-        </button>
-        <button
-          v-for="col in taskStore.boardColumns"
-          :key="col.status"
-          @click="activeMobileCol = col.status"
-          class="px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border transition shrink-0 flex items-center space-x-1.5 min-h-[40px]"
-          :class="activeMobileCol === col.status
-            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
-            : 'bg-slate-900 text-slate-400 border-slate-800'"
-        >
-          <span>{{ getColumnTitle(col.status) }}</span>
-          <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300">
-            {{ col.count || col.tasks?.length || 0 }}
+      <!-- Mobile Column Selector (Dropdown Nativo para evitar abas cortadas) -->
+      <div class="md:hidden space-y-1.5">
+        <div class="flex items-center justify-between">
+          <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Coluna do Quadro:
+          </label>
+          <span class="text-[11px] font-mono text-emerald-400 font-semibold">
+            {{ activeMobileCol === 'all' ? '5 Colunas' : getColumnTitle(activeMobileCol) }}
           </span>
-        </button>
+        </div>
+        <div class="relative">
+          <select
+            v-model="activeMobileCol"
+            class="w-full appearance-none px-4 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 shadow-md pr-10 min-h-[48px]"
+          >
+            <option value="all">⚡ Todas as Colunas (Visão Completa)</option>
+            <option
+              v-for="col in taskStore.boardColumns"
+              :key="col.status"
+              :value="col.status"
+            >
+              {{ getColumnTitle(col.status) }} ({{ col.count || col.tasks?.length || 0 }} tarefas)
+            </option>
+          </select>
+          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-emerald-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
       </div>
 
       <!-- Kanban Board (5 Colunas) -->

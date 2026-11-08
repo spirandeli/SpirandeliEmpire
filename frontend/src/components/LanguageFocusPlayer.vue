@@ -518,7 +518,7 @@ function speakText(text) {
             v-model="block3Input"
             rows="4"
             class="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-4 text-xs text-white placeholder-slate-600 focus:outline-none transition leading-relaxed"
-            placeholder="Digite aqui em inglês/idioma alvo..."
+            :placeholder="block3?.starter_hint || `Digite aqui em ${languageStore.profile?.target_language || 'seu idioma alvo'}...`"
           ></textarea>
         </div>
 
