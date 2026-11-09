@@ -3,18 +3,23 @@ Router do Storage Viewer e Gerenciamento de Outputs ABVOS.
 Expõe endpoints para varrer recursivamente /app/storage/output/, agrupar arquivos
 por business_id e task_id, e disponibilizar URLs seguras de streaming e download.
 """
+import logging
 import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from src.database import get_db
+from src.database import get_db, AsyncSessionLocal
 from src.dependencies import get_current_user
 from src.models import Business, Task, User
 from src.services.media.media_settings import (
@@ -23,6 +28,10 @@ from src.services.media.media_settings import (
     get_task_output_dir,
 )
 from src.services.media.task_dispatcher import dispatch_series_video_tasks
+from src.services.media.pipeline import _persist_video_progress
+from src.services.task_executor_service import execute_agent_task
+
+logger = logging.getLogger("abvos.routers.storage_viewer")
 
 router = APIRouter(prefix="/storage", tags=["Storage Viewer"])
 
@@ -43,8 +52,41 @@ ALLOWED_EXTENSIONS = {
     ".ass": "subtitle",
 }
 
+CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".srt": "text/plain; charset=utf-8",
+    ".ass": "text/plain; charset=utf-8",
+}
 
-def _file_metadata(f_path: Path, base_dir: Path) -> Dict[str, Any]:
+
+async def _bg_render_series_task(task_id: int, user_id: int):
+    """
+    Worker assíncrono em background que executa o pipeline completo de vídeo
+    (20 cenas + TTS + Legendas + FFmpeg) para uma tarefa e salva em /app/storage/output/.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            u_res = await session.execute(select(User).where(User.id == user_id))
+            user = u_res.scalar_one_or_none()
+            if not user:
+                return
+            await execute_agent_task(session, task_id, user)
+    except Exception as exc:
+        logger.error(f"Erro ao renderizar tarefa #{task_id} em background: {exc}")
+
+
+def _file_metadata(f_path: Path, base_dir: Path, mount_prefix: str = "/outputs") -> Dict[str, Any]:
     stat = f_path.stat()
     ext = f_path.suffix.lower()
     rel_path = f_path.relative_to(base_dir).as_posix()
@@ -54,7 +96,8 @@ def _file_metadata(f_path: Path, base_dir: Path) -> Dict[str, Any]:
     cr_time = datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat()
 
     file_type = ALLOWED_EXTENSIONS.get(ext, "other")
-    static_url = f"/outputs/{rel_path}"
+    static_url = f"{mount_prefix}/{rel_path}"
+    encoded_rel = quote(rel_path, safe="/")
 
     return {
         "name": f_path.name,
@@ -66,28 +109,32 @@ def _file_metadata(f_path: Path, base_dir: Path) -> Dict[str, Any]:
         "created_at": cr_time,
         "modified_at": mod_time,
         "static_url": static_url,
-        "download_url": f"{static_url}?download=1",
+        "download_url": f"/api/v1/storage/download?path={encoded_rel}",
     }
 
 
 def scan_storage_outputs() -> List[Dict[str, Any]]:
     """
     Varre recursivamente o diretório de outputs (/app/storage/output/)
-    e opcionalmente storage/media, extraindo metadados de arquivos .mp4, .mp3 e .png.
+    e complementarmente storage/media, sincronizando arquivos ausentes e
+    extraindo metadados sem duplicatas por relative_path.
     """
     results: List[Dict[str, Any]] = []
-    scanned_hashes = set()
+    scanned_rel_paths = set()
 
     # Prioriza STORAGE_OUTPUT_DIR (/app/storage/output)
-    directories_to_scan = [STORAGE_OUTPUT_DIR]
-    if STORAGE_MEDIA_DIR.exists() and STORAGE_MEDIA_DIR != STORAGE_OUTPUT_DIR:
-        directories_to_scan.append(STORAGE_MEDIA_DIR)
+    directories_to_scan = [(STORAGE_OUTPUT_DIR, "/outputs")]
+    if STORAGE_MEDIA_DIR.exists() and STORAGE_MEDIA_DIR.resolve() != STORAGE_OUTPUT_DIR.resolve():
+        directories_to_scan.append((STORAGE_MEDIA_DIR, "/media"))
 
-    for base_dir in directories_to_scan:
+    for base_dir, mount_prefix in directories_to_scan:
         if not base_dir.exists():
             continue
 
-        for root, _, files in os.walk(base_dir):
+        for root, dirs, files in os.walk(base_dir):
+            # Ignora diretórios temporários de renderização FFmpeg
+            dirs[:] = [d for d in dirs if d != "render_tmp" and not d.startswith(".")]
+
             for file_name in files:
                 if file_name.startswith("."):
                     continue
@@ -97,13 +144,34 @@ def scan_storage_outputs() -> List[Dict[str, Any]]:
                 if ext not in ALLOWED_EXTENSIONS:
                     continue
 
-                # Evita duplicatas se um arquivo estiver em múltiplos diretórios escaneados
-                unique_key = str(full_path.resolve())
-                if unique_key in scanned_hashes:
+                try:
+                    rel_path = full_path.relative_to(base_dir).as_posix()
+                except ValueError:
                     continue
-                scanned_hashes.add(unique_key)
 
-                meta = _file_metadata(full_path, base_dir)
+                # Evita duplicatas pelo caminho relativo (ex: biz_1/task_1/video.mp4 em output e media)
+                if rel_path in scanned_rel_paths:
+                    continue
+
+                # Se o arquivo veio de STORAGE_MEDIA_DIR e ainda não está em STORAGE_OUTPUT_DIR,
+                # sincroniza para STORAGE_OUTPUT_DIR para manter tudo unificado em /outputs/
+                effective_path = full_path
+                effective_base = base_dir
+                effective_prefix = mount_prefix
+                if base_dir == STORAGE_MEDIA_DIR:
+                    target_out = STORAGE_OUTPUT_DIR / rel_path
+                    try:
+                        target_out.parent.mkdir(parents=True, exist_ok=True)
+                        if not target_out.exists():
+                            shutil.copy2(str(full_path), str(target_out))
+                        effective_path = target_out
+                        effective_base = STORAGE_OUTPUT_DIR
+                        effective_prefix = "/outputs"
+                    except Exception:
+                        pass
+
+                scanned_rel_paths.add(rel_path)
+                meta = _file_metadata(effective_path, effective_base, effective_prefix)
 
                 # Extrai business_id e task_id da estrutura de pastas ou nome
                 biz_id = 0
@@ -137,6 +205,37 @@ class DispatchSeriesRequest(BaseModel):
     auto_execute_part_1: Optional[bool] = False
 
 
+@router.get("/download")
+async def download_storage_file(
+    path: str = Query(..., description="Caminho relativo do arquivo dentro de storage/output"),
+):
+    """
+    Endpoint dedicado para download direto (1-clique) com header Content-Disposition: attachment.
+    """
+    clean_rel = path.lstrip("/").replace("\\", "/")
+    if ".." in clean_rel.split("/"):
+        raise HTTPException(status_code=400, detail="Caminho de arquivo inválido.")
+
+    candidate_out = (STORAGE_OUTPUT_DIR / clean_rel).resolve()
+    if str(candidate_out).startswith(str(STORAGE_OUTPUT_DIR.resolve())) and candidate_out.is_file():
+        target = candidate_out
+    else:
+        candidate_media = (STORAGE_MEDIA_DIR / clean_rel).resolve()
+        if str(candidate_media).startswith(str(STORAGE_MEDIA_DIR.resolve())) and candidate_media.is_file():
+            target = candidate_media
+        else:
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado no storage.")
+
+    ext = target.suffix.lower()
+    media_type = CONTENT_TYPES.get(ext, "application/octet-stream")
+    return FileResponse(
+        path=str(target),
+        filename=target.name,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{target.name}"'},
+    )
+
+
 @router.get("/outputs")
 async def get_storage_outputs(
     business_id: Optional[int] = None,
@@ -150,36 +249,41 @@ async def get_storage_outputs(
     Varre o diretório /app/storage/output/ recursivamente.
     Retorna um JSON contendo a lista de arquivos .mp4, .mp3 e .png,
     agrupados por business_id e task_id, informando tamanho, data de modificação
-    e URL de acesso estático.
+    e URL de acesso estático, além das tarefas de vídeo do Kanban.
     """
     raw_files = scan_storage_outputs()
 
-    # Aplica filtros se informados
-    if business_id is not None:
-        raw_files = [f for f in raw_files if f["business_id"] == business_id]
-    if task_id is not None:
-        raw_files = [f for f in raw_files if f["task_id"] == task_id]
-    if file_type:
-        raw_files = [f for f in raw_files if f["type"] == file_type]
+    # Carrega metadados de tarefas do banco para enriquecer a resposta e resolver business_id
+    file_task_ids = {f["task_id"] for f in raw_files if f["task_id"] > 0}
 
-    # Carrega metadados do banco para enriquecer a resposta
-    task_ids = {f["task_id"] for f in raw_files if f["task_id"] > 0}
-    biz_ids = {f["business_id"] for f in raw_files if f["business_id"] > 0}
-
-    tasks_map = {}
-    if task_ids:
-        t_res = await db.execute(select(Task).where(Task.id.in_(task_ids)))
+    tasks_map: Dict[int, Dict[str, Any]] = {}
+    if file_task_ids:
+        t_res = await db.execute(select(Task).where(Task.id.in_(file_task_ids)))
         for t in t_res.scalars().all():
             tasks_map[t.id] = {
                 "id": t.id,
+                "business_id": t.business_id,
                 "title": t.title,
                 "status": t.status,
+                "status_log": getattr(t, "status_log", None),
                 "description": t.description,
                 "payload": t.payload,
                 "video_progress": (t.payload or {}).get("video_progress"),
             }
 
-    biz_map = {}
+    # Resolve business_id via task quando ausente na pasta
+    for f in raw_files:
+        t_info = tasks_map.get(f["task_id"])
+        if t_info:
+            if not f["business_id"] and t_info.get("business_id"):
+                f["business_id"] = t_info["business_id"]
+            f["task_title"] = t_info["title"]
+            f["task_status"] = t_info["status"]
+            f["video_progress"] = t_info["video_progress"]
+
+    # Carrega negócios para enriquecer nomes
+    biz_ids = {f["business_id"] for f in raw_files if f["business_id"] > 0}
+    biz_map: Dict[int, Dict[str, Any]] = {}
     if biz_ids:
         b_res = await db.execute(select(Business).where(Business.id.in_(biz_ids)))
         for b in b_res.scalars().all():
@@ -189,6 +293,18 @@ async def get_storage_outputs(
                 "niche": b.niche,
                 "archetype": b.archetype,
             }
+
+    for f in raw_files:
+        b_info = biz_map.get(f["business_id"])
+        f["business_name"] = b_info["name"] if b_info else (f"Venture #{f['business_id']}" if f["business_id"] else "Geral")
+
+    # Aplica filtros se informados
+    if business_id is not None:
+        raw_files = [f for f in raw_files if f["business_id"] == business_id]
+    if task_id is not None:
+        raw_files = [f for f in raw_files if f["task_id"] == task_id]
+    if file_type:
+        raw_files = [f for f in raw_files if f["type"] == file_type]
 
     # Agrupamento por business_id e task_id
     grouped_biz: Dict[int, Dict[str, Any]] = {}
@@ -279,12 +395,37 @@ async def get_storage_outputs(
 
     # Extrai todos os vídeos encontrados para facilitar consumo pelo player
     all_videos = [f for f in raw_files if f["type"] == "video"]
-    for v in all_videos:
-        t_info = tasks_map.get(v["task_id"])
-        if t_info:
-            v["task_title"] = t_info["title"]
-            v["task_status"] = t_info["status"]
-            v["video_progress"] = t_info["video_progress"]
+    rendered_task_ids = {v["task_id"] for v in all_videos if v["task_id"] > 0}
+
+    # Busca tarefas de vídeo do usuário no Kanban para exibir fila de renderização
+    series_query = select(Task).where(
+        Task.user_id == current_user.id,
+        Task.deleted_at.is_(None),
+        or_(
+            Task.agent_action == "render_video_series",
+            Task.title.ilike("%[Vídeo]%"),
+            Task.title.ilike("%Gerar Vídeo%"),
+            Task.title.ilike("%Série%"),
+        ),
+    )
+    if business_id is not None:
+        series_query = series_query.where(Task.business_id == business_id)
+
+    s_res = await db.execute(series_query.order_by(Task.id.desc()).limit(20))
+    series_tasks = []
+    for st in s_res.scalars().all():
+        vp = (st.payload or {}).get("video_progress") or {}
+        has_vid = st.id in rendered_task_ids
+        series_tasks.append({
+            "id": st.id,
+            "business_id": st.business_id,
+            "title": st.title,
+            "status": st.status,
+            "status_log": getattr(st, "status_log", None) or vp.get("status_text") or (st.description or "").split("\n")[0],
+            "percent": 100.0 if has_vid else float(vp.get("percent", 100.0 if st.status == "done" else 0.0)),
+            "stage": "done" if has_vid else vp.get("stage", "done" if st.status == "done" else "pending"),
+            "has_rendered_video": has_vid,
+        })
 
     total_size = round(sum(f["size_mb"] for f in raw_files), 2)
 
@@ -297,12 +438,14 @@ async def get_storage_outputs(
         "groups": formatted_groups,
         "videos": all_videos,
         "files": raw_files,
+        "series_tasks": series_tasks,
     }
 
 
 @router.post("/series/dispatch")
 async def dispatch_series(
     payload: DispatchSeriesRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -311,8 +454,8 @@ async def dispatch_series(
     - [Vídeo] Série 01 - Parte 1 (Geração de Assets, TTS e FFmpeg)
     - [Vídeo] Série 01 - Parte 2 (Geração de Assets, TTS e FFmpeg)
     - [Vídeo] Série 01 - Parte 3 (Geração de Assets, TTS e FFmpeg)
+    Se auto_execute_part_1=True, dispara o worker em background para renderizar o vídeo.
     """
-    # Valida se o negócio pertence ao usuário ou se é admin
     biz_stmt = select(Business).where(Business.id == payload.business_id)
     b_res = await db.execute(biz_stmt)
     biz = b_res.scalar_one_or_none()
@@ -327,8 +470,29 @@ async def dispatch_series(
         business_id=biz.id,
         series_title=payload.series_title or "Série 01 - A Queda de Lúcifer",
         parts_count=payload.parts_count or 3,
-        auto_execute_part_1=payload.auto_execute_part_1 or False,
+        auto_execute_part_1=bool(payload.auto_execute_part_1),
     )
+
+    if payload.auto_execute_part_1 and tasks:
+        # Escolhe a primeira tarefa que ainda não está concluída com vídeo no disco
+        target_task = tasks[0]
+        for t in tasks:
+            out_dir = get_task_output_dir(biz.id, t.id)
+            has_mp4 = any(out_dir.glob("*.mp4"))
+            if not has_mp4:
+                target_task = t
+                break
+
+        await _persist_video_progress(
+            task_id=target_task.id,
+            business_id=biz.id,
+            current_scene=0,
+            total_scenes=20,
+            stage="prompts",
+            percent=0.0,
+        )
+        await db.refresh(target_task)
+        background_tasks.add_task(_bg_render_series_task, target_task.id, current_user.id)
 
     return {
         "message": f"Série '{payload.series_title}' despachada com sucesso no Kanban!",
@@ -343,4 +507,41 @@ async def dispatch_series(
             }
             for t in tasks
         ],
+    }
+
+
+@router.post("/tasks/{task_id}/render")
+async def trigger_task_video_render(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dispara sob demanda a renderização completa de vídeo (20 cenas + TTS + FFmpeg)
+    para uma tarefa específica diretamente pela Galeria de Produção.
+    """
+    t_res = await db.execute(
+        select(Task).where(Task.id == task_id, Task.deleted_at.is_(None))
+    )
+    task = t_res.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    if task.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Acesso não autorizado à tarefa.")
+
+    await _persist_video_progress(
+        task_id=task.id,
+        business_id=task.business_id,
+        current_scene=0,
+        total_scenes=20,
+        stage="prompts",
+        percent=0.0,
+    )
+    background_tasks.add_task(_bg_render_series_task, task.id, current_user.id)
+
+    return {
+        "status": "started",
+        "task_id": task.id,
+        "message": f"Renderização iniciada para '{task.title}'. O progresso será atualizado automaticamente.",
     }

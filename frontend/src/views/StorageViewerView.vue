@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { api } from '@/services/api'
 import { useSwal } from '@/composables/useSwal'
@@ -13,10 +13,12 @@ const isRefreshing = ref(false)
 const storageData = ref({
   total_files: 0,
   total_size_mb: 0,
+  videos_count: 0,
   storage_directory: '/app/storage/output',
   groups: [],
   videos: [],
   files: [],
+  series_tasks: [],
 })
 
 const selectedBusinessFilter = ref('')
@@ -24,34 +26,94 @@ const selectedTypeFilter = ref('all')
 const searchQuery = ref('')
 const activeTab = ref('videos') // 'videos' | 'all_files'
 const selectedVideoForPlayer = ref(null)
+const videoPlaybackError = ref(false)
 const isDispatchingSeries = ref(false)
+const renderingTaskIds = ref({})
+let pollInterval = null
 
 onMounted(async () => {
   await Promise.all([
     businessStore.fetchBusinesses(),
     loadStorageOutputs(),
   ])
+  startAutoPolling()
 })
+
+onUnmounted(() => {
+  stopAutoPolling()
+})
+
+function startAutoPolling() {
+  stopAutoPolling()
+  pollInterval = setInterval(() => {
+    const hasActiveRender = (storageData.value.series_tasks || []).some(
+      (t) =>
+        t.status === 'in_progress_agent' ||
+        ['prompts', 'images', 'tts', 'ffmpeg'].includes(t.stage) ||
+        renderingTaskIds.value[t.id]
+    )
+    if (hasActiveRender && !isRefreshing.value) {
+      loadStorageOutputs(false)
+    }
+  }, 4000)
+}
+
+function stopAutoPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
 
 async function loadStorageOutputs(showToast = false) {
   isRefreshing.value = true
   try {
-    const res = await api.get('/api/v1/storage/outputs')
+    const res = await api.get('/v1/storage/outputs')
     storageData.value = res.data || {}
-    if (storageData.value.videos?.length > 0 && !selectedVideoForPlayer.value) {
-      selectedVideoForPlayer.value = storageData.value.videos[0]
+    const vids = storageData.value.videos || []
+
+    if (vids.length > 0) {
+      if (!selectedVideoForPlayer.value) {
+        selectedVideoForPlayer.value = vids[0]
+      } else {
+        const currentMatch = vids.find(
+          (v) => v.relative_path === selectedVideoForPlayer.value.relative_path
+        )
+        if (!currentMatch) {
+          selectedVideoForPlayer.value = vids[0]
+        }
+      }
     }
+
+    // Limpa flags locais de renderização para tarefas que já concluíram
+    for (const st of storageData.value.series_tasks || []) {
+      if (st.has_rendered_video || st.stage === 'done') {
+        delete renderingTaskIds.value[st.id]
+      }
+    }
+
     if (showToast) {
       swal.toast('Galeria de Produção atualizada!', 'success')
     }
   } catch (err) {
     console.error('Erro ao carregar outputs:', err)
-    swal.toast('Não foi possível escanear o diretório de outputs.', 'warning')
+    if (showToast) {
+      swal.toast('Não foi possível escanear o diretório de outputs.', 'warning')
+    }
   } finally {
     isLoading.value = false
     isRefreshing.value = false
   }
 }
+
+// Filtra as tarefas de série do Kanban
+const filteredSeriesTasks = computed(() => {
+  let list = storageData.value.series_tasks || []
+  if (selectedBusinessFilter.value) {
+    list = list.filter((t) => String(t.business_id) === String(selectedBusinessFilter.value))
+  }
+  return list
+})
 
 // Filtra os vídeos
 const filteredVideos = computed(() => {
@@ -64,7 +126,8 @@ const filteredVideos = computed(() => {
     list = list.filter(
       (v) =>
         v.name.toLowerCase().includes(q) ||
-        (v.task_title && v.task_title.toLowerCase().includes(q))
+        (v.task_title && v.task_title.toLowerCase().includes(q)) ||
+        (v.business_name && v.business_name.toLowerCase().includes(q))
     )
   }
   return list
@@ -84,18 +147,27 @@ const filteredFiles = computed(() => {
     list = list.filter(
       (f) =>
         f.name.toLowerCase().includes(q) ||
-        f.relative_path.toLowerCase().includes(q)
+        f.relative_path.toLowerCase().includes(q) ||
+        (f.task_title && f.task_title.toLowerCase().includes(q))
     )
   }
   return list
 })
 
 function selectVideo(video) {
+  videoPlaybackError.value = false
   selectedVideoForPlayer.value = video
-  // Scroll suave no mobile para o player
   if (window.innerWidth < 768) {
     const el = document.getElementById('main-video-player')
     if (el) el.scrollIntoView({ behavior: 'smooth' })
+  }
+}
+
+function selectVideoByTaskId(taskId) {
+  const vid = (storageData.value.videos || []).find((v) => Number(v.task_id) === Number(taskId))
+  if (vid) {
+    activeTab.value = 'videos'
+    selectVideo(vid)
   }
 }
 
@@ -110,6 +182,18 @@ function handleDownload(file) {
   swal.toast(`Download iniciado: ${file.name}`, 'info')
 }
 
+async function handleRenderSingleTask(task) {
+  renderingTaskIds.value[task.id] = true
+  try {
+    const res = await api.post(`/v1/storage/tasks/${task.id}/render`)
+    swal.toast(res.data.message || `Renderização iniciada para Tarefa #${task.id}!`, 'success')
+    await loadStorageOutputs(false)
+  } catch (err) {
+    delete renderingTaskIds.value[task.id]
+    swal.error('Erro ao iniciar renderização', err.response?.data?.detail || err.message)
+  }
+}
+
 async function handleDispatchDefaultSeries() {
   const bizId = selectedBusinessFilter.value || (businessStore.businesses[0]?.id)
   if (!bizId) {
@@ -119,8 +203,8 @@ async function handleDispatchDefaultSeries() {
 
   const confirmed = await swal.confirm({
     title: 'Iniciar Série 01 - A Queda de Lúcifer?',
-    text: 'O sistema criará automaticamente 3 tarefas no Kanban (Partes 1, 2 e 3) com prompts cena a cena, narração TTS e renderização FFmpeg.',
-    confirmText: 'Sim, criar 3 tarefas no Kanban',
+    text: 'O sistema criará as 3 tarefas no Kanban (Partes 1, 2 e 3) e iniciará automaticamente a renderização de 20 cenas + narração TTS + FFmpeg.',
+    confirmText: 'Sim, criar e renderizar',
     confirmButtonColor: '#10b981',
   })
 
@@ -128,14 +212,14 @@ async function handleDispatchDefaultSeries() {
 
   isDispatchingSeries.value = true
   try {
-    const res = await api.post('/api/v1/storage/series/dispatch', {
+    const res = await api.post('/v1/storage/series/dispatch', {
       business_id: Number(bizId),
       series_title: 'Série 01 - A Queda de Lúcifer',
       parts_count: 3,
-      auto_execute_part_1: false,
+      auto_execute_part_1: true,
     })
-    swal.toast(res.data.message || 'Série despachada com sucesso no Kanban!', 'success')
-    await loadStorageOutputs()
+    swal.toast(res.data.message || 'Série despachada e renderização iniciada!', 'success')
+    await loadStorageOutputs(false)
   } catch (err) {
     swal.error('Erro ao despachar série', err.response?.data?.detail || err.message)
   } finally {
@@ -168,10 +252,10 @@ async function handleDispatchDefaultSeries() {
             @click="handleDispatchDefaultSeries"
             :disabled="isDispatchingSeries"
             class="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-md shadow-emerald-400/20 transition flex items-center space-x-1.5 disabled:opacity-50"
-            title="Criar tarefas da Série no Kanban"
+            title="Criar tarefas da Série no Kanban e iniciar renderização"
           >
             <span>🎬</span>
-            <span>{{ isDispatchingSeries ? 'Criando Tarefas...' : 'Disparar Série (Partes 1, 2 e 3)' }}</span>
+            <span>{{ isDispatchingSeries ? 'Iniciando Pipeline...' : 'Disparar Série (Partes 1, 2 e 3)' }}</span>
           </button>
 
           <!-- Botão Atualizar -->
@@ -235,6 +319,82 @@ async function handleDispatchDefaultSeries() {
           <div>
             <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Formato Nativo</span>
             <span class="text-xs font-bold text-amber-300 font-mono">9:16 (1080x1920)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila de Produção & Status de Renderização da Série (Kanban -> FFmpeg) -->
+      <div
+        v-if="filteredSeriesTasks.length > 0"
+        class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="text-sm">⚡</span>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">
+              Pipeline de Renderização de Séries ({{ filteredSeriesTasks.length }})
+            </h2>
+          </div>
+          <span class="text-[11px] text-slate-400">
+            20 Cenas x 3s = 60s • TTS + FFmpeg 9:16
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div
+            v-for="st in filteredSeriesTasks.slice(0, 6)"
+            :key="st.id"
+            class="p-3 rounded-xl bg-slate-950 border border-slate-800/90 flex flex-col justify-between space-y-2.5"
+          >
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-mono text-slate-400">Task #{{ st.id }}</span>
+                <span
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  :class="{
+                    'bg-emerald-500/20 text-emerald-300': st.has_rendered_video,
+                    'bg-amber-500/20 text-amber-300 animate-pulse': !st.has_rendered_video && (st.status === 'in_progress_agent' || renderingTaskIds[st.id]),
+                    'bg-slate-800 text-slate-400': !st.has_rendered_video && st.status !== 'in_progress_agent' && !renderingTaskIds[st.id],
+                  }"
+                >
+                  {{ st.has_rendered_video ? 'Pronto (.mp4)' : (st.status === 'in_progress_agent' || renderingTaskIds[st.id] ? `${st.percent}% Renderizando` : 'Na Fila') }}
+                </span>
+              </div>
+              <h4 class="text-xs font-bold text-slate-100 line-clamp-1 mt-1" :title="st.title">
+                {{ st.title }}
+              </h4>
+              <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5 font-mono">
+                {{ st.status_log || 'Aguardando disparo do pipeline...' }}
+              </p>
+            </div>
+
+            <!-- Barra de Progresso -->
+            <div class="space-y-1.5">
+              <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                <div
+                  class="h-full transition-all duration-500 rounded-full"
+                  :class="st.has_rendered_video ? 'bg-emerald-500' : 'bg-indigo-500'"
+                  :style="{ width: `${Math.min(100, Math.max(5, st.percent || 0))}%` }"
+                ></div>
+              </div>
+
+              <div class="flex items-center justify-end gap-2 pt-0.5">
+                <button
+                  v-if="st.has_rendered_video"
+                  @click="selectVideoByTaskId(st.id)"
+                  class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold transition"
+                >
+                  ▶ Assistir no Player
+                </button>
+                <button
+                  @click="handleRenderSingleTask(st)"
+                  :disabled="renderingTaskIds[st.id] || st.status === 'in_progress_agent'"
+                  class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-bold transition disabled:opacity-50"
+                >
+                  {{ renderingTaskIds[st.id] || st.status === 'in_progress_agent' ? '⏳ Processando...' : (st.has_rendered_video ? '↻ Re-renderizar' : '⚡ Renderizar Agora') }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -342,12 +502,23 @@ async function handleDispatchDefaultSeries() {
                   :key="selectedVideoForPlayer.static_url"
                   controls
                   autoplay
+                  playsinline
                   preload="metadata"
                   class="w-full h-full max-h-[500px] object-contain mx-auto"
+                  @error="videoPlaybackError = true"
+                  @loadeddata="videoPlaybackError = false"
                 >
                   <source :src="selectedVideoForPlayer.static_url" type="video/mp4" />
                   Seu navegador não suporta reprodução de vídeo HTML5.
                 </video>
+                <div
+                  v-if="videoPlaybackError"
+                  class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center space-y-2"
+                >
+                  <span class="text-2xl">⚠️</span>
+                  <p class="text-xs font-bold text-slate-200">Não foi possível reproduzir este arquivo de vídeo.</p>
+                  <p class="text-[11px] text-slate-400">O arquivo pode ainda estar sendo gravado pelo FFmpeg ou ser um artefato de teste.</p>
+                </div>
               </template>
               <div v-else class="p-8 text-center text-slate-500 space-y-2">
                 <div class="text-3xl">🎞️</div>
@@ -362,6 +533,10 @@ async function handleDispatchDefaultSeries() {
                   {{ selectedVideoForPlayer.task_title || selectedVideoForPlayer.name }}
                 </h4>
                 <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-1 font-mono">
+                  <span v-if="selectedVideoForPlayer.business_name">
+                    Venture: <strong class="text-emerald-400">{{ selectedVideoForPlayer.business_name }}</strong>
+                  </span>
+                  <span v-if="selectedVideoForPlayer.business_name">•</span>
                   <span>Arquivo: <strong class="text-slate-200">{{ selectedVideoForPlayer.name }}</strong></span>
                   <span>•</span>
                   <span>Modificado: {{ new Date(selectedVideoForPlayer.modified_at).toLocaleDateString() }}</span>
@@ -411,15 +586,16 @@ async function handleDispatchDefaultSeries() {
               class="p-10 rounded-2xl bg-slate-900 border border-dashed border-slate-800 text-center space-y-3"
             >
               <div class="text-4xl">🎬</div>
-              <h3 class="text-sm font-bold text-slate-200">Nenhum vídeo renderizado encontrado</h3>
+              <h3 class="text-sm font-bold text-slate-200">Nenhum vídeo renderizado encontrado para este filtro</h3>
               <p class="text-xs text-slate-400 max-w-md mx-auto">
-                Inicie uma série no Kanban para disparar o pipeline autônomo com 20 cenas, narração ElevenLabs e compilação FFmpeg.
+                Inicie uma série para disparar o pipeline autônomo com 20 cenas, narração TTS e compilação FFmpeg.
               </p>
               <button
                 @click="handleDispatchDefaultSeries"
-                class="px-4 py-2 rounded-xl bg-emerald-400 text-slate-950 font-bold text-xs shadow hover:bg-emerald-300 transition"
+                :disabled="isDispatchingSeries"
+                class="px-4 py-2 rounded-xl bg-emerald-400 text-slate-950 font-bold text-xs shadow hover:bg-emerald-300 transition disabled:opacity-50"
               >
-                Disparar Série 01 - A Queda de Lúcifer
+                {{ isDispatchingSeries ? 'Iniciando Pipeline...' : 'Disparar Série 01 - A Queda de Lúcifer' }}
               </button>
             </div>
 
@@ -430,7 +606,7 @@ async function handleDispatchDefaultSeries() {
                 :key="v.relative_path"
                 @click="selectVideo(v)"
                 class="p-3.5 rounded-xl bg-slate-900 border transition cursor-pointer space-y-2.5 relative group"
-                :class="selectedVideoForPlayer?.name === v.name
+                :class="selectedVideoForPlayer?.relative_path === v.relative_path
                   ? 'border-emerald-500 bg-slate-900/90 shadow-md shadow-emerald-500/10'
                   : 'border-slate-800 hover:border-slate-700 hover:bg-slate-850'"
               >
@@ -440,6 +616,7 @@ async function handleDispatchDefaultSeries() {
                     :src="v.static_url"
                     preload="metadata"
                     muted
+                    playsinline
                     class="w-full h-full object-cover"
                   ></video>
                   <div class="absolute inset-0 bg-slate-950/40 flex items-center justify-center opacity-80 group-hover:opacity-100 transition">
@@ -458,7 +635,7 @@ async function handleDispatchDefaultSeries() {
                     {{ v.task_title || v.name }}
                   </h4>
                   <div class="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                    <span class="font-mono truncate">Task #{{ v.task_id || '•' }}</span>
+                    <span class="font-mono truncate">{{ v.business_name || `Biz #${v.business_id}` }} • Task #{{ v.task_id || '•' }}</span>
                     <span>{{ new Date(v.modified_at).toLocaleDateString() }}</span>
                   </div>
                 </div>
@@ -501,6 +678,11 @@ async function handleDispatchDefaultSeries() {
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr v-if="filteredFiles.length === 0">
+                <td colspan="6" class="py-8 text-center text-slate-500">
+                  Nenhum arquivo encontrado para os filtros selecionados.
+                </td>
+              </tr>
               <tr
                 v-for="f in filteredFiles"
                 :key="f.relative_path"
@@ -524,7 +706,8 @@ async function handleDispatchDefaultSeries() {
                   <div class="text-[10px] text-slate-500 truncate">{{ f.relative_path }}</div>
                 </td>
                 <td class="py-2.5 px-3 text-slate-400">
-                  <span>Biz #{{ f.business_id || '•' }}</span> / <span>Task #{{ f.task_id || '•' }}</span>
+                  <div class="text-slate-300 truncate max-w-[200px]">{{ f.business_name || `Biz #${f.business_id || '•'}` }}</div>
+                  <div class="text-[10px] text-slate-500 truncate max-w-[200px]">{{ f.task_title || `Task #${f.task_id || '•'}` }}</div>
                 </td>
                 <td class="py-2.5 px-3 text-slate-300">
                   {{ f.size_mb }} MB
@@ -536,6 +719,7 @@ async function handleDispatchDefaultSeries() {
                   <a
                     :href="f.static_url"
                     target="_blank"
+                    rel="noopener noreferrer"
                     class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] transition inline-block"
                   >
                     Abrir
@@ -555,4 +739,3 @@ async function handleDispatchDefaultSeries() {
     </div>
   </AppLayout>
 </template>
-

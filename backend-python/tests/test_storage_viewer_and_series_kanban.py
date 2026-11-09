@@ -157,35 +157,48 @@ async def test_storage_viewer_and_series_dispatch():
         audio_sample.write_bytes(b"\xff\xfb\x90\x00mock mp3 audio data")
         img_sample.write_bytes(b"\x89PNG\r\n\x1a\n\x00mock png data")
 
-        # 6. ETAPA 2: Endpoint de Listagem GET /api/v1/storage/outputs
-        out_res = await ac.get("/api/v1/storage/outputs", headers=headers)
-        assert out_res.status_code == 200, out_res.text
-        out_data = out_res.json()
-        assert out_data["status"] == "success"
-        assert out_data["total_files"] >= 3
-        assert len(out_data["groups"]) >= 1
+        try:
+            # 6. ETAPA 2: Endpoint de Listagem GET /api/v1/storage/outputs
+            out_res = await ac.get("/api/v1/storage/outputs", headers=headers)
+            assert out_res.status_code == 200, out_res.text
+            out_data = out_res.json()
+            assert out_data["status"] == "success"
+            assert out_data["total_files"] >= 3
+            assert len(out_data["groups"]) >= 1
 
-        # Verifica agrupamento por business_id e task_id
-        target_group = next((g for g in out_data["groups"] if g["business_id"] == biz_id), None)
-        assert target_group is not None
-        assert target_group["business_name"] == f"Império Dark {rand}"
+            # Verifica também resiliência a prefixo duplicado /api/api/v1/storage/outputs
+            dup_res = await ac.get("/api/api/v1/storage/outputs", headers=headers)
+            assert dup_res.status_code == 200
 
-        target_task = next((t for t in target_group["tasks"] if t["task_id"] == task_id), None)
-        assert target_task is not None
-        assert target_task["task_title"] == part1["title"]
-        assert target_task["video_count"] >= 1
-        assert target_task["audio_count"] >= 1
-        assert target_task["image_count"] >= 1
+            # Verifica agrupamento por business_id e task_id
+            target_group = next((g for g in out_data["groups"] if g["business_id"] == biz_id), None)
+            assert target_group is not None
+            assert target_group["business_name"] == f"Império Dark {rand}"
 
-        # Verifica URLs estáticas seguras
-        assert target_task["primary_video"]["static_url"] == f"/outputs/biz_{biz_id}/task_{task_id}/video_dark_task_{task_id}.mp4"
-        assert target_task["primary_video"]["extension"] == ".mp4"
-        assert target_task["primary_video"]["type"] == "video"
-        assert "modified_at" in target_task["primary_video"]
-        assert "size_mb" in target_task["primary_video"]
+            target_task = next((t for t in target_group["tasks"] if t["task_id"] == task_id), None)
+            assert target_task is not None
+            assert target_task["task_title"] == part1["title"]
+            assert target_task["video_count"] >= 1
+            assert target_task["audio_count"] >= 1
+            assert target_task["image_count"] >= 1
 
-        # 7. Testa se o endpoint estático /outputs serve o arquivo
-        static_req = await ac.get(target_task["primary_video"]["static_url"])
-        assert static_req.status_code == 200
-        assert b"ftypmp42" in static_req.content
+            # Verifica URLs estáticas seguras
+            assert target_task["primary_video"]["static_url"] == f"/outputs/biz_{biz_id}/task_{task_id}/video_dark_task_{task_id}.mp4"
+            assert target_task["primary_video"]["extension"] == ".mp4"
+            assert target_task["primary_video"]["type"] == "video"
+            assert "modified_at" in target_task["primary_video"]
+            assert "size_mb" in target_task["primary_video"]
+
+            # 7. Testa se o endpoint estático /outputs serve o arquivo
+            static_req = await ac.get(target_task["primary_video"]["static_url"])
+            assert static_req.status_code == 200
+            assert b"ftypmp42" in static_req.content
+
+            # 8. Testa endpoint dedicado de download 1-clique
+            dl_req = await ac.get(target_task["primary_video"]["download_url"])
+            assert dl_req.status_code == 200
+            assert "attachment" in dl_req.headers.get("content-disposition", "")
+        finally:
+            shutil.rmtree(STORAGE_OUTPUT_DIR / f"biz_{biz_id}", ignore_errors=True)
+
 

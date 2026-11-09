@@ -293,7 +293,7 @@ async function handleDispatchSeries() {
 
   isDispatchingSeries.value = true
   try {
-    const res = await api.post('/api/v1/storage/series/dispatch', {
+    const res = await api.post('/v1/storage/series/dispatch', {
       business_id: Number(bizId),
       series_title: 'Série 01 - A Queda de Lúcifer',
       parts_count: 3,

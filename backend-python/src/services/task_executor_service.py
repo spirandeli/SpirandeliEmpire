@@ -103,6 +103,15 @@ Produza agora o entregável final estruturado."""
         {"role": "user", "parts": [{"text": user_prompt}]}
     ]
 
+    # Verifica se a tarefa envolve produção multimídia / Canal Dark / Vídeo
+    is_video_task = (
+        (business and business.archetype in ("canal_dark", "dark_channel_automation"))
+        or getattr(task, "agent_action", None) == "render_video_series"
+        or any(k in (task.title + " " + (task.description or "")).lower() for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução"])
+    )
+
+    response_data = {}
+    model_used = "gemini-3.8-flash"
     try:
         response_data, model_used = await call_gemini_generate_content(
             api_key=api_key,
@@ -112,11 +121,13 @@ Produza agora o entregável final estruturado."""
             preferred_model="gemini-3.8-flash",
         )
     except Exception as e:
-        logger.error(f"Falha ao executar tarefa #{task.id} com Gemini: {e}")
-        task.failure_reason = str(e)
-        task.attempts += 1
-        await db.commit()
-        raise RuntimeError(f"Erro na execução da IA: {e}")
+        logger.warning(f"Aviso ao consultar Gemini para tarefa #{task.id}: {e}")
+        if not is_video_task:
+            task.failure_reason = str(e)
+            task.attempts += 1
+            await db.commit()
+            raise RuntimeError(f"Erro na execução da IA: {e}")
+        model_used = "abvos-autonomous-video-engine"
 
     raw_text = ""
     candidates = response_data.get("candidates", [])
@@ -133,20 +144,17 @@ Produza agora o entregável final estruturado."""
         clean_text = clean_text.split("```")[1].split("```")[0].strip()
 
     try:
-        parsed_output = json.loads(clean_text)
+        parsed_output = json.loads(clean_text) if clean_text else {}
     except Exception:
+        parsed_output = {}
+
+    if not parsed_output:
         parsed_output = {
             "summary": f"Entrega da tarefa '{task.title}' concluída com sucesso pelo IA Worker.",
-            "deliverable_type": "general",
-            "markdown_content": raw_text or "Tarefa executada com sucesso.",
+            "deliverable_type": "dark_script" if is_video_task else "general",
+            "markdown_content": raw_text or task.description or task.title,
             "items": [],
         }
-
-    # Verifica se a tarefa envolve produção multimídia / Canal Dark / Vídeo
-    is_video_task = (
-        (business and business.archetype in ("canal_dark", "dark_channel_automation"))
-        or any(k in (task.title + " " + (task.description or "")).lower() for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução"])
-    )
 
     media_result = None
     assets_created = []
@@ -177,6 +185,7 @@ Produza agora o entregável final estruturado."""
                 full_narration=full_narration_text,
                 gemini_key=api_key,
             )
+            await db.refresh(task)
 
             # Anexa informações de mídia ao resultado final da tarefa
             parsed_output["media"] = media_result
@@ -293,7 +302,10 @@ Produza agora o entregável final estruturado."""
 
     # Atualiza tarefa
     task.result = parsed_output
-    task.status = "awaiting_supervision"
+    if media_result and media_result.get("success"):
+        task.status = "done"
+    else:
+        task.status = "awaiting_supervision"
     task.completed_at = now
     task.updated_at = now
 

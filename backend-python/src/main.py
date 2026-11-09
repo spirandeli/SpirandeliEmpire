@@ -112,6 +112,16 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
+# Middleware para normalizar prefixos duplicados (/api/api/... -> /api/...)
+@app.middleware("http")
+async def normalize_duplicate_api_prefix(request: Request, call_next):
+    path = request.scope.get("path", "")
+    while path.startswith("/api/api/"):
+        path = "/api/" + path[len("/api/api/"):]
+        request.scope["path"] = path
+    return await call_next(request)
+
+
 # Health check
 @app.api_route("/up", methods=["GET", "HEAD"])
 @app.api_route("/api/health", methods=["GET", "HEAD"])
@@ -143,5 +153,5 @@ app.include_router(approvals.router, prefix="/api/v1")
 STORAGE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(STORAGE_OUTPUT_DIR)), name="outputs")
 
-if STORAGE_MEDIA_DIR.exists():
-    app.mount("/media", StaticFiles(directory=str(STORAGE_MEDIA_DIR)), name="media-static")
+STORAGE_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(STORAGE_MEDIA_DIR)), name="media-static")
