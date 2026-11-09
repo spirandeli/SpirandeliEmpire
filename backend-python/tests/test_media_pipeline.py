@@ -8,6 +8,12 @@ from src.services.media.pipeline import (
     ensure_twenty_scenes,
     router,
 )
+from src.services.media.tts_service import _align_word_timings_with_punctuation
+from src.services.media.subtitle_service import (
+    _build_chunks_from_word_timings,
+    compute_scene_timings_from_words,
+)
+from src.services.media.image_service import _build_styled_prompt
 from src.services.media.media_settings import (
     get_ffmpeg_path,
     get_ffprobe_path,
@@ -41,19 +47,67 @@ def test_video_worker_infinite_timeout_configuration():
 
 
 def test_ensure_twenty_scenes_sequential_distribution():
-    """Valida a Instrução 2: Garantia de exatamente 20 cenas (60s total, Parts 1, 2 e 3)."""
+    """Valida a Instrução 2: Garantia de exatamente 20 cenas (60s total, Parts 1, 2 e 3) e continuidade visual (visual_bible)."""
     # Teste com lista menor de cenas
     initial_scenes = [
-        {"scene_number": 1, "narration": "Gancho inicial", "visual_prompt": "Cena 1", "on_screen_text": "GANCHO"},
-        {"scene_number": 2, "narration": "Revelação do mistério", "visual_prompt": "Cena 2", "on_screen_text": "MISTÉRIO"},
+        {"scene_number": 1, "narration": "Nos reinos celestiais brilhava a criação", "visual_prompt": "Cena 1", "on_screen_text": "GANCHO"},
+        {"scene_number": 2, "narration": "A queda do arcanjo Lúcifer nos céus", "visual_prompt": "Cena 2", "on_screen_text": "MISTÉRIO"},
     ]
-    expanded = ensure_twenty_scenes(initial_scenes, "Narração completa de teste", "Pauta Dark")
+    expanded = ensure_twenty_scenes(initial_scenes, "A queda do arcanjo Lúcifer nos reinos celestiais.", "A Queda de Lúcifer")
     assert len(expanded) == 20, "O pipeline DEVE garantir exatamente 20 cenas"
+
+    first_bible = expanded[0].get("visual_bible")
+    assert isinstance(first_bible, dict)
+    protagonist = first_bible.get("protagonist_description", "")
+    world = first_bible.get("world_setting", "")
+    assert len(protagonist) > 25
+    assert len(world) > 20
+
     for idx, sc in enumerate(expanded):
         assert sc["scene_number"] == idx + 1
         assert sc["duration"] == 3.0
         assert sc["narration"]
         assert sc["visual_prompt"]
+        # Todas as 20 cenas devem conter exatamente a mesma descrição do protagonista e do mundo
+        assert protagonist in sc["visual_prompt"], f"Cena {idx + 1} perdeu a âncora física do protagonista"
+        assert world in sc["visual_prompt"], f"Cena {idx + 1} perdeu a âncora do universo da história"
+        assert sc.get("visual_bible") == first_bible
+
+    styled_1 = _build_styled_prompt(expanded[0]["visual_prompt"], visual_bible=first_bible)
+    styled_15 = _build_styled_prompt(expanded[14]["visual_prompt"], visual_bible=first_bible)
+    assert protagonist[:40] in styled_1
+    assert protagonist[:40] in styled_15
+
+
+def test_subtitle_sentence_boundaries_never_merge_across_sentences():
+    """
+    Garante que os eventos WordBoundary sem pontuação do Edge-TTS nunca juntem o fim de uma frase
+    com o começo da frase seguinte (ex: proibindo 'COROS DO UNIVERSO ELE' ou 'SER OUSAVA PISAR MAS').
+    """
+    script = (
+        "Sua voz era a harpa que rege os coros do universo. "
+        "Ele caminhava onde nenhum outro ser ousava pisar. "
+        "Mas a perfeição começou a alimentar um perigoso segredo."
+    )
+    words = [
+        ("Sua", 0.05, 0.25), ("voz", 0.26, 0.50), ("era", 0.51, 0.70), ("a", 0.71, 0.80),
+        ("harpa", 0.81, 1.15), ("que", 1.16, 1.30), ("rege", 1.31, 1.60), ("os", 1.61, 1.75),
+        ("coros", 1.76, 2.10), ("do", 2.11, 2.25), ("universo", 2.26, 2.75),
+        ("Ele", 3.05, 3.25), ("caminhava", 3.26, 3.75), ("onde", 3.76, 4.00), ("nenhum", 4.01, 4.35),
+        ("outro", 4.36, 4.65), ("ser", 4.66, 4.90), ("ousava", 4.91, 5.30), ("pisar", 5.31, 5.75),
+        ("Mas", 6.05, 6.25), ("a", 6.26, 6.35), ("perfeição", 6.36, 6.90), ("começou", 6.91, 7.35),
+        ("a", 7.36, 7.45), ("alimentar", 7.46, 7.95), ("um", 7.96, 8.10), ("perigoso", 8.11, 8.55),
+        ("segredo", 8.56, 9.05),
+    ]
+    raw_timings = [{"text": w, "start": s, "end": e} for w, s, e in words]
+    aligned = _align_word_timings_with_punctuation(script, raw_timings)
+    chunks = _build_chunks_from_word_timings(aligned, max_words=4)
+
+    assert chunks[0]["start"] == 0.0, "O primeiro bloco de legenda deve iniciar em 0.0s"
+    chunk_texts = [c["text"] for c in chunks]
+    for text in chunk_texts:
+        assert "UNIVERSO ELE" not in text, f"Fusão indevida entre frases detectada: {text}"
+        assert "PISAR MAS" not in text, f"Fusão indevida entre frases detectada: {text}"
 
 
 @pytest.mark.asyncio

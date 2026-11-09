@@ -137,20 +137,100 @@ async def generate_speech_elevenlabs(
     return False
 
 
+def _align_word_timings_with_punctuation(
+    clean_text: str,
+    raw_word_timings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Alinha os eventos WordBoundary do Edge-TTS (que vêm sem pontuação) com os tokens
+    originais do roteiro para recuperar pontuação de pausa (vírgulas) e fim de frase
+    (ponto final, exclamação, interrogação, dois-pontos), evitando que frases distintas
+    se misturem no mesmo bloco de legenda.
+    """
+    if not raw_word_timings:
+        return []
+
+    raw_tokens = [t.strip() for t in clean_text.split() if t.strip()]
+    aligned: List[Dict[str, Any]] = []
+    tok_idx = 0
+    num_tokens = len(raw_tokens)
+
+    def _norm(s: str) -> str:
+        return re.sub(r"[^\w]", "", s, flags=re.UNICODE).lower()
+
+    for idx, item in enumerate(raw_word_timings):
+        w_raw = (item.get("text") or "").strip()
+        if not w_raw:
+            continue
+        w_norm = _norm(w_raw)
+        matched_token = w_raw
+
+        if w_norm and tok_idx < num_tokens:
+            # Procura correspondência na janela próxima de tokens do texto original
+            for lookahead in range(min(5, num_tokens - tok_idx)):
+                candidate = raw_tokens[tok_idx + lookahead]
+                cand_norm = _norm(candidate)
+                if not cand_norm:
+                    continue
+                if cand_norm == w_norm or w_norm in cand_norm or cand_norm in w_norm:
+                    matched_token = candidate
+                    # Se o token original for composto (ex: "distorcer-se.") e o TTS estiver na primeira metade,
+                    # só avança o ponteiro quando consumir a parte final da palavra composta
+                    if "-" in candidate and not cand_norm.endswith(w_norm):
+                        tok_idx = tok_idx + lookahead
+                    else:
+                        tok_idx = tok_idx + lookahead + 1
+                    break
+
+        sentence_end = matched_token.endswith((".", "!", "?", ";", ":", "…"))
+        clause_end = matched_token.endswith((",", "—", "–"))
+
+        # Também detecta fim de frase se houver pausa acústica longa (> 0.24s) até a próxima palavra
+        if idx + 1 < len(raw_word_timings):
+            next_start = float(raw_word_timings[idx + 1].get("start", 0.0))
+            curr_end = float(item.get("end", 0.0))
+            if next_start - curr_end >= 0.24:
+                sentence_end = True
+            elif next_start - curr_end >= 0.14:
+                clause_end = True
+
+        aligned.append({
+            "text": w_raw,
+            "punctuated_text": matched_token,
+            "start": float(item.get("start", 0.0)),
+            "end": float(item.get("end", 0.0)),
+            "sentence_end": sentence_end,
+            "clause_end": clause_end,
+        })
+
+    return aligned
+
+
 async def generate_speech_edge_with_timings(
     text: str,
     output_path: str,
     voice: Optional[str] = None,
-    rate: str = "+2%",
+    rate: Optional[str] = None,
     pitch: str = "-3Hz",
 ) -> Tuple[bool, List[Dict[str, Any]]]:
     """
     Gera síntese de voz neural com Microsoft Edge TTS extraindo simultaneamente
-    os timestamps exatos de cada palavra (WordBoundary) para sincronia perfeita de legendas.
+    os timestamps exatos de cada palavra (WordBoundary) e alinhando-os com a pontuação
+    do texto para sincronia perfeita de legendas e cenas.
     """
     clean_text = clean_narration_for_tts(text) or text.strip()
     target_voice = voice if (voice and "Neural" in voice) else DEFAULT_EDGE_VOICE_PT
-    word_timings: List[Dict[str, Any]] = []
+    raw_word_timings: List[Dict[str, Any]] = []
+
+    # Ajusta cadência automaticamente se o roteiro for denso para caber perfeitamente em ~58s (sem corte aos 60s)
+    if rate is None:
+        word_count = len(clean_text.split())
+        if word_count >= 165:
+            rate = "+8%"
+        elif word_count >= 145:
+            rate = "+5%"
+        else:
+            rate = "+2%"
 
     try:
         communicate = edge_tts.Communicate(
@@ -172,15 +252,16 @@ async def generate_speech_edge_with_timings(
                     offset = float(chunk.get("offset") or 0) / 10_000_000.0
                     duration = float(chunk.get("duration") or 0) / 10_000_000.0
                     if w_text:
-                        word_timings.append({
+                        raw_word_timings.append({
                             "text": w_text,
                             "start": round(offset, 3),
                             "end": round(offset + max(0.08, duration), 3),
                         })
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 512:
+            word_timings = _align_word_timings_with_punctuation(clean_text, raw_word_timings)
             logger.info(
-                f"Áudio Edge-TTS gerado com sucesso ({target_voice}, {len(word_timings)} palavras sincronizadas): {output_path}"
+                f"Áudio Edge-TTS gerado com sucesso ({target_voice}, rate={rate}, {len(word_timings)} palavras sincronizadas): {output_path}"
             )
             return True, word_timings
     except Exception as e:

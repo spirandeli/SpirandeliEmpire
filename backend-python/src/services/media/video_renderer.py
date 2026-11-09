@@ -20,12 +20,13 @@ async def render_video_with_audio_and_subtitles(
     width: int = 1080,
     height: int = 1920,
     scene_duration: Optional[float] = None,
+    scene_durations: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """
     Renderiza um vídeo 9:16 (1080x1920) H.264/AAC completo:
-    1. Calcula a duração de cada cena para coincidir exatamente com a narração total ou 3.0s por cena.
-    2. Aplica zoom dinâmico (Ken Burns) e converte cada imagem para fluxo de vídeo 30fps.
-    3. Concatena as cenas visualmente.
+    1. Calcula a duração individual de cada cena para coincidir com a frase falada (ou 3.0s por cena).
+    2. Converte o fluxo de cenas para 30fps ANTES do filtro ASS para que as legendas mudem em tempo real (30fps).
+    3. Concatena as cenas visualmente sem cortes bruscos.
     4. Sincroniza a narração de áudio.
     5. Queima as legendas estilizadas .ass (Hormozi style) no vídeo final.
     """
@@ -64,36 +65,41 @@ async def render_video_with_audio_and_subtitles(
             logger.warning(f"Não foi possível obter duração exata do áudio ({e}). Usando padrão de 60s.")
 
     num_images = max(1, len(image_paths))
-    # Para 20 cenas em vídeos Dark, cada cena tem exatamente 3.0s totalizando 60.0s (1 minuto)
-    if scene_duration is None:
-        duration_per_scene = 3.0 if num_images == 20 else round(max(audio_duration, 60.0) / num_images, 3)
+    if scene_durations and len(scene_durations) == num_images:
+        per_scene_durs = [round(max(0.5, float(d)), 2) for d in scene_durations]
+        target_total_duration = round(sum(per_scene_durs), 2)
     else:
-        duration_per_scene = float(scene_duration)
-
-    target_total_duration = round(num_images * duration_per_scene, 2)
+        if scene_duration is None:
+            duration_per_scene = 3.0 if num_images == 20 else round(max(audio_duration, 60.0) / num_images, 3)
+        else:
+            duration_per_scene = float(scene_duration)
+        per_scene_durs = [duration_per_scene for _ in range(num_images)]
+        target_total_duration = round(num_images * duration_per_scene, 2)
 
     logger.info(
-        f"CONFIRMAÇÃO DE ASSETS OK: {num_images} cenas ({duration_per_scene}s/cena) e áudio ({audio_duration:.2f}s) validados no disco. "
-        f"Disparando montagem final FFmpeg sem cortes (Duração alvo exata: {target_total_duration}s)..."
+        f"CONFIRMAÇÃO DE ASSETS OK: {num_images} cenas e áudio ({audio_duration:.2f}s) validados no disco. "
+        f"Disparando montagem final FFmpeg a {fps}fps (Duração alvo exata: {target_total_duration}s)..."
     )
 
-    # 2. Constrói arquivo concat com durações exatas
+    # 2. Constrói arquivo concat com durações exatas sincronizadas por cena
     concat_file_path = temp_dir / "concat_list.txt"
     with open(concat_file_path, "w", encoding="utf-8") as f:
-        for img in image_paths:
+        for img, dur in zip(image_paths, per_scene_durs):
             f.write(f"file '{os.path.abspath(img)}'\n")
-            f.write(f"duration {duration_per_scene}\n")
+            f.write(f"duration {dur}\n")
         # No ffmpeg concat demuxer, a última imagem precisa ser repetida
         if image_paths:
             f.write(f"file '{os.path.abspath(image_paths[-1])}'\n")
 
     # 3. Monta o filtro de vídeo:
-    # - scale para 1080x1920 (padronização 9:16)
+    # - scale e pad para 1080x1920 (padronização 9:16)
+    # - fps={fps} ANTES do filtro ass para que o libass renderize todos os blocos de legenda em 30fps
+    #   (sem congelar o frame de 0.33fps do concat demuxer por 3 segundos)
     # - format=yuv420p para máxima compatibilidade
-    # - queima de legenda .ass se fornecida
     vf_filters = [
         f"scale={width}:{height}:force_original_aspect_ratio=decrease",
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+        f"fps={fps}",
         "format=yuv420p",
     ]
 

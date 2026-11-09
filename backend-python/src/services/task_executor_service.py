@@ -72,19 +72,27 @@ Sua missão é EXECUTAR integralmente a tarefa solicitada com excelência e prof
 Diretrizes Obrigatórias para Canal Dark (Roteiros, Narrações e Imagens de Vídeo 60s):
 1. Roteiro Sequencial de 20 Cenas: Sempre que a tarefa envolver vídeo, roteiro, série ou Canal Dark, gere EXATAMENTE 20 itens dentro da lista `items` (Cena 01 até Cena 20), formando UMA ÚNICA HISTÓRIA CONTÍNUA, cronológica e hipnótica de 60 segundos (3 segundos por cena).
 2. Narração Limpa (`script`): Em cada uma das 20 cenas, o campo `script` deve conter APENAS a frase falada em português natural (entre 7 e 10 palavras por cena, conectando-se com a cena seguinte). É ESTRITAMENTE PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção de palco ou prefixos como `Cena 1:` dentro de `script`.
-3. Prompts Visuais (`visual_prompt`): Em cada uma das 20 cenas, forneça um prompt visual em inglês ultra-detalhado descrevendo exatamente a ação, personagem, expressão, cenário e iluminação daquela cena específica (estilo Dark Anime / Epic Cinematic, proporção 9:16, sem texto ou letras na imagem).
+3. Bíblia Visual da História (`visual_bible`) e Continuidade Entre Cenas (`visual_prompt`):
+   - Defina o objeto `visual_bible` com a aparência física IMUTÁVEL do protagonista (`protagonist_description`: gênero, feições do rosto, cor/corte de cabelo, cor dos olhos, armadura/traje), cenário contínuo (`world_setting`), paleta de cores (`color_palette`) e estilo (`art_style`).
+   - Em cada uma das 20 cenas, o `visual_prompt` em inglês DEVE repetir as características físicas do protagonista de `visual_bible` e descrever uma cena física concreta no mesmo universo (nunca mude de personagem, estilo ou escreva metáforas abstratas).
 
 Responda em formato JSON estruturado com os seguintes campos:
 {{
   "summary": "Resumo executivo do que foi produzido nesta tarefa",
   "deliverable_type": "dark_script | image_prompts | voiceover_tts | strategy | general",
   "markdown_content": "O documento completo e formatado em Markdown com todos os detalhes produzidos",
+  "visual_bible": {{
+     "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, sculpted face, ornate black-and-gold celestial armor and six dark-golden feathered wings",
+     "world_setting": "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars",
+     "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
+     "art_style": "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, consistent character sheet"
+  }},
   "items": [
      {{
         "title": "Cena 01 - Título curto da cena",
         "description": "Contexto da cena",
         "script": "Frase limpa falada pelo narrador sem colchetes e com sete a dez palavras.",
-        "visual_prompt": "Detailed English visual prompt describing the exact scene action, character and environment, dark epic anime style, volumetric lighting, 9:16, no text",
+        "visual_prompt": "Same tall male celestial archangel with long platinum-silver hair, golden eyes and black-and-gold armor in the gothic celestial sanctuary, dramatic volumetric lighting, 9:16, no text",
         "tags": ["tag1", "tag2"]
      }}
   ]
@@ -194,12 +202,14 @@ Produza agora o entregável final estruturado."""
                 full_narration_text = parsed_output.get("markdown_content", task.title)
 
             biz_id = business.id if business else 0
+            v_bible = parsed_output.get("visual_bible") if isinstance(parsed_output.get("visual_bible"), dict) else None
             media_result = await execute_full_media_pipeline(
                 business_id=biz_id,
                 task_id=task.id,
                 scenes=scenes_payload,
                 full_narration=full_narration_text,
                 gemini_key=api_key,
+                visual_bible=v_bible,
             )
             await db.refresh(task)
 

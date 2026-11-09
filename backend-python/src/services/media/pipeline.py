@@ -19,7 +19,7 @@ from src.services.media.image_service import (
     create_cinematic_dark_backdrop,
 )
 from src.services.media.tts_service import synthesize_narration, clean_narration_for_tts
-from src.services.media.subtitle_service import generate_subtitles
+from src.services.media.subtitle_service import generate_subtitles, compute_scene_timings_from_words
 from src.services.media.video_renderer import render_video_with_audio_and_subtitles
 
 logger = logging.getLogger("abvos.media.pipeline")
@@ -264,42 +264,191 @@ def _build_narrative_beats(title: str) -> List[Dict[str, str]]:
     ]
 
 
+def _build_story_visual_bible(
+    title: str,
+    full_narration: str = "",
+    existing_bible: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """
+    Constrói ou normaliza a "Bíblia Visual da História" (Story Visual Bible) compartilhada
+    pelas 20 cenas do vídeo, garantindo que TODAS as imagens retratem exatamente o MESMO
+    personagem principal, o MESMO universo/cenário, a MESMA paleta de cores e o MESMO traço.
+    """
+    existing = dict(existing_bible or {})
+    combined_text = f"{title} {full_narration}".lower()
+
+    # Detecta arquétipo temático da história para definir feições físicas imutáveis caso não venham prontas
+    is_celestial_or_biblical = any(
+        k in combined_text
+        for k in (
+            "anjo", "arcanjo", "lúcifer", "lucifer", "céu", "celestial", "deus", "altíssimo",
+            "estrela da manhã", "rebelião", "querubim", "serafim", "trono", "profecia", "bíblic",
+        )
+    )
+
+    if is_celestial_or_biblical:
+        default_protagonist = (
+            "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, "
+            "clean-shaven sculpted masculine face, wearing ornate black-and-gold celestial plate armor with glowing "
+            "runes and six massive dark-golden feathered wings"
+        )
+        default_world = (
+            "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars "
+            "floating amidst cosmic storm clouds and astral light"
+        )
+        default_palette = "deep obsidian black, radiant molten gold, and cold astral sapphire blue"
+    else:
+        default_protagonist = (
+            "charismatic male protagonist with sharp intense amber eyes, medium-length dark tousled hair, "
+            "angular jawline, wearing a long dark high-collar trench cloak with subtle golden trim"
+        )
+        default_world = (
+            "ancient monumental gothic citadel and subterranean sanctuary shrouded in volumetric mist "
+            "and dramatic shafts of golden light"
+        )
+        default_palette = "deep midnight indigo, obsidian black, warm amber gold, and cold cyan rim lighting"
+
+    default_style = (
+        "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, "
+        "cel-shaded masterpiece, consistent character design sheet, dramatic chiaroscuro volumetric lighting"
+    )
+
+    protagonist = (existing.get("protagonist_description") or existing.get("character_anchor") or "").strip()
+    world_setting = (existing.get("world_setting") or existing.get("world_anchor") or "").strip()
+    color_palette = (existing.get("color_palette") or "").strip()
+    art_style = (existing.get("art_style") or existing.get("style_anchor") or "").strip()
+
+    return {
+        "protagonist_description": protagonist if len(protagonist) >= 25 else default_protagonist,
+        "world_setting": world_setting if len(world_setting) >= 20 else default_world,
+        "color_palette": color_palette if len(color_palette) >= 12 else default_palette,
+        "art_style": art_style if len(art_style) >= 20 else default_style,
+    }
+
+
+def _enforce_visual_continuity_across_scenes(
+    scenes: List[Dict[str, Any]],
+    visual_bible: Dict[str, str],
+    title: str = "Vídeo Dark",
+) -> List[Dict[str, Any]]:
+    """
+    Compilador de Continuidade Visual Cena-a-Cena:
+    Garante que todas as 20 cenas pareçam frames consecutivos da MESMA história e com o MESMO
+    protagonista, convertendo metáforas abstratas em cenas físicas concretas e mantendo a
+    progressão dramática dos Atos I (Cenas 1-6), II (Cenas 7-15) e III (Cenas 16-20).
+    """
+    protagonist = visual_bible["protagonist_description"]
+    world_setting = visual_bible["world_setting"]
+    color_palette = visual_bible["color_palette"]
+    art_style = visual_bible["art_style"]
+
+    act_progression = [
+        # Ato I (Cenas 1 a 6): Apresentação majestosa no mesmo santuário
+        "Act I establishing shot, serene yet imposing presence in luminous celestial hall",
+        "Act I medium shot, golden gemstones and armor gleaming on his chest under divine light",
+        "Act I atmospheric shot, harmonic golden light waves radiating around him in the sanctuary",
+        "Act I wide tracking shot from behind, walking across sacred obsidian floor where none dare step",
+        "Act I dramatic close-up on his face and golden eyes, subtle shadow of ambition crossing his expression",
+        "Act I low-angle portrait, his radiant wings spread wide casting a long dark shadow across the marble pillars",
+        # Ato II (Cenas 7 a 15): Transformação da expressão e tensão crescente no mesmo universo
+        "Act II intense medium close-up, sacred golden aura around his hands twisting into dark crimson-gold sparks",
+        "Act II cinematic corridor shot, whispering shadows echoing around him between towering gothic columns",
+        "Act II heroic yet ominous low-angle shot, looking up toward the highest celestial throne with defiant gaze",
+        "Act II dramatic chiaroscuro portrait, dark golden energy veins glowing across his ornate armor",
+        "Act II wide council scene, standing on a raised dais addressing a circle of winged celestial figures in shadow",
+        "Act II dynamic composition, a glowing rift of golden-violet light cracking the celestial dome behind him",
+        "Act II tense confrontation shot, loyal armored guardians watching his betrayal from the upper colonnade",
+        "Act II epic wide shot, legions of winged silhouettes aligning behind him under falling golden stars",
+        "Act II dramatic storm shot, lightning and cosmic shockwaves shattering the silence around his raised hand",
+        # Ato III (Cenas 16 a 20): Clímax e resolução mantendo 100% do mesmo personagem e cenário
+        "Act III climax close-up, fierce glowing eyes as he completely drops any mask of submission",
+        "Act III grand cinematic battle tableau, clashing beams of golden light and dark abyssal fire in the sanctuary",
+        "Act III dramatic profile shot, standing amidst fractured marble pillars and swirling golden embers",
+        "Act III atmospheric wide shot, gazing over the divided celestial horizon with his six dark-golden wings spread",
+        "Act III seamless loop final shot, silhouette and glowing eyes turning back in the cosmic sanctuary rift",
+    ]
+
+    compiled_scenes: List[Dict[str, Any]] = []
+    for idx, sc in enumerate(scenes):
+        act_hint = act_progression[idx % len(act_progression)]
+        raw_vis = (sc.get("visual_prompt") or "").strip()
+        raw_narr = clean_narration_for_tts(sc.get("narration") or "")
+
+        # Limpa sufixos redundantes para re-ancorar na estrutura unificada da história
+        cleaned_action = re.sub(
+            r"\b(?:vertical\s*9:16|9:16|8k\s*resolution|8k|unreal\s*engine\s*5)\b",
+            "",
+            raw_vis,
+            flags=re.IGNORECASE,
+        ).strip(" ,.-")
+
+        # Se o prompt original for muito curto, genérico ou apenas repetir texto em português sem ação física clara,
+        # combina com a direção de cena concreta do ato correspondente
+        if not cleaned_action or len(cleaned_action) < 35:
+            scene_action = f"{act_hint}, visually depicting '{raw_narr}'"
+        else:
+            scene_action = f"{act_hint}, {cleaned_action}"
+
+        continuous_prompt = (
+            f"{art_style}. "
+            f"Same main character in every scene ({protagonist}). "
+            f"Scene {idx + 1:02d} action: {scene_action}. "
+            f"Consistent environment: {world_setting}. "
+            f"Unified color grading: {color_palette}, vertical 9:16"
+        )
+
+        updated_sc = dict(sc)
+        updated_sc["visual_prompt"] = continuous_prompt
+        updated_sc["visual_bible"] = visual_bible
+        compiled_scenes.append(updated_sc)
+
+    return compiled_scenes
+
+
 async def _generate_twenty_scenes_via_gemini(
     title: str,
     context_text: str,
     api_key: str,
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
     """
-    Solicita ao Gemini a criação de exatamente 20 cenas conectadas em narrativa contínua
-    de 60 segundos (3s por cena) quando a task não possui as 20 cenas previamente estruturadas.
+    Solicita ao Gemini a criação da Bíblia Visual da História (`visual_bible`) e de exatamente
+    20 cenas conectadas em narrativa contínua de 60 segundos, garantindo que o mesmo personagem
+    e o mesmo universo visual sejam mantidos da Cena 1 à Cena 20.
     """
     if not api_key or os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
-        return []
+        return [], None
 
     try:
         from src.services.jeffrey_orchestrator import call_gemini_generate_content
 
         sys_prompt = """Você é o Diretor de Roteiro e Fotografia de Canal Dark do ABVOS.
-Gere EXATAMENTE 20 cenas sequenciais e contínuas para um vídeo vertical de 60 segundos (3 segundos por cena).
-Regras obrigatórias:
+Gere uma Bíblia Visual Unificada (`visual_bible`) e EXATAMENTE 20 cenas sequenciais e contínuas para um vídeo vertical de 60 segundos.
+Regras obrigatórias de Continuidade Visual e Narrativa:
 1. A narração (`narration`) das 20 cenas deve formar UMA ÚNICA HISTÓRIA CONTÍNUA, envolvente e cronológica em Português do Brasil.
-2. Cada `narration` deve ter entre 7 e 11 palavras (para durar cerca de 3 segundos na fala).
-3. PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção, ou prefixos como `Cena 1:` dentro de `narration`. Escreva apenas o texto puro que será falado pelo locutor.
-4. Cada `visual_prompt` deve ser em INGLÊS, descrevendo exatamente a cena visual correspondente àquela frase (personagens, ação, ambiente, iluminação volumétrica, estilo Dark Anime / Epic Cinematic 9:16, sem texto na imagem).
+2. Cada `narration` deve ter entre 7 e 10 palavras (para durar cerca de 3 segundos na fala).
+3. PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção, ou prefixos como `Cena 1:` dentro de `narration`.
+4. CONTINUIDADE TOTAL DE PERSONAGEM E HISTÓRIA: Defina em `visual_bible` a aparência física EXATA e IMUTÁVEL do protagonista (`protagonist_description`: gênero, rosto, cor e corte de cabelo, cor dos olhos, armadura/vestimenta), o cenário principal (`world_setting`), a paleta de cores (`color_palette`) e o estilo (`art_style`).
+5. Em CADA UM dos 20 `visual_prompt` (em INGLÊS), repita as características físicas do protagonista de `visual_bible` e descreva uma cena física e concreta (postura, expressão facial, ação visível e iluminação no mesmo cenário). NUNCA escreva prompts abstratos ou mude o personagem de uma cena para outra.
 
 Responda APENAS um JSON válido no formato:
 {
+  "visual_bible": {
+    "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, sculpted face, wearing ornate black-and-gold celestial armor and six dark-golden feathered wings",
+    "world_setting": "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars",
+    "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
+    "art_style": "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, consistent character sheet"
+  },
   "scenes": [
     {
       "scene_number": 1,
       "narration": "Frase falada limpa em português com sete a dez palavras.",
-      "visual_prompt": "Detailed English visual prompt describing the exact scene action and characters, dark anime cinematic style, 9:16",
+      "visual_prompt": "Same tall male celestial archangel with long platinum-silver hair, golden eyes and black-and-gold armor standing in the gothic celestial sanctuary, dramatic volumetric lighting, 9:16",
       "on_screen_text": "TÍTULO CURTO"
     }
   ]
 }"""
 
-        user_msg = f"Título do Vídeo: {title}\nContexto / Tema: {clean_narration_for_tts(context_text) or title}\nGere as 20 cenas completas agora."
+        user_msg = f"Título do Vídeo: {title}\nContexto / Tema: {clean_narration_for_tts(context_text) or title}\nGere a visual_bible e as 20 cenas contínuas agora."
         resp_data, _ = await call_gemini_generate_content(
             api_key=api_key,
             contents=[{"role": "user", "parts": [{"text": user_msg}]}],
@@ -316,31 +465,33 @@ Responda APENAS um JSON válido no formato:
                 raw = raw.split("```")[1].split("```")[0].strip()
             parsed = json.loads(raw)
             sc_list = parsed.get("scenes") or parsed.get("items") or []
+            v_bible = parsed.get("visual_bible") if isinstance(parsed.get("visual_bible"), dict) else None
             if isinstance(sc_list, list) and len(sc_list) >= 10:
-                return sc_list
+                return sc_list, v_bible
     except Exception as e:
         logger.warning(f"Não foi possível gerar 20 cenas via Gemini complementar: {e}")
 
-    return []
+    return [], None
 
 
 def ensure_twenty_scenes(
     scenes: Optional[List[Dict[str, Any]]],
     full_narration: str,
     title: str = "Vídeo Dark",
+    visual_bible: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Garante obrigatoriamente 20 cenas de 3 segundos (totalizando exatamente 60 segundos por vídeo),
+    Garante obrigatoriamente 20 cenas conectadas na mesma história (totalizando 60 segundos),
     com narração contínua, limpa (sem '[pausa]', sem '(fase 2)', sem logs de status) e com
-    prompts visuais distintos para cada cena:
-    - Part 1: Cenas 01 a 06 (0s a 18s) - Hook Hipnótico e Quebra de Padrão
-    - Part 2: Cenas 07 a 15 (18s a 45s) - Desenvolvimento e Tensão Narrativa
+    continuidade visual estrita (mesmo protagonista, mesmo cenário, mesma paleta de cores):
+    - Part 1: Cenas 01 a 06 (0s a 18s) - Hook Hipnótico e Apresentação do Protagonista/Mundo
+    - Part 2: Cenas 07 a 15 (18s a 45s) - Desenvolvimento e Tensão Narrativa no Mesmo Universo
     - Part 3: Cenas 16 a 20 (45s a 60s) - Clímax, Revelação e Looping Contínuo
     """
     camera_styles = [
         "Dynamic macro push-in, anamorphic lens, volumetric dark fog",
         "Wide cinematic angle, ominous shadows, dark anime masterpiece",
-        "Extreme close up on critical detail, dramatic chiaroscuro side lighting",
+        "Extreme close up on character face and eyes, dramatic chiaroscuro side lighting",
         "Slow atmospheric dolly in, cold blue and gold rim light, 8k resolution",
         "Low-angle heroic shot in deep darkness, glowing embers and particles",
         "High-contrast dramatic composition, epic fantasy lighting, 8k",
@@ -348,6 +499,7 @@ def ensure_twenty_scenes(
 
     fallback_beats = _build_narrative_beats(title)
     clean_full = clean_narration_for_tts(full_narration)
+    story_bible = _build_story_visual_bible(title=title, full_narration=clean_full, existing_bible=visual_bible)
 
     # Extrai sentenças reais da narração caso existam
     narration_sentences: List[str] = []
@@ -382,7 +534,7 @@ def ensure_twenty_scenes(
                 "visual_prompt": v_prompt,
                 "on_screen_text": sc.get("on_screen_text") or sc.get("title") or f"CENA {i + 1:02d}",
             })
-        return normalized_scenes
+        return _enforce_visual_continuity_across_scenes(normalized_scenes, story_bible, title=title)
 
     # Se vieram menos de 20 cenas, coleta as cenas válidas e completa com as sentenças/beats contínuos
     collected_items: List[Dict[str, str]] = []
@@ -449,7 +601,7 @@ def ensure_twenty_scenes(
             "on_screen_text": on_screen,
         })
 
-    return normalized_scenes
+    return _enforce_visual_continuity_across_scenes(normalized_scenes, story_bible, title=title)
 
 
 @router.task(job_timeout=None)
@@ -461,14 +613,15 @@ async def execute_full_video_pipeline(
     voice_persona: Optional[str] = None,
     gemini_key: Optional[str] = None,
     elevenlabs_key: Optional[str] = None,
+    visual_bible: Optional[Dict[str, str]] = None,
     **kwargs,
 ) -> Dict[str, Any]:
     """
     Motor Principal de Renderização Multimídia Autônoma ABVOS (Vídeo 9:16, 1080x1920):
     1. job_timeout=None (Timeout Infinite): Sem limite de tempo no ARQ/Redis/FastAPI.
-    2. Execução Sequencial Garantida (20 Cenas de 3s cada = exatamente 60s / 1 minuto).
-    3. Multi-provider de imagens reais IA (Google GenAI -> Pollinations Flux -> HF Flux -> AI Horde).
-    4. Síntese de voz neural limpa e sincronização palavra por palavra (WordBoundary) nas legendas .ass/.srt.
+    2. Continuidade Visual Garantida (Story Visual Bible + mesmo protagonista + mesmo motor Flux + story_seed).
+    3. Execução Sequencial Garantida (20 Cenas sincronizadas com a voz = exatamente 60s / 1 minuto).
+    4. Síntese de voz neural limpa e sincronização palavra por palavra (WordBoundary) em 30fps nas legendas .ass/.srt.
     5. Compilação final via FFmpeg de exatamente 1 minuto de duração.
     """
     task_media_dir = get_task_media_dir(business_id, task_id)
@@ -520,21 +673,33 @@ async def execute_full_video_pipeline(
 
     # Se a task veio com poucas cenas (ex: disparada direto do Kanban/Series), gera as 20 cenas conectadas via Gemini
     if (not scenes or len(scenes) < 10) and gemini_key and os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") != "1":
-        gemini_scenes = await _generate_twenty_scenes_via_gemini(
+        gemini_scenes, gemini_bible = await _generate_twenty_scenes_via_gemini(
             title=task_title,
             context_text=full_narration or task_title,
             api_key=gemini_key,
         )
         if gemini_scenes:
             scenes = gemini_scenes
+        if gemini_bible and not visual_bible:
+            visual_bible = gemini_bible
 
-    # PASSO 1: Normalização Garantida de 20 Cenas (3 segundos cada, total 60 segundos)
-    twenty_scenes = ensure_twenty_scenes(scenes, full_narration or task_title, title=task_title)
+    # PASSO 1: Normalização Garantida de 20 Cenas com Bíblia Visual da História (mesmo personagem e cenário)
+    story_bible = _build_story_visual_bible(
+        title=task_title,
+        full_narration=full_narration or task_title,
+        existing_bible=visual_bible,
+    )
+    twenty_scenes = ensure_twenty_scenes(
+        scenes,
+        full_narration or task_title,
+        title=task_title,
+        visual_bible=story_bible,
+    )
     total_scenes_count = len(twenty_scenes)
     assert total_scenes_count == 20, f"O pipeline exige exatamente 20 cenas, obtido {total_scenes_count}"
 
-    # PASSO 2: Execução Sequencial das 20 Cenas com Progresso em Tempo Real
-    logger.info("[Passo 1/4] Gerando ilustrações das 20 cenas (Part 1, Part 2 e Part 3)...")
+    # PASSO 2: Execução Sequencial das 20 Cenas com Progresso em Tempo Real e Seed Fixa da História
+    logger.info("[Passo 1/4] Gerando ilustrações contínuas das 20 cenas (Mesmo Protagonista e Universo)...")
 
     async def _on_scene_progress(current_sc: int, total_sc: int):
         if current_sc % 5 == 0 or current_sc == 1 or current_sc == total_sc:
@@ -550,12 +715,15 @@ async def execute_full_video_pipeline(
                 percent=sc_pct,
             )
 
+    story_seed = 100000 + ((int(task_id or 1) * 7919) % 800000)
     image_paths = await generate_all_scene_images(
         scenes=twenty_scenes,
         output_dir=scenes_dir,
         gemini_key=gemini_key,
         progress_callback=_on_scene_progress,
         sequential=True,
+        visual_bible=story_bible,
+        story_seed=story_seed,
     )
 
     # PASSO 3: Síntese de Narração de Áudio (TTS) Unificada e Limpa
@@ -582,16 +750,14 @@ async def execute_full_video_pipeline(
     total_audio_duration = tts_result["duration_seconds"]
     word_timings = tts_result.get("word_timings") or []
 
-    # PASSO 4: Geração de Legendas Dinâmicas Sincronizadas (WordBoundary real ou distribuição proporcional)
+    # PASSO 4: Sincronização Cena <-> Fala e Geração de Legendas Dinâmicas (sem misturar frases)
     logger.info(f"[Passo 3/4] Gerando legendas dinâmicas sincronizadas ({len(word_timings)} palavras mapeadas)...")
-    duration_per_scene = 3.0
-    scenes_timing = []
-    for i, sc in enumerate(twenty_scenes):
-        scenes_timing.append({
-            "text": clean_narration_for_tts(sc.get("narration") or sc.get("on_screen_text") or ""),
-            "start": round(i * duration_per_scene, 2),
-            "end": round((i + 1) * duration_per_scene, 2),
-        })
+    scenes_timing = compute_scene_timings_from_words(
+        scenes=twenty_scenes,
+        word_timings=word_timings,
+        target_total_duration=60.0,
+    )
+    scene_durations = [float(st.get("duration", 3.0)) for st in scenes_timing]
 
     subtitles_result = generate_subtitles(
         scenes_timing=scenes_timing,
@@ -633,7 +799,7 @@ async def execute_full_video_pipeline(
         percent=80.0,
     )
 
-    # PASSO 6: Compilação Final via FFmpeg (Exatamente 1 minuto / 60 segundos de duração)
+    # PASSO 6: Compilação Final via FFmpeg (Exatamente 1 minuto / 60 segundos de duração a 30fps)
     render_result = await render_video_with_audio_and_subtitles(
         image_paths=verified_images,
         audio_path=audio_path,
@@ -643,6 +809,7 @@ async def execute_full_video_pipeline(
         width=1080,
         height=1920,
         scene_duration=3.0,
+        scene_durations=scene_durations,
     )
 
     # Sincroniza e garante os artefatos finais no diretório de saída oficial /app/storage/output

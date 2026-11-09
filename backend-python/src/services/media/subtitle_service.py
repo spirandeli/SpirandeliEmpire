@@ -47,23 +47,124 @@ def split_text_into_chunks(text: str, max_words: int = 4) -> List[str]:
     current = []
 
     for w in words:
-        current.append(w)
-        if len(current) >= max_words or w.endswith((".", "!", "?", ",", ";", ":")):
-            chunks.append(" ".join(current))
-            current = []
+        has_break = w.endswith((".", "!", "?", ",", ";", ":", "—", "–"))
+        clean_w = re.sub(r"^[.,!?;:«»\"'()\[\]]+|[.,!?;:«»\"'()\[\]]+$", "", w).strip()
+        if clean_w:
+            current.append(clean_w)
+        if len(current) >= max_words or has_break:
+            if current:
+                chunks.append(" ".join(current))
+                current = []
 
     if current:
         chunks.append(" ".join(current))
     return chunks
 
 
+def compute_scene_timings_from_words(
+    scenes: List[Dict[str, Any]],
+    word_timings: List[Dict[str, Any]],
+    target_total_duration: float = 60.0,
+) -> List[Dict[str, Any]]:
+    """
+    Mapeia as frases das 20 cenas diretamente nos timestamps reais (WordBoundary) do TTS:
+    1. Marca obrigatoriamente `sentence_end = True` na última palavra de cada cena para que a
+       legenda nunca junte o final de uma cena com o início da próxima.
+    2. Calcula o `start`, `end` e `duration` exatos de cada cena para que a troca de imagem no
+       FFmpeg aconteça exatamente na pausa entre as frases narradas, totalizando `target_total_duration`.
+    """
+    num_scenes = len(scenes)
+    if num_scenes == 0:
+        return []
+
+    default_dur = round(target_total_duration / num_scenes, 2)
+    if not word_timings:
+        result = []
+        acc = 0.0
+        for i, sc in enumerate(scenes):
+            dur = default_dur if i < num_scenes - 1 else round(max(0.5, target_total_duration - acc), 2)
+            result.append({
+                "scene_number": i + 1,
+                "text": clean_narration_for_tts(sc.get("narration") or sc.get("on_screen_text") or ""),
+                "start": round(acc, 2),
+                "end": round(acc + dur, 2),
+                "duration": dur,
+            })
+            acc += dur
+        return result
+
+    total_tts_words = len(word_timings)
+    scene_word_counts = []
+    for sc in scenes:
+        narr = clean_narration_for_tts(sc.get("narration") or "")
+        w_list = [w for w in re.findall(r"\w+", narr, flags=re.UNICODE) if w]
+        scene_word_counts.append(max(1, len(w_list)))
+
+    total_expected_words = max(1, sum(scene_word_counts))
+    scene_ranges: List[tuple[int, int]] = []
+    cursor = 0
+    acc_expected = 0
+
+    for i, count in enumerate(scene_word_counts):
+        acc_expected += count
+        if i == num_scenes - 1:
+            end_idx = total_tts_words - 1
+        else:
+            target_idx = int(round((acc_expected / total_expected_words) * total_tts_words)) - 1
+            max_allowed = max(cursor, total_tts_words - (num_scenes - 1 - i) - 1)
+            end_idx = max(cursor, min(target_idx, max_allowed))
+        scene_ranges.append((cursor, end_idx))
+        if 0 <= end_idx < total_tts_words:
+            word_timings[end_idx]["sentence_end"] = True
+        cursor = min(total_tts_words - 1, end_idx + 1)
+
+    # Calcula os pontos de corte (cut_points) exatamente na pausa entre a última palavra da cena i e a primeira da cena i+1
+    cut_points: List[float] = [0.0]
+    for i in range(num_scenes - 1):
+        _, end_i = scene_ranges[i]
+        start_next, _ = scene_ranges[i + 1]
+        t_end_i = float(word_timings[end_i].get("end", (i + 1) * default_dur))
+        t_start_next = float(word_timings[start_next].get("start", t_end_i))
+        midpoint = round((t_end_i + max(t_end_i, t_start_next)) / 2.0, 2)
+        # Garante duração mínima de 1.2s por cena e folga para as cenas restantes
+        min_cut = round(cut_points[-1] + 1.2, 2)
+        max_cut = round(target_total_duration - (num_scenes - 1 - i) * 1.2, 2)
+        cut_points.append(max(min_cut, min(midpoint, max_cut)))
+
+    cut_points.append(round(target_total_duration, 2))
+
+    scenes_timing: List[Dict[str, Any]] = []
+    for i, sc in enumerate(scenes):
+        s_start = round(cut_points[i], 2)
+        s_end = round(cut_points[i + 1], 2)
+        s_dur = round(max(0.5, s_end - s_start), 2)
+        scenes_timing.append({
+            "scene_number": i + 1,
+            "text": clean_narration_for_tts(sc.get("narration") or sc.get("on_screen_text") or ""),
+            "start": s_start,
+            "end": s_end,
+            "duration": s_dur,
+        })
+
+    # Ajuste fino de centésimos na última cena para fechar exatamente em target_total_duration
+    total_calc = round(sum(item["duration"] for item in scenes_timing), 2)
+    diff = round(target_total_duration - total_calc, 2)
+    if abs(diff) > 0 and scenes_timing:
+        scenes_timing[-1]["duration"] = round(max(0.5, scenes_timing[-1]["duration"] + diff), 2)
+        scenes_timing[-1]["end"] = round(target_total_duration, 2)
+
+    return scenes_timing
+
+
 def _build_chunks_from_word_timings(
     word_timings: List[Dict[str, Any]],
     max_words: int = 4,
+    max_chars: int = 26,
 ) -> List[Dict[str, Any]]:
     """
-    Agrupa os eventos WordBoundary reais do TTS em blocos de 3 a 4 palavras,
-    preservando os timestamps exatos de início e fim falados pelo narrador.
+    Agrupa os eventos WordBoundary reais do TTS em blocos curtos (3 a 4 palavras, máx ~26 caracteres),
+    preservando os timestamps exatos de início e fim falados pelo narrador e NUNCA misturando
+    o fim de uma frase com o começo da próxima.
     """
     grouped: List[Dict[str, Any]] = []
     current_words: List[str] = []
@@ -71,22 +172,51 @@ def _build_chunks_from_word_timings(
     chunk_end: float = 0.0
 
     for item in word_timings:
-        w = (item.get("text") or "").strip().upper()
+        raw_w = (item.get("text") or "").strip()
+        # Remove pontuação residual nas bordas para exibição limpa estilo Hormozi
+        w = re.sub(r"^[.,!?;:«»\"'()\[\]]+|[.,!?;:«»\"'()\[\]]+$", "", raw_w).strip().upper()
         if not w:
             continue
+
         w_start = float(item.get("start", 0.0))
-        w_end = float(item.get("end", w_start + 0.25))
+        w_end = float(item.get("end", w_start + 0.22))
+        punct_tok = (item.get("punctuated_text") or raw_w).strip()
+        is_sentence_end = bool(item.get("sentence_end")) or punct_tok.endswith((".", "!", "?", ";", ":", "…"))
+        is_clause_end = bool(item.get("clause_end")) or punct_tok.endswith((",", "—", "–"))
+
+        # Se já existe um bloco aberto e houve pausa acústica (>= 0.20s) ou se adicionar esta
+        # palavra estourar o limite visual de caracteres, fecha o bloco anterior ANTES de incluir a palavra atual
+        current_char_len = sum(len(cw) for cw in current_words) + max(0, len(current_words) - 1)
+        if current_words and chunk_start is not None:
+            gap_before = w_start - chunk_end
+            would_exceed_chars = (current_char_len + 1 + len(w)) > max_chars and len(current_words) >= 2
+            if gap_before >= 0.20 or would_exceed_chars:
+                grouped.append({
+                    "text": " ".join(current_words),
+                    "start": round(chunk_start, 2),
+                    "end": round(max(chunk_end, chunk_start + 0.22), 2),
+                    "sentence_end": gap_before >= 0.20,
+                })
+                current_words = []
+                chunk_start = None
 
         if chunk_start is None:
             chunk_start = w_start
         current_words.append(w)
-        chunk_end = max(w_end, chunk_start + 0.25)
+        chunk_end = max(w_end, chunk_start + 0.20)
 
-        if len(current_words) >= max_words or w.endswith((".", "!", "?", ",", ";", ":")):
+        # Fecha o bloco imediatamente ao atingir fim de frase, vírgula (com >= 2 palavras) ou limite de palavras
+        should_close = (
+            is_sentence_end
+            or (is_clause_end and len(current_words) >= 2)
+            or len(current_words) >= max_words
+        )
+        if should_close:
             grouped.append({
                 "text": " ".join(current_words),
                 "start": round(chunk_start, 2),
-                "end": round(chunk_end, 2),
+                "end": round(max(chunk_end, chunk_start + 0.22), 2),
+                "sentence_end": is_sentence_end,
             })
             current_words = []
             chunk_start = None
@@ -95,15 +225,22 @@ def _build_chunks_from_word_timings(
         grouped.append({
             "text": " ".join(current_words),
             "start": round(chunk_start, 2),
-            "end": round(max(chunk_end, chunk_start + 0.35), 2),
+            "end": round(max(chunk_end, chunk_start + 0.30), 2),
+            "sentence_end": True,
         })
 
-    # Garante que nenhum bloco sobreponha o próximo e que tenha duração mínima legível
+    # Garante que o primeiro bloco apareça desde o início (0.0s) se a fala começar nos primeiros 300ms
+    if grouped and grouped[0]["start"] <= 0.30:
+        grouped[0]["start"] = 0.0
+
+    # Garante que nenhum bloco sobreponha o próximo e une micro-gaps dentro da mesma frase para evitar flicker
     for idx in range(len(grouped) - 1):
         nxt_start = grouped[idx + 1]["start"]
         if grouped[idx]["end"] > nxt_start:
             grouped[idx]["end"] = nxt_start
-        elif nxt_start - grouped[idx]["end"] < 0.18:
+        elif not grouped[idx].get("sentence_end") and (nxt_start - grouped[idx]["end"] < 0.22):
+            grouped[idx]["end"] = nxt_start
+        elif grouped[idx].get("sentence_end") and (nxt_start - grouped[idx]["end"] < 0.12):
             grouped[idx]["end"] = nxt_start
 
     return grouped
