@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Any
@@ -15,21 +16,35 @@ from src.schemas.task import (
     TaskUpdateRequest,
 )
 from src.services.task_executor_service import execute_agent_task
+from src.services.media.pipeline import _persist_video_progress
 from src.routers.media import scan_task_media_dir
 from src.routers.storage_viewer import delete_task_storage_dirs
 
 logger = logging.getLogger("abvos.routers.tasks")
 
+_RUNNING_TASK_IDS: set[int] = set()
 
-async def _bg_execute_task(task_id: int, user: User):
+
+async def _bg_execute_task(task_id: int, user: User | int):
     """
-    Executa a tarefa em background quando arrastada para in_progress_agent.
+    Executa a tarefa em background de forma assíncrona sem bloquear a requisição HTTP.
     """
+    if task_id in _RUNNING_TASK_IDS:
+        logger.info(f"Tarefa #{task_id} já está em execução em segundo plano. Ignorando disparo duplicado.")
+        return
+
+    _RUNNING_TASK_IDS.add(task_id)
+    user_id = user.id if hasattr(user, "id") else int(user)
     try:
         async with AsyncSessionLocal() as session:
-            await execute_agent_task(session, task_id, user)
+            u_res = await session.execute(select(User).where(User.id == user_id))
+            db_user = u_res.scalar_one_or_none()
+            if db_user:
+                await execute_agent_task(session, task_id, db_user)
     except Exception as e:
         logger.error(f"Erro ao executar tarefa #{task_id} em background: {e}")
+    finally:
+        _RUNNING_TASK_IDS.discard(task_id)
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -353,17 +368,38 @@ async def update(
 @router.post("/{task_id}/execute")
 async def execute(
     task_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        res = await execute_agent_task(db, task_id, current_user)
-        return {"message": "Tarefa executada com sucesso pelo IA Worker!", **res}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha ao executar tarefa com IA: {str(e)}",
-        )
+    task = await _get_user_task(task_id, current_user, db)
+    now = _utc_now()
+    task.status = "in_progress_agent"
+    task.started_at = now
+    task.failure_reason = None
+    task.updated_at = now
+    await db.commit()
+    await db.refresh(task)
+
+    await _persist_video_progress(
+        task_id=task.id,
+        business_id=task.business_id or 0,
+        current_scene=0,
+        total_scenes=20,
+        stage="prompts",
+        percent=0.0,
+    )
+    await db.refresh(task)
+
+    # Dispara a execução pesada em background para responder imediatamente (< 50ms) sem deixar a requisição pendente
+    background_tasks.add_task(_bg_execute_task, task.id, current_user.id)
+
+    return {
+        "message": "Execução iniciada em segundo plano pelo IA Worker! Acompanhe o progresso no card.",
+        "task_id": task.id,
+        "status": "in_progress_agent",
+        "data": _format_task(task),
+    }
 
 
 @router.post("/execute-pending")

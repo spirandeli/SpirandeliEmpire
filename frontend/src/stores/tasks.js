@@ -10,14 +10,17 @@ export const useTaskStore = defineStore('tasks', () => {
   const isPollingLogs = ref(false)
   let pollInterval = null
 
-  async function fetchBoard(params = {}) {
-    loading.value = true
+  const lastBoardParams = ref({})
+
+  async function fetchBoard(params = {}, silent = false) {
+    lastBoardParams.value = { ...params }
+    if (!silent) loading.value = true
     try {
       const response = await api.get('/tasks/board', { params })
       boardColumns.value = response.data.data
       return boardColumns.value
     } finally {
-      loading.value = false
+      if (!silent) loading.value = false
     }
   }
 
@@ -105,14 +108,21 @@ export const useTaskStore = defineStore('tasks', () => {
       const response = await api.get('/agent/logs', { params })
       const newLogs = response.data.data || []
 
+      const hasRunningTasks = boardColumns.value.some(
+        (col) => col.status === 'in_progress_agent' && col.tasks && col.tasks.length > 0
+      )
+
       if (newLogs.length > 0) {
         // Se for a primeira carga
         if (lastLogId.value === 0) {
           agentLogs.value = newLogs
         } else {
           agentLogs.value = [...agentLogs.value, ...newLogs]
+          await fetchBoard(lastBoardParams.value, true)
         }
         lastLogId.value = response.data.meta?.last_id || Math.max(...newLogs.map((l) => l.id))
+      } else if (hasRunningTasks) {
+        await fetchBoard(lastBoardParams.value, true)
       }
     } catch {
       // Falha silenciosa no polling

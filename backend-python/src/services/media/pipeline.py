@@ -702,18 +702,17 @@ async def execute_full_video_pipeline(
     logger.info("[Passo 1/4] Gerando ilustrações contínuas das 20 cenas (Mesmo Protagonista e Universo)...")
 
     async def _on_scene_progress(current_sc: int, total_sc: int):
-        if current_sc % 5 == 0 or current_sc == 1 or current_sc == total_sc:
-            sc_pct = round((current_sc / total_sc) * 100, 1)
-            if current_sc == 5:
-                sc_pct = 25.0
-            await _persist_video_progress(
-                task_id=task_id,
-                business_id=business_id,
-                current_scene=current_sc,
-                total_scenes=total_sc,
-                stage="images",
-                percent=sc_pct,
-            )
+        sc_pct = round((current_sc / max(1, total_sc)) * 48.0, 1)
+        if current_sc == 5:
+            sc_pct = 25.0
+        await _persist_video_progress(
+            task_id=task_id,
+            business_id=business_id,
+            current_scene=current_sc,
+            total_scenes=total_sc,
+            stage="images",
+            percent=sc_pct,
+        )
 
     story_seed = 100000 + ((int(task_id or 1) * 7919) % 800000)
     image_paths = await generate_all_scene_images(
