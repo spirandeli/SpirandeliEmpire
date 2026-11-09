@@ -142,15 +142,27 @@ def _align_word_timings_with_punctuation(
     raw_word_timings: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """
-    Alinha os eventos WordBoundary do Edge-TTS (que vêm sem pontuação) com os tokens
+    Alinha os eventos WordBoundary do Edge-TTS (que vêm sem pontuação e separam palavras
+    hifenizadas como 'assentar-se' em dois eventos 'assentar' e 'se') com os tokens
     originais do roteiro para recuperar pontuação de pausa (vírgulas) e fim de frase
-    (ponto final, exclamação, interrogação, dois-pontos), evitando que frases distintas
-    se misturem no mesmo bloco de legenda.
+    (ponto final, exclamação, interrogação, dois-pontos), sem deslocar o índice de palavras.
     """
     if not raw_word_timings:
         return []
 
-    raw_tokens = [t.strip() for t in clean_text.split() if t.strip()]
+    # Divide tanto por espaço quanto por hífen preservando a pontuação apenas na última sub-palavra
+    raw_tokens: List[str] = []
+    for ws_tok in clean_text.split():
+        ws_tok = ws_tok.strip()
+        if not ws_tok:
+            continue
+        if "-" in ws_tok and len(ws_tok) > 1:
+            parts = [p for p in ws_tok.split("-") if p]
+            if len(parts) > 1:
+                raw_tokens.extend(parts)
+                continue
+        raw_tokens.append(ws_tok)
+
     aligned: List[Dict[str, Any]] = []
     tok_idx = 0
     num_tokens = len(raw_tokens)
@@ -166,32 +178,30 @@ def _align_word_timings_with_punctuation(
         matched_token = w_raw
 
         if w_norm and tok_idx < num_tokens:
-            # Procura correspondência na janela próxima de tokens do texto original
-            for lookahead in range(min(5, num_tokens - tok_idx)):
+            for lookahead in range(min(4, num_tokens - tok_idx)):
                 candidate = raw_tokens[tok_idx + lookahead]
                 cand_norm = _norm(candidate)
                 if not cand_norm:
                     continue
-                if cand_norm == w_norm or w_norm in cand_norm or cand_norm in w_norm:
+                if cand_norm == w_norm or w_norm == cand_norm:
                     matched_token = candidate
-                    # Se o token original for composto (ex: "distorcer-se.") e o TTS estiver na primeira metade,
-                    # só avança o ponteiro quando consumir a parte final da palavra composta
-                    if "-" in candidate and not cand_norm.endswith(w_norm):
-                        tok_idx = tok_idx + lookahead
-                    else:
-                        tok_idx = tok_idx + lookahead + 1
+                    tok_idx = tok_idx + lookahead + 1
+                    break
+                elif len(w_norm) >= 3 and (w_norm in cand_norm or cand_norm in w_norm):
+                    matched_token = candidate
+                    tok_idx = tok_idx + lookahead + 1
                     break
 
         sentence_end = matched_token.endswith((".", "!", "?", ";", ":", "…"))
         clause_end = matched_token.endswith((",", "—", "–"))
 
-        # Também detecta fim de frase se houver pausa acústica longa (> 0.24s) até a próxima palavra
+        # Também detecta fim de frase se houver pausa acústica longa (>= 0.28s) APÓS a palavra atual
         if idx + 1 < len(raw_word_timings):
             next_start = float(raw_word_timings[idx + 1].get("start", 0.0))
             curr_end = float(item.get("end", 0.0))
-            if next_start - curr_end >= 0.24:
+            if next_start - curr_end >= 0.28:
                 sentence_end = True
-            elif next_start - curr_end >= 0.14:
+            elif next_start - curr_end >= 0.16:
                 clause_end = True
 
         aligned.append({
@@ -222,41 +232,61 @@ async def generate_speech_edge_with_timings(
     target_voice = voice if (voice and "Neural" in voice) else DEFAULT_EDGE_VOICE_PT
     raw_word_timings: List[Dict[str, Any]] = []
 
-    # Ajusta cadência automaticamente se o roteiro for denso para caber perfeitamente em ~58s (sem corte aos 60s)
-    if rate is None:
+    # Ajusta cadência automaticamente com base no número de palavras e pausas de pontuação
+    # para que roteiros de 20 cenas fiquem entre 54s e 59s (evitando cortes em 60s)
+    auto_rate = rate is None
+    if auto_rate:
         word_count = len(clean_text.split())
-        if word_count >= 165:
-            rate = "+8%"
-        elif word_count >= 145:
-            rate = "+5%"
+        sentence_count = max(1, sum(1 for ch in clean_text if ch in ".!?"))
+        estimated_base_duration = (0.39 * word_count) + (0.45 * sentence_count)
+        target_speech_duration = 56.0
+        if estimated_base_duration > target_speech_duration:
+            needed_pct = int(round(((estimated_base_duration / target_speech_duration) - 1.0) * 100))
+            needed_pct = max(6, min(48, needed_pct))
+            rate = f"+{needed_pct}%"
         else:
-            rate = "+2%"
+            rate = "+5%"
 
     try:
-        communicate = edge_tts.Communicate(
-            text=clean_text,
-            voice=target_voice,
-            rate=rate,
-            pitch=pitch,
-            boundary="WordBoundary",
-        )
-        with open(output_path, "wb") as audio_file:
-            async for chunk in communicate.stream():
-                c_type = chunk.get("type")
-                if c_type == "audio":
-                    data = chunk.get("data")
-                    if data:
-                        audio_file.write(data)
-                elif c_type in ("WordBoundary", "SentenceBoundary"):
-                    w_text = (chunk.get("text") or "").strip()
-                    offset = float(chunk.get("offset") or 0) / 10_000_000.0
-                    duration = float(chunk.get("duration") or 0) / 10_000_000.0
-                    if w_text:
-                        raw_word_timings.append({
-                            "text": w_text,
-                            "start": round(offset, 3),
-                            "end": round(offset + max(0.08, duration), 3),
-                        })
+        for attempt in range(2):
+            raw_word_timings = []
+            communicate = edge_tts.Communicate(
+                text=clean_text,
+                voice=target_voice,
+                rate=rate,
+                pitch=pitch,
+                boundary="WordBoundary",
+            )
+            with open(output_path, "wb") as audio_file:
+                async for chunk in communicate.stream():
+                    c_type = chunk.get("type")
+                    if c_type == "audio":
+                        data = chunk.get("data")
+                        if data:
+                            audio_file.write(data)
+                    elif c_type in ("WordBoundary", "SentenceBoundary"):
+                        w_text = (chunk.get("text") or "").strip()
+                        offset = float(chunk.get("offset") or 0) / 10_000_000.0
+                        duration = float(chunk.get("duration") or 0) / 10_000_000.0
+                        if w_text:
+                            raw_word_timings.append({
+                                "text": w_text,
+                                "start": round(offset, 3),
+                                "end": round(offset + max(0.08, duration), 3),
+                            })
+
+            if auto_rate and attempt == 0 and raw_word_timings:
+                last_end = float(raw_word_timings[-1].get("end", 0.0))
+                if last_end > 59.2:
+                    curr_pct = int(re.sub(r"[^\d]", "", rate) or "10")
+                    scale = (last_end + 1.0) / 56.5
+                    new_pct = min(55, max(curr_pct + 8, int(round(((1.0 + curr_pct / 100.0) * scale - 1.0) * 100))))
+                    logger.info(
+                        f"Narração ficou com {last_end:.2f}s em rate={rate}; reajustando rate para +{new_pct}% para caber em 60s sem cortes."
+                    )
+                    rate = f"+{new_pct}%"
+                    continue
+            break
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 512:
             word_timings = _align_word_timings_with_punctuation(clean_text, raw_word_timings)

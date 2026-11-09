@@ -1,3 +1,4 @@
+import math
 import re
 from typing import List, Dict, Any, Optional
 from src.services.media.tts_service import clean_narration_for_tts
@@ -97,7 +98,8 @@ def compute_scene_timings_from_words(
     scene_word_counts = []
     for sc in scenes:
         narr = clean_narration_for_tts(sc.get("narration") or "")
-        w_list = [w for w in re.findall(r"\w+", narr, flags=re.UNICODE) if w]
+        # Separa hífens igual ao Edge-TTS (ex: 'assentar-se' -> 2 tokens)
+        w_list = [w for w in re.findall(r"\w+", narr.replace("-", " "), flags=re.UNICODE) if w]
         scene_word_counts.append(max(1, len(w_list)))
 
     total_expected_words = max(1, sum(scene_word_counts))
@@ -114,9 +116,18 @@ def compute_scene_timings_from_words(
             max_allowed = max(cursor, total_tts_words - (num_scenes - 1 - i) - 1)
             end_idx = max(cursor, min(target_idx, max_allowed))
         scene_ranges.append((cursor, end_idx))
+        for k in range(cursor, end_idx):
+            if 0 <= k < total_tts_words:
+                ptok = (word_timings[k].get("punctuated_text") or "").strip()
+                if not ptok.endswith((".", "!", "?")):
+                    word_timings[k]["sentence_end"] = False
         if 0 <= end_idx < total_tts_words:
             word_timings[end_idx]["sentence_end"] = True
         cursor = min(total_tts_words - 1, end_idx + 1)
+
+    # Ajusta target_total_duration se a fala real ultrapassar 60s para jamais cortar as cenas finais
+    last_word_end = float(word_timings[-1].get("end", target_total_duration)) if word_timings else target_total_duration
+    effective_total_duration = max(target_total_duration, round(last_word_end + 0.5, 2))
 
     # Calcula os pontos de corte (cut_points) exatamente na pausa entre a última palavra da cena i e a primeira da cena i+1
     cut_points: List[float] = [0.0]
@@ -126,12 +137,11 @@ def compute_scene_timings_from_words(
         t_end_i = float(word_timings[end_i].get("end", (i + 1) * default_dur))
         t_start_next = float(word_timings[start_next].get("start", t_end_i))
         midpoint = round((t_end_i + max(t_end_i, t_start_next)) / 2.0, 2)
-        # Garante duração mínima de 1.2s por cena e folga para as cenas restantes
-        min_cut = round(cut_points[-1] + 1.2, 2)
-        max_cut = round(target_total_duration - (num_scenes - 1 - i) * 1.2, 2)
+        min_cut = round(cut_points[-1] + 1.0, 2)
+        max_cut = round(effective_total_duration - (num_scenes - 1 - i) * 1.0, 2)
         cut_points.append(max(min_cut, min(midpoint, max_cut)))
 
-    cut_points.append(round(target_total_duration, 2))
+    cut_points.append(round(effective_total_duration, 2))
 
     scenes_timing: List[Dict[str, Any]] = []
     for i, sc in enumerate(scenes):
@@ -146,12 +156,12 @@ def compute_scene_timings_from_words(
             "duration": s_dur,
         })
 
-    # Ajuste fino de centésimos na última cena para fechar exatamente em target_total_duration
+    # Ajuste fino de centésimos na última cena para fechar exatamente em effective_total_duration
     total_calc = round(sum(item["duration"] for item in scenes_timing), 2)
-    diff = round(target_total_duration - total_calc, 2)
+    diff = round(effective_total_duration - total_calc, 2)
     if abs(diff) > 0 and scenes_timing:
         scenes_timing[-1]["duration"] = round(max(0.5, scenes_timing[-1]["duration"] + diff), 2)
-        scenes_timing[-1]["end"] = round(target_total_duration, 2)
+        scenes_timing[-1]["end"] = round(effective_total_duration, 2)
 
     return scenes_timing
 
@@ -162,18 +172,17 @@ def _build_chunks_from_word_timings(
     max_chars: int = 26,
 ) -> List[Dict[str, Any]]:
     """
-    Agrupa os eventos WordBoundary reais do TTS em blocos curtos (3 a 4 palavras, máx ~26 caracteres),
-    preservando os timestamps exatos de início e fim falados pelo narrador e NUNCA misturando
-    o fim de uma frase com o começo da próxima.
+    Agrupa os eventos WordBoundary reais do TTS em blocos equilibrados de 2 a 4 palavras:
+    1. Separa estritamente por frase (`sentence_end` ou pausa acústica >= 0.26s) para nunca
+       juntar o fim de uma cena com o início da próxima.
+    2. Divide cada frase de N palavras em blocos balanceados (ex: 7 palavras -> 4+3, 8 -> 4+4,
+       9 -> 3+3+3), eliminando completamente blocos órfãos de 1 palavra ('O', 'A', 'MAIS', 'FIM').
     """
-    grouped: List[Dict[str, Any]] = []
-    current_words: List[str] = []
-    chunk_start: Optional[float] = None
-    chunk_end: float = 0.0
+    sentences: List[List[Dict[str, Any]]] = []
+    curr_sent: List[Dict[str, Any]] = []
 
     for item in word_timings:
         raw_w = (item.get("text") or "").strip()
-        # Remove pontuação residual nas bordas para exibição limpa estilo Hormozi
         w = re.sub(r"^[.,!?;:«»\"'()\[\]]+|[.,!?;:«»\"'()\[\]]+$", "", raw_w).strip().upper()
         if not w:
             continue
@@ -182,52 +191,78 @@ def _build_chunks_from_word_timings(
         w_end = float(item.get("end", w_start + 0.22))
         punct_tok = (item.get("punctuated_text") or raw_w).strip()
         is_sentence_end = bool(item.get("sentence_end")) or punct_tok.endswith((".", "!", "?", ";", ":", "…"))
-        is_clause_end = bool(item.get("clause_end")) or punct_tok.endswith((",", "—", "–"))
 
-        # Se já existe um bloco aberto e houve pausa acústica (>= 0.20s) ou se adicionar esta
-        # palavra estourar o limite visual de caracteres, fecha o bloco anterior ANTES de incluir a palavra atual
-        current_char_len = sum(len(cw) for cw in current_words) + max(0, len(current_words) - 1)
-        if current_words and chunk_start is not None:
-            gap_before = w_start - chunk_end
-            would_exceed_chars = (current_char_len + 1 + len(w)) > max_chars and len(current_words) >= 2
-            if gap_before >= 0.20 or would_exceed_chars:
-                grouped.append({
-                    "text": " ".join(current_words),
-                    "start": round(chunk_start, 2),
-                    "end": round(max(chunk_end, chunk_start + 0.22), 2),
-                    "sentence_end": gap_before >= 0.20,
-                })
-                current_words = []
-                chunk_start = None
+        if curr_sent:
+            prev_end = float(curr_sent[-1]["end"])
+            if (w_start - prev_end) >= 0.26:
+                sentences.append(curr_sent)
+                curr_sent = []
 
-        if chunk_start is None:
-            chunk_start = w_start
-        current_words.append(w)
-        chunk_end = max(w_end, chunk_start + 0.20)
-
-        # Fecha o bloco imediatamente ao atingir fim de frase, vírgula (com >= 2 palavras) ou limite de palavras
-        should_close = (
-            is_sentence_end
-            or (is_clause_end and len(current_words) >= 2)
-            or len(current_words) >= max_words
-        )
-        if should_close:
-            grouped.append({
-                "text": " ".join(current_words),
-                "start": round(chunk_start, 2),
-                "end": round(max(chunk_end, chunk_start + 0.22), 2),
-                "sentence_end": is_sentence_end,
-            })
-            current_words = []
-            chunk_start = None
-
-    if current_words and chunk_start is not None:
-        grouped.append({
-            "text": " ".join(current_words),
-            "start": round(chunk_start, 2),
-            "end": round(max(chunk_end, chunk_start + 0.30), 2),
-            "sentence_end": True,
+        curr_sent.append({
+            "word": w,
+            "start": w_start,
+            "end": max(w_end, w_start + 0.12),
+            "sentence_end": is_sentence_end,
         })
+
+        if is_sentence_end:
+            sentences.append(curr_sent)
+            curr_sent = []
+
+    if curr_sent:
+        sentences.append(curr_sent)
+
+    # Se alguma frase ficou com apenas 1 palavra (ex: artigo isolado 'O' ou 'A') e a pausa para a próxima
+    # for menor que 0.35s, funde com a frase seguinte; se for no final, funde com a anterior
+    merged_sentences: List[List[Dict[str, Any]]] = []
+    idx_s = 0
+    while idx_s < len(sentences):
+        s_words = sentences[idx_s]
+        if len(s_words) == 1 and idx_s + 1 < len(sentences):
+            gap_next = sentences[idx_s + 1][0]["start"] - s_words[-1]["end"]
+            if gap_next < 0.35:
+                sentences[idx_s + 1] = s_words + sentences[idx_s + 1]
+                idx_s += 1
+                continue
+        if len(s_words) == 1 and merged_sentences:
+            gap_prev = s_words[0]["start"] - merged_sentences[-1][-1]["end"]
+            if gap_prev < 0.35:
+                merged_sentences[-1].extend(s_words)
+                idx_s += 1
+                continue
+        merged_sentences.append(s_words)
+        idx_s += 1
+
+    grouped: List[Dict[str, Any]] = []
+    for s_words in merged_sentences:
+        n = len(s_words)
+        if n == 0:
+            continue
+        total_chars = sum(len(x["word"]) for x in s_words) + max(0, n - 1)
+        num_chunks = max(1, math.ceil(n / max(1, max_words)))
+        if num_chunks * max_chars < total_chars and n >= (num_chunks + 1) * 2:
+            num_chunks += 1
+        # Garante que nenhuma fatia fique com 1 palavra quando n >= 2
+        while num_chunks > 1 and (n // num_chunks) < 2:
+            num_chunks -= 1
+
+        base_size = n // num_chunks
+        rem = n % num_chunks
+        pos = 0
+        for c_idx in range(num_chunks):
+            c_size = base_size + (1 if c_idx < rem else 0)
+            slice_words = s_words[pos : pos + c_size]
+            pos += c_size
+            if not slice_words:
+                continue
+            c_start = slice_words[0]["start"]
+            c_end = max(slice_words[-1]["end"], c_start + 0.25)
+            grouped.append({
+                "text": " ".join(x["word"] for x in slice_words),
+                "start": round(c_start, 2),
+                "end": round(c_end, 2),
+                "sentence_end": (c_idx == num_chunks - 1),
+            })
 
     # Garante que o primeiro bloco apareça desde o início (0.0s) se a fala começar nos primeiros 300ms
     if grouped and grouped[0]["start"] <= 0.30:

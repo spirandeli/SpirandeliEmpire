@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -709,6 +709,101 @@ async def get_dark_topics(
     biz = await _get_user_business(business_id, current_user, db)
     topics = await mine_dark_channel_topics(biz)
     return {"data": topics}
+
+
+@router.post("/{business_id}/dark-studio/scripts/{script_id}/render-video")
+async def render_dark_script_video(
+    business_id: int,
+    script_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dispara a geração completa de vídeo MP4 9:16 (20 cenas IA + TTS + Legendas ASS + FFmpeg)
+    diretamente a partir de um roteiro gerado pelo sistema (`ContentAsset`).
+    """
+    from src.routers.tasks import _bg_execute_task, _format_task
+    from src.services.media.pipeline import _persist_video_progress
+
+    biz = await _get_user_business(business_id, current_user, db)
+    res_a = await db.execute(
+        select(ContentAsset).where(
+            ContentAsset.id == script_id,
+            ContentAsset.business_id == biz.id,
+        )
+    )
+    asset = res_a.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Roteiro não encontrado.")
+
+    content_dict = dict(asset.content or {})
+    linked_task_id = content_dict.get("task_id")
+    task: Optional[Task] = None
+    if linked_task_id:
+        res_t = await db.execute(
+            select(Task).where(Task.id == int(linked_task_id), Task.deleted_at.is_(None))
+        )
+        task = res_t.scalar_one_or_none()
+
+    now = _utc_now()
+    scenes = content_dict.get("scenes") or []
+    if not task:
+        task = Task(
+            business_id=biz.id,
+            user_id=current_user.id,
+            title=f"[Vídeo] Renderizar Roteiro: {asset.title}",
+            description=f"Renderização de vídeo 9:16 a partir do roteiro #{asset.id} ({len(scenes)} cenas).",
+            assignee="agent",
+            status="in_progress_agent",
+            priority="high",
+            source="agent",
+            agent_action="render_video_series",
+            payload={
+                "content_asset_id": asset.id,
+                "scenes_count": len(scenes) or 20,
+                "visual_bible": content_dict.get("visual_bible"),
+            },
+            started_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(task)
+        await db.flush()
+        content_dict["task_id"] = task.id
+        asset.content = content_dict
+    else:
+        task.status = "in_progress_agent"
+        task.started_at = now
+        task.failure_reason = None
+        task.updated_at = now
+        p_copy = dict(task.payload or {})
+        p_copy["content_asset_id"] = asset.id
+        task.payload = p_copy
+
+    await db.commit()
+    await db.refresh(task)
+    task.business = biz
+
+    await _persist_video_progress(
+        task_id=task.id,
+        business_id=biz.id,
+        current_scene=0,
+        total_scenes=20,
+        stage="prompts",
+        percent=0.0,
+    )
+    await db.refresh(task)
+
+    background_tasks.add_task(_bg_execute_task, task.id, current_user.id)
+
+    return {
+        "status": "success",
+        "message": f"Renderização do vídeo iniciada em background (Tarefa #{task.id})!",
+        "task_id": task.id,
+        "script_id": asset.id,
+        "data": _format_task(task),
+    }
 
 
 

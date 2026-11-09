@@ -34,6 +34,7 @@ const darkScripts = ref([])
 const darkTopics = ref([])
 const loadingDarkStudio = ref(false)
 const generatingDarkScript = ref(false)
+const renderingScriptId = ref(null)
 const showNewScriptModal = ref(false)
 const selectedDarkScript = ref(null)
 const newScriptForm = ref({
@@ -214,6 +215,23 @@ function copyPrompt(text) {
   if (!text) return
   navigator.clipboard.writeText(text)
   swal.toast('Prompt copiado para a área de transferência!', 'success')
+}
+
+async function handleRenderScriptVideo(scriptOrGroup) {
+  const scriptId = scriptOrGroup?.id || (scriptOrGroup?.items && scriptOrGroup.items[0]?.id)
+  if (!scriptId) return
+  renderingScriptId.value = scriptId
+  try {
+    const res = await api.post(`/businesses/${businessId}/dark-studio/scripts/${scriptId}/render-video`)
+    swal.toast(res.data?.message || 'Renderização de vídeo 9:16 iniciada em segundo plano!', 'success')
+    selectedDarkScript.value = null
+    await loadTasks()
+    activeTab.value = 'tasks'
+  } catch (err) {
+    swal.error('Erro ao iniciar renderização', err.response?.data?.detail || err.message)
+  } finally {
+    renderingScriptId.value = null
+  }
 }
 
 async function loadBusiness() {
@@ -1095,7 +1113,15 @@ function formatTaskPriority(priority) {
                 <span class="text-[10px] text-slate-500 font-mono">
                   {{ s.created_at ? new Date(s.created_at).toLocaleDateString('pt-BR') : 'Recente' }}
                 </span>
-                <div class="flex items-center space-x-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    @click="handleRenderScriptVideo(s)"
+                    :disabled="renderingScriptId === (s.id || (s.items && s.items[0]?.id))"
+                    class="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center space-x-1.5 shadow-sm disabled:opacity-50"
+                  >
+                    <span>🎬</span>
+                    <span>{{ s.video_url ? 'Re-renderizar Vídeo MP4' : 'Gerar Vídeo MP4' }}</span>
+                  </button>
                   <button
                     @click="openScriptDetail(s)"
                     class="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center space-x-1.5 shadow-sm"
@@ -1601,7 +1627,15 @@ function formatTaskPriority(priority) {
 
         <!-- Footer -->
         <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0">
-          <div class="flex items-center space-x-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              @click="handleRenderScriptVideo(selectedDarkScript)"
+              :disabled="renderingScriptId === (selectedDarkScript?.id || (selectedDarkScript?.items && selectedDarkScript.items[0]?.id))"
+              class="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 disabled:opacity-50"
+            >
+              <span>🎬</span>
+              <span>Gerar Vídeo MP4 Deste Roteiro</span>
+            </button>
             <router-link
               to="/approvals"
               class="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition flex items-center space-x-1.5"

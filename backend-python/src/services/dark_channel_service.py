@@ -17,6 +17,7 @@ from src.models import (
 )
 from src.schemas.business import DarkScriptCreateRequest, DarkScriptResponse, DarkScriptScene
 from src.services.gemini_service import get_user_gemini_client
+from src.services.media.pipeline import _build_story_visual_bible, ensure_twenty_scenes
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +45,15 @@ Crie um roteiro viral completo para o canal dark: "{business.name}".
 Nicho do Canal: {business.niche or 'Mistérios, Curiosidades e Fatos Impressionantes'}
 Tema da Pauta: {req.topic}
 Título Proposto: {req.title}
-Formato: {"Vídeo Curto (Shorts/TikTok - 30 a 60 segundos)" if is_short else "Vídeo Longo (YouTube - 8 a 12 minutos, 5 atos com alta retenção)"}
+Formato: {"Vídeo Curto (Shorts/TikTok - 60 segundos com EXATAMENTE 20 cenas de 3 segundos cada)" if is_short else "Vídeo Longo (YouTube - 8 a 12 minutos, 5 atos com alta retenção)"}
 Tom Narrativo: {req.tone or 'Misterioso, instigante e com ritmo dinâmico'}
-Estilo Visual dos Prompts de Imagem: {req.visual_style or 'Cinemático 8k hiper-realista, iluminação dramática, Unreal Engine 5'}
+Estilo Visual dos Prompts de Imagem: {req.visual_style or '2D dark epic anime cinematic illustration in the style of Castlevania Nocturne, dramatic chiaroscuro volumetric lighting'}
 Persona da Voz (TTS/ElevenLabs): {req.voice_persona or 'Voz grave, documental e hipnótica'}
 
 DIRETRIZES CRÍTICAS:
 1. Hook Inicial (0-3 segundos): Deve ser impossível de ignorar, uma quebra de padrão total que prenda a atenção de imediato.
-2. {"Looping Contínuo: A última frase deve se conectar perfeitamente com a primeira sem emenda perceptível." if is_short else "Tensão em 5 Atos: Crie mini-cliffhangers a cada 90 segundos para manter a audiência assistindo até o final."}
-3. Cenas e Prompts: Cada cena deve conter narração precisa em português e um PROMPT VISUAL EM INGLÊS rico em detalhes descritivos para Midjourney v6 ou Leonardo.AI (incluindo iluminação, lente, estilo cinemático e atmosfera).
+2. {"Roteiro Sequencial de 20 Cenas Conectadas: Gere EXATAMENTE 20 cenas (scene_number 1 a 20), onde cada `narration` tem entre 6 e 9 palavras limpas em português (sem colchetes) e a Cena 20 faz loop com a Cena 1." if is_short else "Tensão em 5 Atos: Crie mini-cliffhangers a cada 90 segundos para manter a audiência assistindo até o final."}
+3. Bíblia Visual (`visual_bible`) e Continuidade de Personagem: Defina o protagonista com feições físicas fixas (`protagonist_description`), o cenário contínuo (`world_setting`), a paleta (`color_palette`) e o traço (`art_style`), e repita o mesmo protagonista em todas as cenas com ângulos de câmera variados.
 
 Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdown ```json ... ``` extras ou texto introdutório) com a seguinte estrutura:
 {{
@@ -62,14 +63,20 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
   "full_narration": "Texto integral narrado fluído em português",
   "suggested_music": "Estilo da trilha de fundo e BPM sugerido",
   "seo_tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "visual_bible": {{
+    "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, clean-shaven sculpted face, ornate black-and-gold celestial armor and large dark-golden feathered wings",
+    "world_setting": "ancient gothic celestial sanctuary of dark obsidian and golden marble pillars floating amidst cosmic storm clouds",
+    "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
+    "art_style": "2D dark epic anime cinematic illustration in the style of Castlevania Nocturne, dramatic chiaroscuro volumetric lighting"
+  }},
   "scenes": [
     {{
       "scene_number": 1,
-      "timestamp": "00:00 - 00:05",
-      "narration": "Texto da cena",
-      "visual_prompt": "Cinematic 8k photorealistic prompt in english with dramatic lighting",
+      "timestamp": "00:00 - 00:03",
+      "narration": "Frase curta e impactante de seis a nove palavras.",
+      "visual_prompt": "Wide establishing shot of the same protagonist in the gothic sanctuary, dramatic lighting, vertical 9:16",
       "b_roll_description": "Descrição da cena visual e movimento de câmera",
-      "on_screen_text": "Texto em caixa alta na tela (legenda rápida)"
+      "on_screen_text": "TEXTO CURTO"
     }}
   ]
 }}
@@ -191,11 +198,26 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
                 ],
             }
 
-    # Salva o roteiro como ContentAsset
+    # Salva o roteiro como ContentAsset garantindo 20 cenas conectadas e visual_bible nos Shorts
     asset_type = "dark_script_short" if is_short else "dark_script_long"
     tracking_code = f"DARK-{secrets.token_hex(4).upper()}"
     scenes_raw = parsed_data.get("scenes", [])
     full_text = parsed_data.get("full_narration", "")
+    raw_bible = parsed_data.get("visual_bible") if isinstance(parsed_data.get("visual_bible"), dict) else None
+
+    story_bible = _build_story_visual_bible(
+        title=parsed_data.get("title", req.title),
+        full_narration=f"{req.topic} {full_text}",
+        existing_bible=raw_bible,
+    )
+    if is_short:
+        scenes_raw = ensure_twenty_scenes(
+            scenes=scenes_raw,
+            full_narration=full_text or req.topic or req.title,
+            title=parsed_data.get("title", req.title),
+            visual_bible=story_bible,
+        )
+        full_text = " ".join(s.get("narration", "") for s in scenes_raw if s.get("narration")).strip() or full_text
 
     asset = ContentAsset(
         business_id=business.id,
@@ -205,9 +227,10 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
         title=parsed_data.get("title", req.title),
         body=full_text,
         content={
-            "hook": parsed_data.get("hook", ""),
+            "hook": parsed_data.get("hook", "") or (scenes_raw[0].get("narration", "") if scenes_raw else ""),
             "cta": parsed_data.get("cta", ""),
             "scenes": scenes_raw,
+            "visual_bible": story_bible,
             "seo_tags": parsed_data.get("seo_tags", []),
             "suggested_music": parsed_data.get("suggested_music", ""),
             "voice_persona": req.voice_persona or "Voz grave e documental",
@@ -229,7 +252,7 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
         user_id=user.id,
         type="dark_script_approval",
         title=f"Roteiro Canal Dark: {asset.title}",
-        summary=f"Roteiro {'Short/TikTok (30-60s)' if is_short else 'Vídeo Longo (8-12m)'} com {len(scenes_raw)} cenas e prompts visuais prontos para produção.",
+        summary=f"Roteiro {'Short/TikTok (60s, 20 cenas)' if is_short else 'Vídeo Longo (8-12m)'} com {len(scenes_raw)} cenas conectadas e prompts visuais prontos para renderização.",
         payload={
             "content_asset_id": asset.id,
             "tracking_code": tracking_code,
@@ -238,6 +261,7 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
             "hook": parsed_data.get("hook"),
             "scenes_count": len(scenes_raw),
             "scenes": scenes_raw,
+            "visual_bible": story_bible,
             "voice_persona": req.voice_persona,
             "seo_tags": parsed_data.get("seo_tags", []),
         },
@@ -250,23 +274,32 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
 
     asset.approval_queue_id = approval.id
 
-    # Cria tarefa no Kanban operacional
+    # Cria tarefa no Kanban operacional vinculada ao ContentAsset para renderizar o vídeo MP4 a partir deste roteiro
     task = Task(
         business_id=business.id,
         user_id=user.id,
-        title=f"Revisar e Renderizar: {asset.title}",
-        description=f"Roteiro dark gerado com {len(scenes_raw)} cenas. Validar narração, copiar prompts de imagem para Midjourney/Leonardo e aprovar na Fila de Supervisão.",
+        title=f"[Vídeo] Renderizar Roteiro: {asset.title}",
+        description=f"Roteiro dark gerado pelo sistema com {len(scenes_raw)} cenas conectadas. Execute para renderizar o vídeo MP4 9:16 completo com narração e legendas.",
         assignee="agent",
         status="supervision",
         priority="high",
         source="agent",
-        agent_action="dark_channel_production",
-        payload={"content_asset_id": asset.id, "approval_id": approval.id},
+        agent_action="render_video_series",
+        payload={
+            "content_asset_id": asset.id,
+            "approval_id": approval.id,
+            "scenes_count": len(scenes_raw),
+            "visual_bible": story_bible,
+        },
         created_at=now,
         updated_at=now,
     )
     db.add(task)
+    await db.flush()
     approval.task_id = task.id
+    asset_content = dict(asset.content or {})
+    asset_content["task_id"] = task.id
+    asset.content = asset_content
 
     await db.commit()
     await db.refresh(asset)
@@ -274,7 +307,7 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
     formatted_scenes = [
         DarkScriptScene(
             scene_number=s.get("scene_number", idx + 1),
-            timestamp=s.get("timestamp", f"00:{idx*5:02d} - 00:{(idx+1)*5:02d}"),
+            timestamp=s.get("timestamp", f"00:{idx*3:02d} - 00:{(idx+1)*3:02d}"),
             narration=s.get("narration", ""),
             visual_prompt=s.get("visual_prompt", ""),
             b_roll_description=s.get("b_roll_description", ""),
@@ -286,12 +319,15 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
     return {
         "id": asset.id,
         "business_id": business.id,
+        "task_id": task.id,
         "title": asset.title,
         "format_type": req.format_type,
         "target_platform": req.target_platform,
-        "hook": parsed_data.get("hook", ""),
+        "hook": asset_content.get("hook", ""),
         "cta": parsed_data.get("cta", ""),
         "full_narration": full_text,
+        "visual_bible": story_bible,
+        "scenes_count": len(formatted_scenes),
         "scenes": [s.model_dump() for s in formatted_scenes],
         "seo_tags": parsed_data.get("seo_tags", []),
         "suggested_music": parsed_data.get("suggested_music"),
@@ -321,6 +357,11 @@ async def list_dark_scripts(db: AsyncSession, business_id: int) -> list[dict[str
             "id": a.id,
             "business_id": a.business_id,
             "parent_id": a.parent_id,
+            "task_id": content_dict.get("task_id"),
+            "video_url": content_dict.get("video_url"),
+            "audio_url": content_dict.get("audio_url"),
+            "srt_url": content_dict.get("srt_url"),
+            "visual_bible": content_dict.get("visual_bible"),
             "title": a.title or "Sem título",
             "format_type": content_dict.get("format_type", "short" if a.type == "dark_script_short" else "long"),
             "target_platform": a.platform,

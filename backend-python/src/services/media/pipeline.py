@@ -176,90 +176,92 @@ async def _persist_video_progress(
 
 def _build_narrative_beats(title: str) -> List[Dict[str, str]]:
     """
-    Retorna 20 batidas narrativas contínuas (em português natural sem marcadores técnicos)
-    e prompts visuais distintos em inglês quando o roteiro de entrada tiver menos de 20 cenas.
+    Retorna 20 batidas narrativas contínuas (em português natural sem marcadores técnicos,
+    6 a 8 palavras por cena para ritmo ideal de 60s) e prompts visuais distintos em inglês
+    quando o roteiro de entrada tiver menos de 20 cenas.
     """
-    clean_topic = clean_narration_for_tts(title) or "o grande mistério oculto"
+    clean_topic = clean_narration_for_tts(title) or "esse mistério ancestral"
+    short_topic = " ".join(clean_topic.split()[:5])
     return [
         {
-            "narration": f"Antes do tempo existir, um segredo sobre {clean_topic} já estava selado.",
-            "visual_prompt": f"Silhouette of a celestial winged archangel standing before a cosmic rift, {clean_topic}, dark anime style, volumetric light, 9:16",
+            "narration": f"Um segredo antigo sobre {short_topic} estava selado.",
+            "visual_prompt": f"Silhouette of a celestial winged archangel standing before a cosmic rift, {short_topic}, dark anime style, volumetric light, 9:16",
         },
         {
-            "narration": "Poucos tiveram coragem de olhar além do véu que encobria essa verdade.",
-            "visual_prompt": f"Ancient forbidden temple gates opening into glowing abyssal fog, {clean_topic}, dramatic chiaroscuro lighting, 9:16",
+            "narration": "Poucos ousaram olhar além do véu proibido.",
+            "visual_prompt": f"Ancient forbidden temple gates opening into glowing abyssal fog, {short_topic}, dramatic chiaroscuro lighting, 9:16",
         },
         {
-            "narration": "Os registros mais antigos descreviam um poder capaz de alterar todo o destino.",
-            "visual_prompt": f"Close up on ancient glowing golden scriptures floating in dark air with burning embers, {clean_topic}, dark fantasy art, 9:16",
+            "narration": "As escrituras descreviam um poder sem limites.",
+            "visual_prompt": f"Close up on ancient glowing golden scriptures floating in dark air with burning embers, {short_topic}, dark fantasy art, 9:16",
         },
         {
-            "narration": "Mas havia um preço silencioso que ninguém estava disposto a pagar naquela era.",
-            "visual_prompt": f"Lone hooded watcher looking at a colossal eclipsed sun over gothic ruins, {clean_topic}, dark epic anime, 9:16",
+            "narration": "Mas existia um preço oculto naquela escolha.",
+            "visual_prompt": f"Lone hooded watcher looking at a colossal eclipsed sun over gothic ruins, {short_topic}, dark epic anime, 9:16",
         },
         {
-            "narration": "Nas profundezas do santuário, o primeiro sinal finalmente começou a despertar.",
-            "visual_prompt": f"Subterranean obsidian throne room illuminated by crimson and gold lightning, {clean_topic}, Unreal Engine 5 cinematic, 9:16",
+            "narration": "No santuário profundo, o primeiro sinal despertou.",
+            "visual_prompt": f"Subterranean obsidian throne room illuminated by crimson and gold lightning, {short_topic}, Unreal Engine 5 cinematic, 9:16",
         },
         {
-            "narration": "Aquilo que parecia apenas uma lenda revelou sua verdadeira face diante do mundo.",
-            "visual_prompt": f"Majestic warrior angel with glowing sapphire eyes emerging from shadows, {clean_topic}, hyper-detailed dark anime, 9:16",
+            "narration": "A antiga lenda revelou sua verdadeira face.",
+            "visual_prompt": f"Majestic warrior angel with glowing sapphire eyes emerging from shadows, {short_topic}, hyper-detailed dark anime, 9:16",
         },
         {
-            "narration": "Cada detalhe fora arquitetado em silêncio ao longo de gerações esquecidas.",
-            "visual_prompt": f"Intricate celestial clockwork gears and astral constellations spinning in darkness, {clean_topic}, dramatic rim light, 9:16",
+            "narration": "Tudo foi planejado em silêncio por séculos.",
+            "visual_prompt": f"Intricate celestial clockwork gears and astral constellations spinning in darkness, {short_topic}, dramatic rim light, 9:16",
         },
         {
-            "narration": "Quando os guardiões perceberam a mudança, o equilíbrio já havia sido rompido.",
-            "visual_prompt": f"Two rival celestial figures clashing in mid-air above storm clouds, {clean_topic}, dynamic action angle, dark anime, 9:16",
+            "narration": "Quando notaram a mudança, tudo havia ruído.",
+            "visual_prompt": f"Two rival celestial figures clashing in mid-air above storm clouds, {short_topic}, dynamic action angle, dark anime, 9:16",
         },
         {
-            "narration": "O céu escureceu de repente e o eco daquela escolha atravessou os séculos.",
-            "visual_prompt": f"Dark vortex tearing through the night sky above an ancient citadel, {clean_topic}, ominous atmospheric fog, 9:16",
+            "narration": "O céu escureceu e o abismo respondeu.",
+            "visual_prompt": f"Dark vortex tearing through the night sky above an ancient citadel, {short_topic}, ominous atmospheric fog, 9:16",
         },
         {
-            "narration": "Documentos ocultos tentaram apagar os vestígios do que realmente aconteceu ali.",
-            "visual_prompt": f"Shadowy figures sealing ancient scrolls inside a subterranean vault with golden chains, {clean_topic}, neo-noir lighting, 9:16",
+            "narration": "Tentaram apagar cada vestígio daquela grande queda.",
+            "visual_prompt": f"Shadowy figures sealing ancient scrolls inside a subterranean vault with golden chains, {short_topic}, neo-noir lighting, 9:16",
         },
         {
-            "narration": "Porém nenhuma chama permanece escondida para sempre na escuridão absoluta.",
-            "visual_prompt": f"A single brilliant golden flame igniting in pitch black darkness, illuminating ancient armor, {clean_topic}, macro shot, 9:16",
+            "narration": "Porém nenhuma chama se apaga na escuridão.",
+            "visual_prompt": f"A single brilliant golden flame igniting in pitch black darkness, illuminating ancient armor, {short_topic}, macro shot, 9:16",
         },
         {
-            "narration": "A segunda profecia começou a se cumprir exatamente como estava escrito.",
-            "visual_prompt": f"Colossal stone statues awakening with glowing runes along a canyon, {clean_topic}, wide low-angle cinematic shot, 9:16",
+            "narration": "A segunda profecia começou a se cumprir.",
+            "visual_prompt": f"Colossal stone statues awakening with glowing runes along a canyon, {short_topic}, wide low-angle cinematic shot, 9:16",
         },
         {
-            "narration": "O confronto entre a luz primordial e o abismo tornou-se inevitável.",
-            "visual_prompt": f"Radiant spear of light piercing through a massive shadow colossus, {clean_topic}, epic dark anime battle, 9:16",
+            "narration": "O choque entre luz e trevas chegou.",
+            "visual_prompt": f"Radiant spear of light piercing through a massive shadow colossus, {short_topic}, epic dark anime battle, 9:16",
         },
         {
-            "narration": "Nos fragmentos deixados para trás, a peça final do enigma foi encontrada.",
-            "visual_prompt": f"Hand wearing gauntlets picking up a shattered glowing crystal relic on ashes, {clean_topic}, extreme close-up, 9:16",
+            "narration": "Nas cinzas, a peça final foi encontrada.",
+            "visual_prompt": f"Hand wearing gauntlets picking up a shattered glowing crystal relic on ashes, {short_topic}, extreme close-up, 9:16",
         },
         {
-            "narration": "Tudo o que parecia separado fazia parte de um único propósito maior.",
-            "visual_prompt": f"Astral tree of light connecting heaven and the dark underworld, {clean_topic}, breathtaking vertical composition, 9:16",
+            "narration": "Cada fragmento servia a um único propósito.",
+            "visual_prompt": f"Astral tree of light connecting heaven and the dark underworld, {short_topic}, breathtaking vertical composition, 9:16",
         },
         {
-            "narration": "No instante decisivo, a verdade veio à tona com força implacável.",
-            "visual_prompt": f"Archangel spreading six luminous wings amidst a storm of golden sparks, {clean_topic}, climax shot, 8k dark anime, 9:16",
+            "narration": "No instante decisivo, a verdade veio à tona.",
+            "visual_prompt": f"Archangel spreading six luminous wings amidst a storm of golden sparks, {short_topic}, climax shot, 8k dark anime, 9:16",
         },
         {
-            "narration": "O império que tentou controlar esse mistério ruiu diante dos próprios olhos.",
-            "visual_prompt": f"Crumbling dark marble pillars and falling crowns in slow motion with fire embers, {clean_topic}, dramatic lighting, 9:16",
+            "narration": "O trono antigo desmoronou diante do juízo.",
+            "visual_prompt": f"Crumbling dark marble pillars and falling crowns in slow motion with fire embers, {short_topic}, dramatic lighting, 9:16",
         },
         {
-            "narration": "Mas o legado daquele evento continua moldando o mundo até os dias de hoje.",
-            "visual_prompt": f"Modern dark skyline reflected in an ancient mystical mirror with glowing symbols, {clean_topic}, cinematic contrast, 9:16",
+            "narration": "Seu eco ainda molda o mundo atual.",
+            "visual_prompt": f"Modern dark skyline reflected in an ancient mystical mirror with glowing symbols, {short_topic}, cinematic contrast, 9:16",
         },
         {
-            "narration": "Agora que você conhece os sinais, nunca mais verá essa história do mesmo jeito.",
-            "visual_prompt": f"Mysterious figure turning back with glowing eyes in volumetric blue fog, {clean_topic}, hypnotic gaze, 9:16",
+            "narration": "Agora você enxerga os sinais ocultos.",
+            "visual_prompt": f"Mysterious figure turning back with glowing eyes in volumetric blue fog, {short_topic}, hypnotic gaze, 9:16",
         },
         {
-            "narration": "Pois o último capítulo desse mistério acaba de recomeçar onde tudo teve início.",
-            "visual_prompt": f"Silhouette of the celestial winged figure returning to the cosmic rift, seamless loop visual, {clean_topic}, dark anime, 9:16",
+            "narration": "Pois o último capítulo acaba de recomeçar.",
+            "visual_prompt": f"Silhouette of the celestial winged figure returning to the cosmic rift, seamless loop visual, {short_topic}, dark anime, 9:16",
         },
     ]
 
@@ -288,13 +290,12 @@ def _build_story_visual_bible(
 
     if is_celestial_or_biblical:
         default_protagonist = (
-            "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, "
-            "clean-shaven sculpted masculine face, wearing ornate black-and-gold celestial plate armor with glowing "
-            "runes and six massive dark-golden feathered wings"
+            "tall male celestial archangel Lucifer with long flowing platinum-silver hair, sharp glowing golden amber eyes, "
+            "clean-shaven sculpted face, ornate black-and-gold celestial armor and large dark-golden feathered wings"
         )
         default_world = (
-            "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars "
-            "floating amidst cosmic storm clouds and astral light"
+            "ancient gothic celestial sanctuary of dark obsidian and golden marble pillars "
+            "floating amidst cosmic storm clouds"
         )
         default_palette = "deep obsidian black, radiant molten gold, and cold astral sapphire blue"
     else:
@@ -309,14 +310,17 @@ def _build_story_visual_bible(
         default_palette = "deep midnight indigo, obsidian black, warm amber gold, and cold cyan rim lighting"
 
     default_style = (
-        "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, "
-        "cel-shaded masterpiece, consistent character design sheet, dramatic chiaroscuro volumetric lighting"
+        "2D dark epic anime cinematic illustration in the style of Castlevania Nocturne, "
+        "dramatic chiaroscuro volumetric lighting, single unified composition"
     )
 
     protagonist = (existing.get("protagonist_description") or existing.get("character_anchor") or "").strip()
     world_setting = (existing.get("world_setting") or existing.get("world_anchor") or "").strip()
     color_palette = (existing.get("color_palette") or "").strip()
     art_style = (existing.get("art_style") or existing.get("style_anchor") or "").strip()
+
+    # Remove expressões que induzem divisão de tela ("character design sheet", "split screen")
+    art_style = re.sub(r"\b(?:consistent\s+)?character\s+design\s+sheet\b", "single unified frame", art_style, flags=re.IGNORECASE)
 
     return {
         "protagonist_description": protagonist if len(protagonist) >= 25 else default_protagonist,
@@ -334,8 +338,8 @@ def _enforce_visual_continuity_across_scenes(
     """
     Compilador de Continuidade Visual Cena-a-Cena:
     Garante que todas as 20 cenas pareçam frames consecutivos da MESMA história e com o MESMO
-    protagonista, convertendo metáforas abstratas em cenas físicas concretas e mantendo a
-    progressão dramática dos Atos I (Cenas 1-6), II (Cenas 7-15) e III (Cenas 16-20).
+    protagonista, colocando a ação dramática e o ângulo de câmera da cena em primeiro plano
+    seguidos pela descrição concisa do protagonista e do cenário (cabendo nos 77 tokens do CLIP).
     """
     protagonist = visual_bible["protagonist_description"]
     world_setting = visual_bible["world_setting"]
@@ -344,28 +348,28 @@ def _enforce_visual_continuity_across_scenes(
 
     act_progression = [
         # Ato I (Cenas 1 a 6): Apresentação majestosa no mesmo santuário
-        "Act I establishing shot, serene yet imposing presence in luminous celestial hall",
-        "Act I medium shot, golden gemstones and armor gleaming on his chest under divine light",
-        "Act I atmospheric shot, harmonic golden light waves radiating around him in the sanctuary",
-        "Act I wide tracking shot from behind, walking across sacred obsidian floor where none dare step",
-        "Act I dramatic close-up on his face and golden eyes, subtle shadow of ambition crossing his expression",
-        "Act I low-angle portrait, his radiant wings spread wide casting a long dark shadow across the marble pillars",
+        "Act I wide establishing shot, standing majestically in luminous celestial hall",
+        "Act I medium shot from side angle, golden gemstones gleaming on his ornate chest armor under divine light",
+        "Act I dynamic medium shot, harmonic golden light waves radiating from his outstretched hand",
+        "Act I wide tracking shot from behind, walking across sacred obsidian floor toward the altar of fire",
+        "Act I dramatic close-up on his face and glowing golden eyes, subtle shadow of ambition crossing his expression",
+        "Act I low-angle heroic shot, his massive wings spread wide casting a long dark shadow across marble pillars",
         # Ato II (Cenas 7 a 15): Transformação da expressão e tensão crescente no mesmo universo
-        "Act II intense medium close-up, sacred golden aura around his hands twisting into dark crimson-gold sparks",
-        "Act II cinematic corridor shot, whispering shadows echoing around him between towering gothic columns",
-        "Act II heroic yet ominous low-angle shot, looking up toward the highest celestial throne with defiant gaze",
-        "Act II dramatic chiaroscuro portrait, dark golden energy veins glowing across his ornate armor",
-        "Act II wide council scene, standing on a raised dais addressing a circle of winged celestial figures in shadow",
-        "Act II dynamic composition, a glowing rift of golden-violet light cracking the celestial dome behind him",
-        "Act II tense confrontation shot, loyal armored guardians watching his betrayal from the upper colonnade",
+        "Act II intense close-up on his hands and torso, sacred golden aura twisting into dark crimson-gold sparks",
+        "Act II cinematic over-the-shoulder shot, whispering shadows echoing between towering gothic columns",
+        "Act II low-angle dramatic shot, looking up toward the highest celestial throne with defiant gaze",
+        "Act II side profile portrait, dark golden energy veins glowing across his ornate armor",
+        "Act II wide council scene, standing on a raised dais addressing winged celestial figures in shadow",
+        "Act II dynamic wide angle, a glowing rift of golden-violet light cracking the celestial dome behind him",
+        "Act II tense confrontation shot, armored celestial guardians watching him from the upper colonnade",
         "Act II epic wide shot, legions of winged silhouettes aligning behind him under falling golden stars",
-        "Act II dramatic storm shot, lightning and cosmic shockwaves shattering the silence around his raised hand",
+        "Act II dramatic storm action shot, lightning and cosmic shockwaves shattering the sanctuary around his raised hand",
         # Ato III (Cenas 16 a 20): Clímax e resolução mantendo 100% do mesmo personagem e cenário
-        "Act III climax close-up, fierce glowing eyes as he completely drops any mask of submission",
-        "Act III grand cinematic battle tableau, clashing beams of golden light and dark abyssal fire in the sanctuary",
-        "Act III dramatic profile shot, standing amidst fractured marble pillars and swirling golden embers",
-        "Act III atmospheric wide shot, gazing over the divided celestial horizon with his six dark-golden wings spread",
-        "Act III seamless loop final shot, silhouette and glowing eyes turning back in the cosmic sanctuary rift",
+        "Act III extreme close-up on his fierce glowing eyes and silver hair in the storm wind",
+        "Act III grand battle action shot, clashing beams of golden light and dark abyssal fire in the sanctuary",
+        "Act III dramatic three-quarter shot, standing amidst fractured marble pillars and swirling golden embers",
+        "Act III atmospheric wide shot from behind, gazing over the divided celestial horizon with wings spread",
+        "Act III final cinematic loop shot, turning his head back over his shoulder with glowing golden eyes in cosmic mist",
     ]
 
     compiled_scenes: List[Dict[str, Any]] = []
@@ -376,25 +380,23 @@ def _enforce_visual_continuity_across_scenes(
 
         # Limpa sufixos redundantes para re-ancorar na estrutura unificada da história
         cleaned_action = re.sub(
-            r"\b(?:vertical\s*9:16|9:16|8k\s*resolution|8k|unreal\s*engine\s*5)\b",
+            r"\b(?:vertical\s*9:16|9:16|8k\s*resolution|8k|unreal\s*engine\s*5|character\s+design\s+sheet)\b",
             "",
             raw_vis,
             flags=re.IGNORECASE,
         ).strip(" ,.-")
 
-        # Se o prompt original for muito curto, genérico ou apenas repetir texto em português sem ação física clara,
-        # combina com a direção de cena concreta do ato correspondente
         if not cleaned_action or len(cleaned_action) < 35:
-            scene_action = f"{act_hint}, visually depicting '{raw_narr}'"
+            scene_action = f"{act_hint}, depicting '{raw_narr}'"
         else:
             scene_action = f"{act_hint}, {cleaned_action}"
 
+        # Coloca a ação específica e o ângulo de câmera no início para evitar poses estáticas repetidas,
+        # mantendo o mesmo protagonista, cenário e paleta em todas as 20 cenas:
         continuous_prompt = (
-            f"{art_style}. "
-            f"Same main character in every scene ({protagonist}). "
             f"Scene {idx + 1:02d} action: {scene_action}. "
-            f"Consistent environment: {world_setting}. "
-            f"Unified color grading: {color_palette}, vertical 9:16"
+            f"Same main character ({protagonist}) in {world_setting}. "
+            f"{art_style}, {color_palette}, vertical 9:16"
         )
 
         updated_sc = dict(sc)
@@ -852,12 +854,14 @@ async def execute_full_video_pipeline(
         "business_id": business_id,
         "task_id": task_id,
         "scenes_count": 20,
+        "scenes": twenty_scenes,
+        "visual_bible": story_bible,
         "video": {
             "path": final_video_path,
             "url": video_relative_url,
             "resolution": render_result.get("resolution", "1080x1920"),
             "aspect_ratio": "9:16",
-            "duration_seconds": 60.0,
+            "duration_seconds": round(sum(scene_durations), 2) if scene_durations else 60.0,
             "size_mb": render_result.get("size_mb", 0.0),
         },
         "audio": {

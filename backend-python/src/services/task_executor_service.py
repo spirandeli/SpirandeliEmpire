@@ -134,51 +134,105 @@ Produza agora o entregável final estruturado."""
             percent=0.0,
         )
 
+    # Verifica se a tarefa já possui um roteiro gerado pelo sistema (em ContentAsset, payload ou result)
+    linked_script_asset: Optional[ContentAsset] = None
+    preexisting_scenes: list[dict[str, Any]] = []
+    preexisting_bible: Optional[dict[str, str]] = None
+    preexisting_narration: str = ""
+
+    payload_dict = dict(task.payload or {})
+    content_asset_id = payload_dict.get("content_asset_id")
+    if content_asset_id:
+        ca_res = await db.execute(select(ContentAsset).where(ContentAsset.id == int(content_asset_id)))
+        linked_script_asset = ca_res.scalar_one_or_none()
+        if linked_script_asset:
+            ca_content = dict(linked_script_asset.content or {})
+            preexisting_scenes = list(ca_content.get("scenes") or [])
+            preexisting_bible = ca_content.get("visual_bible") if isinstance(ca_content.get("visual_bible"), dict) else None
+            preexisting_narration = (linked_script_asset.body or "").strip()
+
+    if not preexisting_scenes and isinstance(payload_dict.get("scenes"), list) and payload_dict["scenes"]:
+        preexisting_scenes = list(payload_dict["scenes"])
+        if isinstance(payload_dict.get("visual_bible"), dict):
+            preexisting_bible = payload_dict["visual_bible"]
+
+    if not preexisting_scenes and isinstance(task.result, dict) and isinstance(task.result.get("items"), list) and len(task.result["items"]) >= 5:
+        for idx, it in enumerate(task.result["items"]):
+            preexisting_scenes.append({
+                "scene_number": idx + 1,
+                "narration": it.get("script") or it.get("narration") or it.get("description") or f"Cena {idx + 1}",
+                "visual_prompt": it.get("visual_prompt") or "",
+                "on_screen_text": it.get("title") or it.get("on_screen_text") or f"CENA {idx + 1:02d}",
+            })
+        if isinstance(task.result.get("visual_bible"), dict):
+            preexisting_bible = task.result["visual_bible"]
+
     response_data = {}
     model_used = "gemini-3.8-flash"
-    try:
-        response_data, model_used = await call_gemini_generate_content(
-            api_key=api_key,
-            contents=payload_contents,
-            system_instruction=system_prompt,
-            tools_declarations=[],
-            preferred_model="gemini-3.8-flash",
-        )
-    except Exception as e:
-        logger.warning(f"Aviso ao consultar Gemini para tarefa #{task.id}: {e}")
-        if not is_video_task:
-            task.failure_reason = str(e)
-            task.attempts += 1
-            await db.commit()
-            raise RuntimeError(f"Erro na execução da IA: {e}")
-        model_used = "abvos-autonomous-video-engine"
-
-    raw_text = ""
-    candidates = response_data.get("candidates", [])
-    if candidates:
-        parts = candidates[0].get("content", {}).get("parts", [])
-        if parts:
-            raw_text = parts[0].get("text", "")
-
-    parsed_output = {}
-    clean_text = raw_text.strip()
-    if "```json" in clean_text:
-        clean_text = clean_text.split("```json")[1].split("```")[0].strip()
-    elif "```" in clean_text:
-        clean_text = clean_text.split("```")[1].split("```")[0].strip()
-
-    try:
-        parsed_output = json.loads(clean_text) if clean_text else {}
-    except Exception:
-        parsed_output = {}
-
-    if not parsed_output:
+    if preexisting_scenes and is_video_task:
+        # Usa diretamente o roteiro já gerado pelo sistema sem sobrescrevê-lo
         parsed_output = {
-            "summary": f"Entrega da tarefa '{task.title}' concluída com sucesso pelo IA Worker.",
-            "deliverable_type": "dark_script" if is_video_task else "general",
-            "markdown_content": raw_text or task.description or task.title,
-            "items": [],
+            "summary": f"Vídeo renderizado a partir do roteiro '{linked_script_asset.title if linked_script_asset else task.title}' ({len(preexisting_scenes)} cenas).",
+            "deliverable_type": "dark_script",
+            "markdown_content": preexisting_narration or "\n\n".join(
+                f"**Cena {idx + 1:02d}:** {sc.get('narration', '')}" for idx, sc in enumerate(preexisting_scenes)
+            ),
+            "visual_bible": preexisting_bible or {},
+            "items": [
+                {
+                    "title": sc.get("on_screen_text") or f"Cena {idx + 1:02d}",
+                    "description": sc.get("b_roll_description") or f"Cena {idx + 1:02d}",
+                    "script": sc.get("narration") or sc.get("script") or "",
+                    "visual_prompt": sc.get("visual_prompt") or "",
+                    "tags": ["canal_dark", "roteiro_ia"],
+                }
+                for idx, sc in enumerate(preexisting_scenes)
+            ],
         }
+    else:
+        try:
+            response_data, model_used = await call_gemini_generate_content(
+                api_key=api_key,
+                contents=payload_contents,
+                system_instruction=system_prompt,
+                tools_declarations=[],
+                preferred_model="gemini-3.8-flash",
+            )
+        except Exception as e:
+            logger.warning(f"Aviso ao consultar Gemini para tarefa #{task.id}: {e}")
+            if not is_video_task:
+                task.failure_reason = str(e)
+                task.attempts += 1
+                await db.commit()
+                raise RuntimeError(f"Erro na execução da IA: {e}")
+            model_used = "abvos-autonomous-video-engine"
+
+        raw_text = ""
+        candidates = response_data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                raw_text = parts[0].get("text", "")
+
+        parsed_output = {}
+        clean_text = raw_text.strip()
+        if "```json" in clean_text:
+            clean_text = clean_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in clean_text:
+            clean_text = clean_text.split("```")[1].split("```")[0].strip()
+
+        try:
+            parsed_output = json.loads(clean_text) if clean_text else {}
+        except Exception:
+            parsed_output = {}
+
+        if not parsed_output:
+            parsed_output = {
+                "summary": f"Entrega da tarefa '{task.title}' concluída com sucesso pelo IA Worker.",
+                "deliverable_type": "dark_script" if is_video_task else "general",
+                "markdown_content": raw_text or task.description or task.title,
+                "items": [],
+            }
 
     media_result = None
     assets_created = []
@@ -192,17 +246,17 @@ Produza agora o entregável final estruturado."""
             for idx, it in enumerate(raw_items):
                 scenes_payload.append({
                     "scene_number": idx + 1,
-                    "narration": it.get("script") or it.get("description") or f"Cena {idx + 1}",
-                    "visual_prompt": it.get("visual_prompt") or f"Cinematic dark scene, Unreal Engine 5, 8k, 9:16",
-                    "on_screen_text": it.get("title") or f"CENA {idx + 1}",
+                    "narration": it.get("script") or it.get("narration") or it.get("description") or f"Cena {idx + 1}",
+                    "visual_prompt": it.get("visual_prompt") or "",
+                    "on_screen_text": it.get("title") or it.get("on_screen_text") or f"CENA {idx + 1:02d}",
                 })
 
             full_narration_text = " ".join([sc["narration"] for sc in scenes_payload if sc.get("narration")])
             if not full_narration_text:
-                full_narration_text = parsed_output.get("markdown_content", task.title)
+                full_narration_text = preexisting_narration or parsed_output.get("markdown_content", task.title)
 
             biz_id = business.id if business else 0
-            v_bible = parsed_output.get("visual_bible") if isinstance(parsed_output.get("visual_bible"), dict) else None
+            v_bible = parsed_output.get("visual_bible") if isinstance(parsed_output.get("visual_bible"), dict) else preexisting_bible
             media_result = await execute_full_media_pipeline(
                 business_id=biz_id,
                 task_id=task.id,
@@ -213,6 +267,28 @@ Produza agora o entregável final estruturado."""
             )
             await db.refresh(task)
 
+            # Sincroniza exatamente as 20 cenas compiladas e a visual_bible de volta para parsed_output["items"]
+            final_scenes = media_result.get("scenes") or scenes_payload
+            final_bible = media_result.get("visual_bible") or v_bible or {}
+            parsed_output["visual_bible"] = final_bible
+            parsed_output["items"] = [
+                {
+                    "title": sc.get("on_screen_text") or f"Cena {idx + 1:02d}",
+                    "description": f"Cena {idx + 1:02d} sincronizada",
+                    "script": sc.get("narration") or "",
+                    "visual_prompt": sc.get("visual_prompt") or "",
+                    "tags": ["canal_dark", "20_cenas"],
+                }
+                for idx, sc in enumerate(final_scenes)
+            ]
+            final_full_narration = " ".join(sc.get("narration", "") for sc in final_scenes if sc.get("narration")).strip()
+            parsed_output["markdown_content"] = "\n\n".join(
+                f"### Cena {idx + 1:02d} ({idx * 3:02d}s - {(idx + 1) * 3:02d}s)\n"
+                f"- **Narração:** {sc.get('narration', '')}\n"
+                f"- **Prompt Visual:** `{sc.get('visual_prompt', '')}`"
+                for idx, sc in enumerate(final_scenes)
+            )
+
             # Anexa informações de mídia ao resultado final da tarefa
             parsed_output["media"] = media_result
             parsed_output["video_url"] = media_result["video"]["url"]
@@ -222,6 +298,46 @@ Produza agora o entregável final estruturado."""
                 f"{parsed_output.get('summary', 'Tarefa concluída.')} "
                 f"🎬 VÍDEO FINAL RENDERIZADO (1080x1920 9:16, {media_result['video']['duration_seconds']}s, {media_result['video']['size_mb']}MB) pronto para download."
             )
+
+            # Atualiza ou cria o roteiro consolidado (dark_script_short) no Estúdio Dark vinculado ao vídeo
+            if linked_script_asset:
+                ca_content = dict(linked_script_asset.content or {})
+                ca_content["scenes"] = final_scenes
+                ca_content["visual_bible"] = final_bible
+                ca_content["task_id"] = task.id
+                ca_content["video_url"] = media_result["video"]["url"]
+                ca_content["audio_url"] = media_result["audio"]["url"]
+                ca_content["srt_url"] = media_result["subtitles"]["srt_url"]
+                linked_script_asset.content = ca_content
+                linked_script_asset.body = final_full_narration or linked_script_asset.body
+                linked_script_asset.updated_at = _utc_now()
+            else:
+                script_code = f"DARK-{biz_id}-{task.id}-{secrets.token_hex(3).upper()}"
+                script_asset = ContentAsset(
+                    tracking_code=script_code,
+                    business_id=biz_id,
+                    type="dark_script_short",
+                    platform="youtube_shorts",
+                    title=task.title.replace("[Vídeo] ", "").strip(),
+                    body=final_full_narration,
+                    content={
+                        "hook": final_scenes[0].get("narration", "") if final_scenes else task.title,
+                        "scenes": final_scenes,
+                        "visual_bible": final_bible,
+                        "task_id": task.id,
+                        "video_url": media_result["video"]["url"],
+                        "audio_url": media_result["audio"]["url"],
+                        "srt_url": media_result["subtitles"]["srt_url"],
+                        "format_type": "short",
+                        "voice_persona": "Voz masculina grave e documental (pt-BR-AntonioNeural)",
+                        "seo_tags": ["canal_dark", "shorts", "historia"],
+                    },
+                    status="supervision",
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(script_asset)
+                assets_created.append(script_asset.title)
 
             # Cria ContentAsset com o vídeo renderizado
             unique_code = f"VID-{biz_id}-{task.id}-{secrets.token_hex(3)}"

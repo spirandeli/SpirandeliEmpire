@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from urllib.parse import quote
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps, ImageStat
 import httpx
 from google import genai
 from google.genai import types
@@ -218,6 +218,49 @@ def _is_visually_coherent_image(rgb: Image.Image) -> bool:
         return True
 
 
+def _compose_square_to_9x16_seamless(
+    sq_img: Image.Image,
+    width: int = 1080,
+    height: int = 1920,
+) -> Image.Image:
+    """
+    Converte uma imagem quadrada (1:1, ex: 1024x1024) em vertical 9:16 (1080x1920)
+    preservando 100% da proporção original (sem esticar rostos e sem amputar asas/braços nas laterais),
+    fundindo o topo e a base com extensão atmosférica desfocada e vinheta cinematográfica para legendas.
+    """
+    bg = ImageOps.fit(sq_img, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=28))
+    bg = ImageEnhance.Brightness(bg).enhance(0.52)
+
+    fg_h = 1480
+    iw, ih = sq_img.size
+    fg_w = int(iw * (fg_h / max(ih, 1)))
+    if fg_w < width:
+        fg_w = width
+        fg_h = int(ih * (width / max(iw, 1)))
+    fg = sq_img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
+    left = max(0, (fg_w - width) // 2)
+    fg = fg.crop((left, 0, left + width, min(fg_h, height)))
+
+    mask = Image.new("L", fg.size, 255)
+    fade_top = 110
+    fade_bot = 165
+    px = mask.load()
+    for y in range(fg.size[1]):
+        alpha = 255
+        if y < fade_top:
+            alpha = int(255 * (y / fade_top) ** 1.5)
+        elif y > fg.size[1] - fade_bot:
+            alpha = int(255 * ((fg.size[1] - y) / fade_bot) ** 1.5)
+        if alpha < 255:
+            for x in range(fg.size[0]):
+                px[x, y] = alpha
+
+    y_offset = max(0, (height - fg.size[1]) // 2 - 40)
+    bg.paste(fg, (0, y_offset), mask)
+    return bg
+
+
 def _save_and_normalize_image_bytes(
     raw_bytes: bytes,
     output_path: str,
@@ -227,8 +270,10 @@ def _save_and_normalize_image_bytes(
 ) -> bool:
     """
     Valida se os bytes recebidos são uma imagem real íntegra e com nitidez mínima,
-    remove eventuais marcas d'água de rodapé com crop proporcional e grava em
-    1080x1920 (9:16) com alta qualidade JPEG.
+    remove eventuais marcas d'água de rodapé e normaliza para 1080x1920 (9:16)
+    SEM esticar ou deformar o rosto/corpo dos personagens:
+    - Imagens nativas 9:16 (ex: 576x1024 do Flux.1-Schnell) usam resize LANCZOS direto.
+    - Imagens 1:1 (ex: 1024x1024 do Pollinations) usam composição atmosférica sem perda lateral.
     """
     if not raw_bytes or len(raw_bytes) < 2048:
         return False
@@ -237,14 +282,27 @@ def _save_and_normalize_image_bytes(
             rgb = img.convert("RGB")
             if trim_bottom_watermark:
                 iw, ih = rgb.size
-                crop_x = int(iw * 0.025)
-                crop_bottom = int(ih * 0.95)
+                crop_x = int(iw * 0.02)
+                crop_bottom = int(ih * 0.94)
                 rgb = rgb.crop((crop_x, 0, iw - crop_x, crop_bottom))
             if not _is_visually_coherent_image(rgb):
                 logger.warning("Imagem descartada por baixa nitidez ou borrão abstrato sem detalhes.")
                 return False
-            if rgb.size != (width, height):
-                rgb = rgb.resize((width, height), Image.Resampling.LANCZOS)
+            iw, ih = rgb.size
+            if (iw, ih) != (width, height):
+                aspect = iw / max(ih, 1)
+                target_aspect = width / max(height, 1)
+                if abs(aspect - target_aspect) <= 0.06:
+                    rgb = rgb.resize((width, height), Image.Resampling.LANCZOS)
+                elif aspect >= 0.82:
+                    rgb = _compose_square_to_9x16_seamless(rgb, width=width, height=height)
+                else:
+                    rgb = ImageOps.fit(
+                        rgb,
+                        (width, height),
+                        method=Image.Resampling.LANCZOS,
+                        centering=(0.5, 0.35),
+                    )
             rgb.save(output_path, "JPEG", quality=92)
         return os.path.exists(output_path) and os.path.getsize(output_path) > 2048
     except Exception as e:
@@ -257,38 +315,35 @@ def _build_styled_prompt(
     visual_bible: Optional[Dict[str, str]] = None,
 ) -> str:
     """
-    Constrói o prompt final garantindo que os primeiros tokens (maior peso de atenção nos modelos Flux/Diffusion)
-    contenham SEMPRE a mesma assinatura de estilo artístico e a descrição física imutável do protagonista
-    (visual_bible), seguidos da ação da cena e do mesmo universo/paleta de cores.
+    Constrói um prompt enxuto (~55-65 palavras para caber integralmente na janela de 77 tokens do CLIP)
+    colocando a AÇÃO DA CENA + PROTAGONISTA CONSISTENTE + ESTILO ANIME CINEMATOGRÁFICO sem termos como
+    'character sheet' (que geravam linhas divisórias ou poses estáticas).
     """
     clean_prompt = re.sub(r"\s+", " ", (prompt or "").split("--ar")[0]).strip()
+    clean_prompt = re.sub(r"consistent character (?:design )?sheet,?\s*", "", clean_prompt, flags=re.IGNORECASE)
 
     if visual_bible:
-        art_style = (visual_bible.get("art_style") or "").strip()
         protagonist = (visual_bible.get("protagonist_description") or "").strip()
         world_setting = (visual_bible.get("world_setting") or "").strip()
         color_palette = (visual_bible.get("color_palette") or "").strip()
 
-        parts: List[str] = []
-        if art_style and art_style.lower()[:25] not in clean_prompt.lower():
-            parts.append(art_style)
-        if protagonist and protagonist.lower()[:28] not in clean_prompt.lower():
-            parts.append(f"Consistent main character: {protagonist}")
-        parts.append(f"Scene action: {clean_prompt}")
-        if world_setting and world_setting.lower()[:22] not in clean_prompt.lower():
+        parts: List[str] = [clean_prompt]
+        if protagonist and protagonist.lower()[:24] not in clean_prompt.lower():
+            parts.append(f"Character: {protagonist}")
+        if world_setting and world_setting.lower()[:20] not in clean_prompt.lower():
             parts.append(f"Setting: {world_setting}")
-        if color_palette and color_palette.lower()[:20] not in clean_prompt.lower():
-            parts.append(f"Color palette: {color_palette}")
+        if color_palette and color_palette.lower()[:18] not in clean_prompt.lower():
+            parts.append(f"Palette: {color_palette}")
 
         combined = ". ".join(p.rstrip(".") for p in parts if p)
     else:
         combined = clean_prompt
 
-    combined = combined[:720].strip()
+    combined = combined[:520].strip()
     return (
-        f"{combined}, dark epic anime cinematic masterpiece, consistent character design sheet, "
-        "same facial features and attire across scenes, dramatic chiaroscuro volumetric lighting, "
-        "sharp focus, ultra-detailed 8k, vertical 9:16 composition, no text, no watermark, no letters"
+        f"{combined}, 2D dark epic anime film still in the style of Castlevania Nocturne, "
+        "dynamic cinematic angle, dramatic chiaroscuro volumetric lighting, "
+        "sharp focus, masterpiece 8k vertical 9:16, no text, no watermark, no split screen"
     )
 
 
@@ -480,23 +535,20 @@ async def _try_aihorde_image(
     prompt: str,
     output_path: str,
     scene_number: int,
-    timeout: float = 55.0,
+    timeout: float = 42.0,
     visual_bible: Optional[Dict[str, str]] = None,
     story_seed: int = 424242,
 ) -> bool:
     """
-    Provedor 4 (Fallback): Gera imagem real via AI Horde restringindo estritamente a modelos
-    de alta fidelidade e resolução superior (576x1024, 24 steps), proibindo modelos SD 1.5
-    aleatórios de baixa qualidade.
+    Provedor Principal Flux 9:16 (Sem Rate-Limit de IP): Gera imagem real em proporção
+    nativa 9:16 (576x1024 -> 1080x1920) usando o modelo `Flux.1-Schnell fp8 (Compact)`
+    no AI Horde (steps=4, cfg_scale=1.0, queue_position=0, 7 workers ativos), garantindo
+    que todas as 20 cenas sejam geradas pelo mesmo motor Flux sem distorção vertical.
     """
     if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
         return False
 
-    styled_prompt = (
-        f"{_build_styled_prompt(prompt, visual_bible=visual_bible)} ### "
-        "text, watermark, letters, caption, hud, frame, border, deformed, blurry, lowres, "
-        "monochrome, black and white manga sketch, abstract smudge, different character, ugly hands"
-    )
+    styled_prompt = _build_styled_prompt(prompt, visual_bible=visual_bible)
     api_key = (os.getenv("AIHORDE_API_KEY") or "0000000000").strip()
     headers = {
         "apikey": api_key,
@@ -506,18 +558,15 @@ async def _try_aihorde_image(
     payload = {
         "prompt": styled_prompt,
         "models": [
-            "AlbedoBase XL (SDXL)",
-            "Dreamshaper XL",
-            "SDXL 1.0",
-            "Deliberate",
+            "Flux.1-Schnell fp8 (Compact)",
         ],
         "params": {
             "width": 576,
             "height": 1024,
-            "steps": 24,
+            "steps": 4,
             "n": 1,
-            "sampler_name": "k_euler_a",
-            "cfg_scale": 7.0,
+            "sampler_name": "k_euler",
+            "cfg_scale": 1.0,
             "seed": str(int(story_seed) + scene_number),
         },
         "nsfw": False,
@@ -533,7 +582,7 @@ async def _try_aihorde_image(
                 json=payload,
             )
             if sub.status_code != 202:
-                logger.warning(f"[Cena #{scene_number}] AI Horde recusou submissão ({sub.status_code}): {sub.text[:160]}")
+                logger.warning(f"[Cena #{scene_number}] AI Horde Flux recusou submissão ({sub.status_code}): {sub.text[:160]}")
                 return False
 
             job_id = sub.json().get("id")
@@ -542,7 +591,7 @@ async def _try_aihorde_image(
 
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
-                await asyncio.sleep(2.5)
+                await asyncio.sleep(2.0)
                 st = await client.get(
                     f"https://stablehorde.net/api/v2/generate/status/{job_id}",
                     headers=headers,
@@ -564,12 +613,12 @@ async def _try_aihorde_image(
                                 raw_bytes = base64.b64decode(img_ref)
                             if _save_and_normalize_image_bytes(raw_bytes, output_path):
                                 logger.info(
-                                    f"[Cena #{scene_number}] Imagem real IA gerada via AI Horde SDXL: {output_path}"
+                                    f"[Cena #{scene_number}] Imagem real 9:16 gerada via Flux.1-Schnell (AI Horde): {output_path}"
                                 )
                                 return True
                     break
     except Exception as e:
-        logger.warning(f"[Cena #{scene_number}] Erro ao consultar AI Horde: {e}")
+        logger.warning(f"[Cena #{scene_number}] Erro ao consultar AI Horde Flux: {e}")
 
     return False
 
@@ -578,16 +627,15 @@ async def _try_pollinations_flux_image(
     prompt: str,
     output_path: str,
     scene_number: int,
-    timeout: float = 32.0,
+    timeout: float = 35.0,
     wait_on_rate_limit: bool = False,
     visual_bible: Optional[Dict[str, str]] = None,
     story_seed: int = 424242,
 ) -> bool:
     """
-    Provedor Principal Gratuito: Gera imagem real de IA em proporção 9:16 (1080x1920)
-    usando Pollinations.ai com modelo Flux, `enhance=false` (impede que o servidor reescreva
-    o prompt alterando o personagem/estilo) e `story_seed` consistente.
-    Não aplica auto-bloqueio artificial de 45s quando a chamada retorna 200 OK.
+    Provedor Secundário Flux: Solicita imagem em proporção nativa 1:1 (1024x1024) ao
+    Pollinations Flux (evitando o bug do servidor do Pollinations que estica imagens 1:1
+    quando width != height) e compõe em 1080x1920 sem distorção via `_compose_square_to_9x16_seamless`.
     """
     global _POLLINATIONS_NEXT_AVAILABLE_AT
 
@@ -599,9 +647,9 @@ async def _try_pollinations_flux_image(
         remaining = _POLLINATIONS_NEXT_AVAILABLE_AT - now
         if not wait_on_rate_limit and remaining > 2.5:
             return False
-        wait_s = min(remaining + 0.5, 25.0)
+        wait_s = min(remaining + 1.0, 48.0)
         if wait_s > 0.2:
-            logger.info(f"[Cena #{scene_number}] Aguardando janela de {wait_s:.1f}s do provedor Flux para gerar arte consistente...")
+            logger.info(f"[Cena #{scene_number}] Aguardando janela de {wait_s:.1f}s do Pollinations Flux...")
             await asyncio.sleep(wait_s)
 
     styled_prompt = _build_styled_prompt(prompt, visual_bible=visual_bible)
@@ -609,8 +657,7 @@ async def _try_pollinations_flux_image(
     seed = int(story_seed) + scene_number
 
     urls_to_try = [
-        f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1920&model=flux&nologo=true&enhance=false&seed={seed}",
-        f"https://image.pollinations.ai/prompt/{encoded}?width=768&height=1344&model=flux&nologo=true&enhance=false&seed={seed}",
+        f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&model=flux&nologo=true&enhance=false&seed={seed}",
     ]
 
     headers = {
@@ -625,29 +672,28 @@ async def _try_pollinations_flux_image(
                 ctype = resp.headers.get("content-type", "").lower()
                 if resp.status_code == 200 and ("image" in ctype or len(resp.content) > 10240):
                     if _save_and_normalize_image_bytes(resp.content, output_path, trim_bottom_watermark=True):
-                        # Pausa curta de cortesia (1.2s) para manter todas as 20 cenas no mesmo modelo Flux sem 429
-                        _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 1.2
+                        _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 45.5
                         logger.info(
-                            f"[Cena #{scene_number}] Imagem real IA gerada via Pollinations Flux (seed={seed}): {output_path}"
+                            f"[Cena #{scene_number}] Imagem real IA gerada via Pollinations Flux 1:1->9:16 (seed={seed}): {output_path}"
                         )
                         return True
 
                 if resp.status_code in (402, 429):
-                    retry_s = 12.0
+                    retry_s = 45.0
                     m = re.search(r"Retry after\s+(\d+)\s*s", resp.text, re.IGNORECASE)
                     if m:
-                        retry_s = min(float(m.group(1)) + 1.0, 25.0)
+                        retry_s = min(float(m.group(1)) + 2.0, 48.0)
                     _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + retry_s
                     if wait_on_rate_limit and attempt == 1:
                         logger.info(
-                            f"[Cena #{scene_number}] Rate-limit Flux detectado ({retry_s:.1f}s). Aguardando para manter o mesmo modelo..."
+                            f"[Cena #{scene_number}] Rate-limit Pollinations detectado ({retry_s:.1f}s). Aguardando janela completa..."
                         )
                         await asyncio.sleep(retry_s)
                         resp_retry = await client.get(url)
                         ctype_retry = resp_retry.headers.get("content-type", "").lower()
                         if resp_retry.status_code == 200 and ("image" in ctype_retry or len(resp_retry.content) > 10240):
                             if _save_and_normalize_image_bytes(resp_retry.content, output_path, trim_bottom_watermark=True):
-                                _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 1.2
+                                _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 45.5
                                 logger.info(
                                     f"[Cena #{scene_number}] Imagem real IA gerada via Pollinations Flux após aguardar janela: {output_path}"
                                 )
@@ -672,14 +718,14 @@ async def generate_single_scene_image_with_retry(
     story_seed: int = 424242,
 ) -> str:
     """
-    Gera imagem de cena real 9:16 (1080x1920) priorizando unidade de modelo e continuidade
-    de personagem (visual_bible + story_seed) em todas as 20 cenas:
+    Gera imagem de cena real 9:16 (1080x1920) garantindo 100% de cenas reais geradas por IA,
+    zero distorção vertical e continuidade de personagem (visual_bible + story_seed) em todas as 20 cenas:
     1. Google GenAI (Imagen 3 / Gemini Flash Image)
-    2. Pollinations Flux (enhance=false, mantendo o mesmo modelo Flux em todas as cenas)
-    3. Pollinations Flux com espera de rate-limit (prioriza continuar no mesmo motor Flux antes de trocar de modelo)
+    2. AI Horde `Flux.1-Schnell fp8 (Compact)` nativo 576x1024 (9:16 exato, sem rate-limit de 45s por IP)
+    3. Pollinations Flux 1024x1024 (sem distorção vertical) imediato
     4. HuggingFace Gradio Flux.1 Schnell / Flux.1 Merged
-    5. AI Horde restrito a modelos SDXL em 576x1024
-    6. Fallback visual Dark Anime sem texto embutido (apenas para testes offline sem internet)
+    5. Pollinations Flux 1024x1024 aguardando janela (garante zero fallback geométrico)
+    6. Fallback visual Dark Anime (exclusivo para execução de testes offline)
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     clean_key = (gemini_key or os.getenv("GEMINI_API_KEY", "")).strip()
@@ -697,41 +743,53 @@ async def generate_single_scene_image_with_retry(
             ):
                 return output_path
 
-        # 2. Pollinations Flux (mesmo modelo Flux para consistência visual máxima)
+        # 2. AI Horde Flux.1-Schnell fp8 (Compact) nativo em 576x1024 (9:16 real sem esticar e sem limite de 45s)
+        if await _try_aihorde_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=42.0,
+            visual_bible=visual_bible,
+            story_seed=story_seed,
+        ):
+            return output_path
+
+        # 3. Pollinations Flux 1024x1024 imediato (com composição 9:16 sem distorção)
         if await _try_pollinations_flux_image(
             prompt=prompt,
             output_path=output_path,
             scene_number=scene_number,
             timeout=timeout_per_attempt,
+            wait_on_rate_limit=False,
+            visual_bible=visual_bible,
+            story_seed=story_seed,
+        ):
+            return output_path
+
+        # 4. HuggingFace Gradio Spaces (Flux.1 Schnell / Merged)
+        if await _try_hf_gradio_flux_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=25.0,
+            visual_bible=visual_bible,
+            story_seed=story_seed,
+        ):
+            return output_path
+
+        # 5. Garantia final via Pollinations Flux aguardando janela se necessário
+        if await _try_pollinations_flux_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=35.0,
             wait_on_rate_limit=True,
             visual_bible=visual_bible,
             story_seed=story_seed,
         ):
             return output_path
 
-        # 3. HuggingFace Gradio Spaces (Flux.1 Schnell / Merged sem rotação aleatória)
-        if await _try_hf_gradio_flux_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=28.0,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-        # 4. AI Horde restrito a modelos SDXL de alta resolução
-        if await _try_aihorde_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=50.0,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-    # 5. Fallback offline com arte silhueta Dark Anime (sem caixas de texto ou prompts na tela)
+    # 6. Fallback offline com arte silhueta Dark Anime (apenas para testes sem internet)
     logger.info(f"[Cena #{scene_number}] Gerando arte visual Dark Anime offline (sem texto sobreposto).")
     fallback_img = create_cinematic_dark_backdrop(
         width=1080,
