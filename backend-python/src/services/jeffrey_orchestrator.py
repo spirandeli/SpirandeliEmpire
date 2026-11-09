@@ -127,10 +127,10 @@ async def call_gemini_generate_content(
         },
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=5.0)) as client:
         now_ts = time.time()
         for model in models_to_try:
-            # Pula modelos que atingiram cota recentemente para resposta imediata
+            # Pula modelos que atingiram cota ou timeout recentemente para resposta imediata
             if now_ts < _QUOTA_EXHAUSTED_UNTIL.get(model, 0):
                 continue
 
@@ -151,6 +151,7 @@ async def call_gemini_generate_content(
                     last_error = f"HTTP 429: {res.text[:120]}"
                     continue
                 elif res.status_code == 503:
+                    _QUOTA_EXHAUSTED_UNTIL[model] = time.time() + 180  # 3 min cooldown
                     logger.warning(f"Model {model} indisponível (503). Tentando fallback...")
                     last_error = f"HTTP 503: {res.text[:120]}"
                     continue
@@ -159,6 +160,7 @@ async def call_gemini_generate_content(
                     last_error = f"HTTP {res.status_code}: {res.text[:200]}"
                     continue
             except Exception as e:
+                _QUOTA_EXHAUSTED_UNTIL[model] = time.time() + 300  # 5 min cooldown on timeout/network issue
                 logger.warning(f"Erro ao chamar {model}: {repr(e)}")
                 last_error = repr(e)
                 continue
