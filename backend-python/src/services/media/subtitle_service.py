@@ -1,11 +1,13 @@
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from src.services.media.tts_service import clean_narration_for_tts
 
 
 def format_srt_timestamp(seconds: float) -> str:
     """
     Converte segundos em formato SRT: HH:MM:SS,mmm
     """
+    seconds = max(0.0, float(seconds))
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
@@ -20,6 +22,7 @@ def format_ass_timestamp(seconds: float) -> str:
     """
     Converte segundos em formato ASS: H:MM:SS.cc (centésimos de segundo)
     """
+    seconds = max(0.0, float(seconds))
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
@@ -32,11 +35,14 @@ def format_ass_timestamp(seconds: float) -> str:
 
 def split_text_into_chunks(text: str, max_words: int = 4) -> List[str]:
     """
-    Divide o texto em pequenos blocos de palavras (estilo Alex Hormozi/TikTok)
+    Divide o texto limpo em pequenos blocos de palavras (estilo Alex Hormozi/TikTok)
     para leitura dinâmica em tela cheia.
     """
-    cleaned = re.sub(r"\s+", " ", text).strip().upper()
-    words = cleaned.split(" ")
+    cleaned_raw = clean_narration_for_tts(text) or text
+    cleaned = re.sub(r"\s+", " ", cleaned_raw).strip().upper()
+    if not cleaned:
+        return []
+    words = [w for w in cleaned.split(" ") if w]
     chunks = []
     current = []
 
@@ -48,7 +54,59 @@ def split_text_into_chunks(text: str, max_words: int = 4) -> List[str]:
 
     if current:
         chunks.append(" ".join(current))
-    return chunks or [text.upper()]
+    return chunks
+
+
+def _build_chunks_from_word_timings(
+    word_timings: List[Dict[str, Any]],
+    max_words: int = 4,
+) -> List[Dict[str, Any]]:
+    """
+    Agrupa os eventos WordBoundary reais do TTS em blocos de 3 a 4 palavras,
+    preservando os timestamps exatos de início e fim falados pelo narrador.
+    """
+    grouped: List[Dict[str, Any]] = []
+    current_words: List[str] = []
+    chunk_start: Optional[float] = None
+    chunk_end: float = 0.0
+
+    for item in word_timings:
+        w = (item.get("text") or "").strip().upper()
+        if not w:
+            continue
+        w_start = float(item.get("start", 0.0))
+        w_end = float(item.get("end", w_start + 0.25))
+
+        if chunk_start is None:
+            chunk_start = w_start
+        current_words.append(w)
+        chunk_end = max(w_end, chunk_start + 0.25)
+
+        if len(current_words) >= max_words or w.endswith((".", "!", "?", ",", ";", ":")):
+            grouped.append({
+                "text": " ".join(current_words),
+                "start": round(chunk_start, 2),
+                "end": round(chunk_end, 2),
+            })
+            current_words = []
+            chunk_start = None
+
+    if current_words and chunk_start is not None:
+        grouped.append({
+            "text": " ".join(current_words),
+            "start": round(chunk_start, 2),
+            "end": round(max(chunk_end, chunk_start + 0.35), 2),
+        })
+
+    # Garante que nenhum bloco sobreponha o próximo e que tenha duração mínima legível
+    for idx in range(len(grouped) - 1):
+        nxt_start = grouped[idx + 1]["start"]
+        if grouped[idx]["end"] > nxt_start:
+            grouped[idx]["end"] = nxt_start
+        elif nxt_start - grouped[idx]["end"] < 0.18:
+            grouped[idx]["end"] = nxt_start
+
+    return grouped
 
 
 def generate_subtitles(
@@ -58,16 +116,18 @@ def generate_subtitles(
     highlight_color: str = "&H0024E0FF",  # Amarelo/Dourado em ASS BGR
     primary_color: str = "&H00FFFFFF",    # Branco puro
     outline_color: str = "&H00000000",    # Preto puro
+    word_timings: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, str]:
     """
     Gera arquivos .srt padrão e .ass com tipografia cinemática de alta retenção (Hormozi style).
-    scenes_timing: lista de dicts com {'text': str, 'start': float, 'end': float}
+    Se `word_timings` (WordBoundary do TTS) for fornecido, sincroniza cada bloco de 3-4 palavras
+    exatamente com o milissegundo da fala; caso contrário, distribui proporcionalmente por cena.
     """
     srt_lines = []
     ass_dialogues = []
     counter = 1
 
-    # Cabeçalho do arquivo ASS com estilos cinemáticos para 1080x1920 (9:16)
+    # Cabeçalho ASS usando DejaVu Sans (instalada no container) com contorno forte e sombra nítida
     ass_header = f"""[Script Info]
 Title: ABVOS Dark Channel Dynamic Subtitles
 ScriptType: v4.00+
@@ -79,47 +139,63 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: HormoziYellow,Impact,74,{highlight_color},&H000000FF,{outline_color},&H80000000,-1,0,0,0,100,100,2,0,1,6,3,2,60,60,340,1
-Style: HormoziWhite,Impact,72,{primary_color},&H000000FF,{outline_color},&H80000000,-1,0,0,0,100,100,2,0,1,6,3,2,60,60,340,1
+Style: HormoziYellow,DejaVu Sans,68,{highlight_color},&H000000FF,{outline_color},&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,70,70,290,1
+Style: HormoziWhite,DejaVu Sans,66,{primary_color},&H000000FF,{outline_color},&H80000000,-1,0,0,0,100,100,1,0,1,6,3,2,70,70,290,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-    for scene in scenes_timing:
-        scene_text = scene.get("text", "").strip()
-        start = float(scene.get("start", 0.0))
-        end = float(scene.get("end", start + 3.0))
-        total_duration = max(0.5, end - start)
+    if word_timings:
+        timed_chunks = _build_chunks_from_word_timings(word_timings, max_words=4)
+        for i, item in enumerate(timed_chunks):
+            c_text = item["text"]
+            c_start = item["start"]
+            c_end = item["end"]
+            if c_end <= c_start:
+                c_end = round(c_start + 0.35, 2)
 
-        chunks = split_text_into_chunks(scene_text, max_words=4)
-        if not chunks:
-            continue
-
-        chunk_duration = total_duration / len(chunks)
-
-        for i, chunk in enumerate(chunks):
-            chunk_start = start + (i * chunk_duration)
-            chunk_end = start + ((i + 1) * chunk_duration)
-
-            # Entrada SRT
             srt_lines.append(f"{counter}")
-            srt_lines.append(f"{format_srt_timestamp(chunk_start)} --> {format_srt_timestamp(chunk_end)}")
-            srt_lines.append(chunk)
+            srt_lines.append(f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}")
+            srt_lines.append(c_text)
             srt_lines.append("")
             counter += 1
 
-            # Entrada ASS (Alterna estilo para dinamismo visual)
             style_name = "HormoziYellow" if (i % 2 == 0) else "HormoziWhite"
             ass_dialogues.append(
-                f"Dialogue: 0,{format_ass_timestamp(chunk_start)},{format_ass_timestamp(chunk_end)},{style_name},,0,0,0,,{chunk}"
+                f"Dialogue: 0,{format_ass_timestamp(c_start)},{format_ass_timestamp(c_end)},{style_name},,0,0,0,,{c_text}"
             )
+    else:
+        for scene in scenes_timing:
+            scene_text = clean_narration_for_tts(scene.get("text", ""))
+            start = float(scene.get("start", 0.0))
+            end = float(scene.get("end", start + 3.0))
+            total_duration = max(0.5, end - start)
 
-    # Grava .srt
+            chunks = split_text_into_chunks(scene_text, max_words=4)
+            if not chunks:
+                continue
+
+            chunk_duration = total_duration / len(chunks)
+
+            for i, chunk in enumerate(chunks):
+                chunk_start = start + (i * chunk_duration)
+                chunk_end = start + ((i + 1) * chunk_duration)
+
+                srt_lines.append(f"{counter}")
+                srt_lines.append(f"{format_srt_timestamp(chunk_start)} --> {format_srt_timestamp(chunk_end)}")
+                srt_lines.append(chunk)
+                srt_lines.append("")
+                counter += 1
+
+                style_name = "HormoziYellow" if (i % 2 == 0) else "HormoziWhite"
+                ass_dialogues.append(
+                    f"Dialogue: 0,{format_ass_timestamp(chunk_start)},{format_ass_timestamp(chunk_end)},{style_name},,0,0,0,,{chunk}"
+                )
+
     with open(output_srt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(srt_lines))
 
-    # Grava .ass
     with open(output_ass_path, "w", encoding="utf-8") as f:
         f.write(ass_header + "\n".join(ass_dialogues) + "\n")
 
@@ -127,4 +203,3 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         "srt_path": output_srt_path,
         "ass_path": output_ass_path,
     }
-

@@ -1,8 +1,10 @@
 import asyncio
 import functools
+import json
 import logging
 import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -16,10 +18,9 @@ from src.services.media.image_service import (
     generate_all_scene_images,
     create_cinematic_dark_backdrop,
 )
-from src.services.media.tts_service import synthesize_narration
+from src.services.media.tts_service import synthesize_narration, clean_narration_for_tts
 from src.services.media.subtitle_service import generate_subtitles
 from src.services.media.video_renderer import render_video_with_audio_and_subtitles
-import shutil
 
 logger = logging.getLogger("abvos.media.pipeline")
 
@@ -36,7 +37,6 @@ class TaskRouter:
         def decorator(func):
             @functools.wraps(func)
             async def wrapper(*args, **kw):
-                # Se for chamado pelo ARQ Worker, o primeiro argumento pode ser o 'ctx' do worker
                 if args and (isinstance(args[0], dict) or hasattr(args[0], "redis")):
                     return await func(*args[1:], **kw)
                 return await func(*args, **kw)
@@ -126,7 +126,6 @@ async def _persist_video_progress(
             if task:
                 task.status_log = formatted_msg
 
-                # Atualiza description mantendo o histórico/instrução original
                 orig_desc = task.description or ""
                 clean_lines = [
                     l for l in orig_desc.splitlines()
@@ -152,7 +151,6 @@ async def _persist_video_progress(
                     task.status = "done"
                     task.completed_at = now
 
-                # Registra evento na tabela agent_logs para streaming em tempo real no frontend
                 agent_log = AgentLog(
                     user_id=task.user_id,
                     business_id=task.business_id or business_id,
@@ -176,6 +174,156 @@ async def _persist_video_progress(
         logger.warning(f"[Task #{task_id}] Falha não-bloqueante ao persistir progresso no banco: {db_err}")
 
 
+def _build_narrative_beats(title: str) -> List[Dict[str, str]]:
+    """
+    Retorna 20 batidas narrativas contínuas (em português natural sem marcadores técnicos)
+    e prompts visuais distintos em inglês quando o roteiro de entrada tiver menos de 20 cenas.
+    """
+    clean_topic = clean_narration_for_tts(title) or "o grande mistério oculto"
+    return [
+        {
+            "narration": f"Antes do tempo existir, um segredo sobre {clean_topic} já estava selado.",
+            "visual_prompt": f"Silhouette of a celestial winged archangel standing before a cosmic rift, {clean_topic}, dark anime style, volumetric light, 9:16",
+        },
+        {
+            "narration": "Poucos tiveram coragem de olhar além do véu que encobria essa verdade.",
+            "visual_prompt": f"Ancient forbidden temple gates opening into glowing abyssal fog, {clean_topic}, dramatic chiaroscuro lighting, 9:16",
+        },
+        {
+            "narration": "Os registros mais antigos descreviam um poder capaz de alterar todo o destino.",
+            "visual_prompt": f"Close up on ancient glowing golden scriptures floating in dark air with burning embers, {clean_topic}, dark fantasy art, 9:16",
+        },
+        {
+            "narration": "Mas havia um preço silencioso que ninguém estava disposto a pagar naquela era.",
+            "visual_prompt": f"Lone hooded watcher looking at a colossal eclipsed sun over gothic ruins, {clean_topic}, dark epic anime, 9:16",
+        },
+        {
+            "narration": "Nas profundezas do santuário, o primeiro sinal finalmente começou a despertar.",
+            "visual_prompt": f"Subterranean obsidian throne room illuminated by crimson and gold lightning, {clean_topic}, Unreal Engine 5 cinematic, 9:16",
+        },
+        {
+            "narration": "Aquilo que parecia apenas uma lenda revelou sua verdadeira face diante do mundo.",
+            "visual_prompt": f"Majestic warrior angel with glowing sapphire eyes emerging from shadows, {clean_topic}, hyper-detailed dark anime, 9:16",
+        },
+        {
+            "narration": "Cada detalhe fora arquitetado em silêncio ao longo de gerações esquecidas.",
+            "visual_prompt": f"Intricate celestial clockwork gears and astral constellations spinning in darkness, {clean_topic}, dramatic rim light, 9:16",
+        },
+        {
+            "narration": "Quando os guardiões perceberam a mudança, o equilíbrio já havia sido rompido.",
+            "visual_prompt": f"Two rival celestial figures clashing in mid-air above storm clouds, {clean_topic}, dynamic action angle, dark anime, 9:16",
+        },
+        {
+            "narration": "O céu escureceu de repente e o eco daquela escolha atravessou os séculos.",
+            "visual_prompt": f"Dark vortex tearing through the night sky above an ancient citadel, {clean_topic}, ominous atmospheric fog, 9:16",
+        },
+        {
+            "narration": "Documentos ocultos tentaram apagar os vestígios do que realmente aconteceu ali.",
+            "visual_prompt": f"Shadowy figures sealing ancient scrolls inside a subterranean vault with golden chains, {clean_topic}, neo-noir lighting, 9:16",
+        },
+        {
+            "narration": "Porém nenhuma chama permanece escondida para sempre na escuridão absoluta.",
+            "visual_prompt": f"A single brilliant golden flame igniting in pitch black darkness, illuminating ancient armor, {clean_topic}, macro shot, 9:16",
+        },
+        {
+            "narration": "A segunda profecia começou a se cumprir exatamente como estava escrito.",
+            "visual_prompt": f"Colossal stone statues awakening with glowing runes along a canyon, {clean_topic}, wide low-angle cinematic shot, 9:16",
+        },
+        {
+            "narration": "O confronto entre a luz primordial e o abismo tornou-se inevitável.",
+            "visual_prompt": f"Radiant spear of light piercing through a massive shadow colossus, {clean_topic}, epic dark anime battle, 9:16",
+        },
+        {
+            "narration": "Nos fragmentos deixados para trás, a peça final do enigma foi encontrada.",
+            "visual_prompt": f"Hand wearing gauntlets picking up a shattered glowing crystal relic on ashes, {clean_topic}, extreme close-up, 9:16",
+        },
+        {
+            "narration": "Tudo o que parecia separado fazia parte de um único propósito maior.",
+            "visual_prompt": f"Astral tree of light connecting heaven and the dark underworld, {clean_topic}, breathtaking vertical composition, 9:16",
+        },
+        {
+            "narration": "No instante decisivo, a verdade veio à tona com força implacável.",
+            "visual_prompt": f"Archangel spreading six luminous wings amidst a storm of golden sparks, {clean_topic}, climax shot, 8k dark anime, 9:16",
+        },
+        {
+            "narration": "O império que tentou controlar esse mistério ruiu diante dos próprios olhos.",
+            "visual_prompt": f"Crumbling dark marble pillars and falling crowns in slow motion with fire embers, {clean_topic}, dramatic lighting, 9:16",
+        },
+        {
+            "narration": "Mas o legado daquele evento continua moldando o mundo até os dias de hoje.",
+            "visual_prompt": f"Modern dark skyline reflected in an ancient mystical mirror with glowing symbols, {clean_topic}, cinematic contrast, 9:16",
+        },
+        {
+            "narration": "Agora que você conhece os sinais, nunca mais verá essa história do mesmo jeito.",
+            "visual_prompt": f"Mysterious figure turning back with glowing eyes in volumetric blue fog, {clean_topic}, hypnotic gaze, 9:16",
+        },
+        {
+            "narration": "Pois o último capítulo desse mistério acaba de recomeçar onde tudo teve início.",
+            "visual_prompt": f"Silhouette of the celestial winged figure returning to the cosmic rift, seamless loop visual, {clean_topic}, dark anime, 9:16",
+        },
+    ]
+
+
+async def _generate_twenty_scenes_via_gemini(
+    title: str,
+    context_text: str,
+    api_key: str,
+) -> List[Dict[str, Any]]:
+    """
+    Solicita ao Gemini a criação de exatamente 20 cenas conectadas em narrativa contínua
+    de 60 segundos (3s por cena) quando a task não possui as 20 cenas previamente estruturadas.
+    """
+    if not api_key or os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
+        return []
+
+    try:
+        from src.services.jeffrey_orchestrator import call_gemini_generate_content
+
+        sys_prompt = """Você é o Diretor de Roteiro e Fotografia de Canal Dark do ABVOS.
+Gere EXATAMENTE 20 cenas sequenciais e contínuas para um vídeo vertical de 60 segundos (3 segundos por cena).
+Regras obrigatórias:
+1. A narração (`narration`) das 20 cenas deve formar UMA ÚNICA HISTÓRIA CONTÍNUA, envolvente e cronológica em Português do Brasil.
+2. Cada `narration` deve ter entre 7 e 11 palavras (para durar cerca de 3 segundos na fala).
+3. PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção, ou prefixos como `Cena 1:` dentro de `narration`. Escreva apenas o texto puro que será falado pelo locutor.
+4. Cada `visual_prompt` deve ser em INGLÊS, descrevendo exatamente a cena visual correspondente àquela frase (personagens, ação, ambiente, iluminação volumétrica, estilo Dark Anime / Epic Cinematic 9:16, sem texto na imagem).
+
+Responda APENAS um JSON válido no formato:
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration": "Frase falada limpa em português com sete a dez palavras.",
+      "visual_prompt": "Detailed English visual prompt describing the exact scene action and characters, dark anime cinematic style, 9:16",
+      "on_screen_text": "TÍTULO CURTO"
+    }
+  ]
+}"""
+
+        user_msg = f"Título do Vídeo: {title}\nContexto / Tema: {clean_narration_for_tts(context_text) or title}\nGere as 20 cenas completas agora."
+        resp_data, _ = await call_gemini_generate_content(
+            api_key=api_key,
+            contents=[{"role": "user", "parts": [{"text": user_msg}]}],
+            system_instruction=sys_prompt,
+            tools_declarations=[],
+            preferred_model="gemini-3.8-flash",
+        )
+        candidates = resp_data.get("candidates", [])
+        if candidates:
+            raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0].strip()
+            parsed = json.loads(raw)
+            sc_list = parsed.get("scenes") or parsed.get("items") or []
+            if isinstance(sc_list, list) and len(sc_list) >= 10:
+                return sc_list
+    except Exception as e:
+        logger.warning(f"Não foi possível gerar 20 cenas via Gemini complementar: {e}")
+
+    return []
+
+
 def ensure_twenty_scenes(
     scenes: Optional[List[Dict[str, Any]]],
     full_narration: str,
@@ -183,83 +331,122 @@ def ensure_twenty_scenes(
 ) -> List[Dict[str, Any]]:
     """
     Garante obrigatoriamente 20 cenas de 3 segundos (totalizando exatamente 60 segundos por vídeo),
-    distribuídas estrategicamente em:
+    com narração contínua, limpa (sem '[pausa]', sem '(fase 2)', sem logs de status) e com
+    prompts visuais distintos para cada cena:
     - Part 1: Cenas 01 a 06 (0s a 18s) - Hook Hipnótico e Quebra de Padrão
     - Part 2: Cenas 07 a 15 (18s a 45s) - Desenvolvimento e Tensão Narrativa
-    - Part 3: Cenas 16 a 20 (45s a 60s) - Clímax, CTA e Looping Contínuo
+    - Part 3: Cenas 16 a 20 (45s a 60s) - Clímax, Revelação e Looping Contínuo
     """
     camera_styles = [
         "Dynamic macro push-in, anamorphic lens, volumetric dark fog",
-        "Wide cinematic angle, ominous shadows, Unreal Engine 5 render",
-        "Extreme close up on critical detail, dramatic side lighting",
-        "Slow atmospheric dolly in, cold blue rim light, 8k resolution",
-        "Dutch angle view, dark neo-noir mystery, hyper-realistic particles",
-        "Low-angle heroic shot in total darkness, neon crimson accent",
+        "Wide cinematic angle, ominous shadows, dark anime masterpiece",
+        "Extreme close up on critical detail, dramatic chiaroscuro side lighting",
+        "Slow atmospheric dolly in, cold blue and gold rim light, 8k resolution",
+        "Low-angle heroic shot in deep darkness, glowing embers and particles",
+        "High-contrast dramatic composition, epic fantasy lighting, 8k",
     ]
 
-    base_narration_chunks = []
-    if full_narration:
-        # Divide narração em frases ou orações
-        clean = re.sub(r"\s+", " ", full_narration).strip()
-        parts = [p.strip() for p in re.split(r"[.!?]+", clean) if len(p.strip()) > 3]
-        base_narration_chunks = parts
+    fallback_beats = _build_narrative_beats(title)
+    clean_full = clean_narration_for_tts(full_narration)
 
+    # Extrai sentenças reais da narração caso existam
+    narration_sentences: List[str] = []
+    if clean_full:
+        raw_parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", clean_full) if len(p.strip()) > 4]
+        for part in raw_parts:
+            words = part.split()
+            if len(words) > 14:
+                # Divide frases muito longas em segmentos de ~8-10 palavras para caber em 3s
+                for k in range(0, len(words), 9):
+                    seg = " ".join(words[k:k + 9]).strip()
+                    if seg:
+                        narration_sentences.append(seg)
+            else:
+                narration_sentences.append(part)
+
+    input_scenes = list(scenes or [])
     normalized_scenes: List[Dict[str, Any]] = []
 
-    # Caso já tenhamos cenas estruturadas fornecidas
-    input_scenes = list(scenes or [])
-
     if len(input_scenes) >= 20:
-        # Se vieram 20 ou mais, seleciona as 20 primeiras e padroniza para 3 segundos cada
         for i in range(20):
             sc = input_scenes[i]
+            raw_narr = sc.get("narration") or sc.get("script") or ""
+            clean_narr = clean_narration_for_tts(raw_narr) or fallback_beats[i]["narration"]
+            v_prompt = (sc.get("visual_prompt") or "").strip()
+            if not v_prompt or len(v_prompt) < 12:
+                v_prompt = f"Dark epic anime illustration depicting: {clean_narr}, {camera_styles[i % len(camera_styles)]}, vertical 9:16"
             normalized_scenes.append({
                 "scene_number": i + 1,
                 "duration": 3.0,
-                "narration": sc.get("narration") or sc.get("script") or f"Parte {i + 1} de {title}",
-                "visual_prompt": sc.get("visual_prompt") or f"Cinematic scene #{i + 1} for {title}, {camera_styles[i % len(camera_styles)]}, 9:16",
-                "on_screen_text": sc.get("on_screen_text") or sc.get("title") or f"PARTE {i + 1}",
+                "narration": clean_narr,
+                "visual_prompt": v_prompt,
+                "on_screen_text": sc.get("on_screen_text") or sc.get("title") or f"CENA {i + 1:02d}",
             })
         return normalized_scenes
 
-    # Se vieram menos de 20 cenas, expande uniformemente para preencher as 20 cenas de 3s
-    if input_scenes:
-        ratio = 20 / len(input_scenes)
-        for i in range(20):
-            src_idx = min(int(i / ratio), len(input_scenes) - 1)
-            src_scene = input_scenes[src_idx]
-            sub_part = (i % int(max(1, ratio))) + 1
-            cam = camera_styles[i % len(camera_styles)]
+    # Se vieram menos de 20 cenas, coleta as cenas válidas e completa com as sentenças/beats contínuos
+    collected_items: List[Dict[str, str]] = []
+    for sc in input_scenes:
+        c_narr = clean_narration_for_tts(sc.get("narration") or sc.get("script") or "")
+        c_vis = (sc.get("visual_prompt") or "").strip()
+        if c_narr:
+            # Se a narração de um item for um parágrafo longo, divide em cenas de ~9 palavras
+            words = c_narr.split()
+            if len(words) > 15:
+                chunks = [" ".join(words[k:k + 9]) for k in range(0, len(words), 9)]
+                for sub_idx, ch in enumerate(chunks):
+                    cam = camera_styles[(len(collected_items) + sub_idx) % len(camera_styles)]
+                    collected_items.append({
+                        "narration": ch,
+                        "visual_prompt": f"{c_vis}, shot variation #{sub_idx + 1} depicting '{ch}', {cam}, 9:16" if c_vis else f"Dark epic anime scene depicting: {ch}, {cam}, 9:16",
+                        "on_screen_text": sc.get("on_screen_text") or sc.get("title") or "",
+                    })
+            else:
+                collected_items.append({
+                    "narration": c_narr,
+                    "visual_prompt": c_vis,
+                    "on_screen_text": sc.get("on_screen_text") or sc.get("title") or "",
+                })
 
-            narr = src_scene.get("narration") or src_scene.get("script") or title
-            v_prompt = src_scene.get("visual_prompt") or f"Dramatic cinematic shot for {title}"
-
-            normalized_scenes.append({
-                "scene_number": i + 1,
-                "duration": 3.0,
-                "narration": narr if sub_part == 1 else f"{narr} (fase {sub_part})",
-                "visual_prompt": f"{v_prompt}, angle #{sub_part}, {cam}, aspect ratio 9:16",
-                "on_screen_text": src_scene.get("on_screen_text") or f"CENA {i + 1}",
+    # Se ainda houver frases em narration_sentences não usadas, adiciona na sequência
+    used_texts = {it["narration"].lower() for it in collected_items}
+    for sent in narration_sentences:
+        if len(collected_items) >= 20:
+            break
+        if sent.lower() not in used_texts:
+            collected_items.append({
+                "narration": sent,
+                "visual_prompt": "",
+                "on_screen_text": "",
             })
-        return normalized_scenes
+            used_texts.add(sent.lower())
 
-    # Fallback estruturado criando 20 cenas a partir do texto de narração ou título
     for i in range(20):
         cam = camera_styles[i % len(camera_styles)]
-        part_name = "Part 1 (Hook)" if i < 6 else ("Part 2 (Escalation)" if i < 15 else "Part 3 (Climax)")
-
-        narr_text = ""
-        if base_narration_chunks:
-            narr_text = base_narration_chunks[i % len(base_narration_chunks)]
+        beat = fallback_beats[i]
+        if i < len(collected_items):
+            narr_text = collected_items[i]["narration"]
+            vis_prompt = collected_items[i]["visual_prompt"]
+            on_screen = collected_items[i]["on_screen_text"] or f"CENA {i + 1:02d}"
         else:
-            narr_text = f"O mistério sombrio e os segredos proibidos de {title} no fragmento #{i + 1}."
+            narr_text = beat["narration"]
+            vis_prompt = beat["visual_prompt"]
+            on_screen = f"CENA {i + 1:02d}"
+
+        if not vis_prompt or len(vis_prompt) < 15:
+            vis_prompt = (
+                f"Dark epic anime and cinematic fantasy illustration depicting: {narr_text} "
+                f"(theme: {clean_narration_for_tts(title) or title}), {cam}, volumetric lighting, 8k, vertical 9:16"
+            )
+        else:
+            vis_prompt = f"{vis_prompt}, {cam}, vertical 9:16"
 
         normalized_scenes.append({
             "scene_number": i + 1,
             "duration": 3.0,
             "narration": narr_text,
-            "visual_prompt": f"Dark epic cinematic illustration depicting: {narr_text} — Context: {title}, scene #{i + 1}, {cam}, 8k resolution, volumetric lighting, vertical 9:16",
-            "on_screen_text": f"CENA {i + 1:02d}: {part_name.upper()}",
+            "visual_prompt": vis_prompt,
+            "on_screen_text": on_screen,
         })
 
     return normalized_scenes
@@ -280,10 +467,9 @@ async def execute_full_video_pipeline(
     Motor Principal de Renderização Multimídia Autônoma ABVOS (Vídeo 9:16, 1080x1920):
     1. job_timeout=None (Timeout Infinite): Sem limite de tempo no ARQ/Redis/FastAPI.
     2. Execução Sequencial Garantida (20 Cenas de 3s cada = exatamente 60s / 1 minuto).
-    3. Retry automático (3 tentativas por cena) com fallback para imagem de segurança se a IA demorar.
-    4. Log e persistência de progresso a cada 5 cenas no banco de dados (tasks.status_log e description).
-    5. Confirmação rigorosa dos assets das 20 cenas antes de disparar FFmpeg.
-    6. Compilação final via FFmpeg de exatamente 1 minuto de duração (sem cortes).
+    3. Multi-provider de imagens reais IA (Google GenAI -> Pollinations Flux -> HF Flux -> AI Horde).
+    4. Síntese de voz neural limpa e sincronização palavra por palavra (WordBoundary) nas legendas .ass/.srt.
+    5. Compilação final via FFmpeg de exatamente 1 minuto de duração.
     """
     task_media_dir = get_task_media_dir(business_id, task_id)
     task_output_dir = get_task_output_dir(business_id, task_id)
@@ -294,7 +480,6 @@ async def execute_full_video_pipeline(
     final_video_path = str(task_media_dir / f"video_dark_task_{task_id}.mp4")
 
     logger.info(f"== [ABVOS VIDEO WORKER] INICIANDO PIPELINE (TASK #{task_id}, BIZ #{business_id}) ==")
-    # ETAPA 1: Iniciando geração de prompts... (0%)
     await _persist_video_progress(
         task_id=task_id,
         business_id=business_id,
@@ -304,7 +489,6 @@ async def execute_full_video_pipeline(
         percent=0.0,
     )
 
-    # Se faltar chave ou narração, tenta resolver via banco
     task_title = f"Task #{task_id}"
     if not full_narration or not scenes or not gemini_key:
         try:
@@ -321,7 +505,7 @@ async def execute_full_video_pipeline(
                 if db_task:
                     task_title = db_task.title
                     if not full_narration:
-                        full_narration = db_task.description or db_task.title
+                        full_narration = clean_narration_for_tts(db_task.description or "") or db_task.title
                     if not gemini_key:
                         try:
                             from src.services.jeffrey_orchestrator import get_effective_gemini_key
@@ -334,20 +518,27 @@ async def execute_full_video_pipeline(
         except Exception as load_err:
             logger.warning(f"Não foi possível carregar dados complementares do banco: {load_err}")
 
+    # Se a task veio com poucas cenas (ex: disparada direto do Kanban/Series), gera as 20 cenas conectadas via Gemini
+    if (not scenes or len(scenes) < 10) and gemini_key and os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") != "1":
+        gemini_scenes = await _generate_twenty_scenes_via_gemini(
+            title=task_title,
+            context_text=full_narration or task_title,
+            api_key=gemini_key,
+        )
+        if gemini_scenes:
+            scenes = gemini_scenes
+
     # PASSO 1: Normalização Garantida de 20 Cenas (3 segundos cada, total 60 segundos)
     twenty_scenes = ensure_twenty_scenes(scenes, full_narration or task_title, title=task_title)
     total_scenes_count = len(twenty_scenes)
     assert total_scenes_count == 20, f"O pipeline exige exatamente 20 cenas, obtido {total_scenes_count}"
 
-    # PASSO 2: Execução Sequencial das 20 Cenas com Retry (3x) e Persistência de Progresso a cada 5 cenas
-    logger.info(f"[Passo 1/4] Iterando sequencialmente pelas 20 cenas (Part 1, Part 2 e Part 3)...")
+    # PASSO 2: Execução Sequencial das 20 Cenas com Progresso em Tempo Real
+    logger.info("[Passo 1/4] Gerando ilustrações das 20 cenas (Part 1, Part 2 e Part 3)...")
 
     async def _on_scene_progress(current_sc: int, total_sc: int):
-        # A cada 5 cenas processadas ou na última cena, atualiza o banco de dados
-        # Ex: Cena 5/20 -> 25%, Cena 10/20 -> 50%, etc.
         if current_sc % 5 == 0 or current_sc == 1 or current_sc == total_sc:
             sc_pct = round((current_sc / total_sc) * 100, 1)
-            # No requisito exato: Cena 5/20 -> 25%
             if current_sc == 5:
                 sc_pct = 25.0
             await _persist_video_progress(
@@ -367,9 +558,8 @@ async def execute_full_video_pipeline(
         sequential=True,
     )
 
-    # PASSO 3: Síntese de Narração de Áudio (TTS)
+    # PASSO 3: Síntese de Narração de Áudio (TTS) Unificada e Limpa
     logger.info("[Passo 2/4] Sintetizando narração em áudio para o vídeo...")
-    # ETAPA 3: Gerando áudio TTS (ElevenLabs)... (50%)
     await _persist_video_progress(
         task_id=task_id,
         business_id=business_id,
@@ -378,7 +568,11 @@ async def execute_full_video_pipeline(
         stage="tts",
         percent=50.0,
     )
-    audio_text = full_narration or " ".join([sc.get("narration", "") for sc in twenty_scenes])
+    # Constrói o texto falado diretamente da sequência limpa das 20 cenas para 100% de fidelidade áudio <-> legenda <-> imagem
+    scene_narrations = [clean_narration_for_tts(sc.get("narration", "")) for sc in twenty_scenes]
+    scene_narrations = [s if s.endswith((".", "!", "?")) else f"{s}." for s in scene_narrations if s]
+    audio_text = " ".join(scene_narrations) or clean_narration_for_tts(full_narration or task_title)
+
     tts_result = await synthesize_narration(
         text=audio_text,
         output_path=audio_path,
@@ -386,14 +580,15 @@ async def execute_full_video_pipeline(
         preferred_voice=voice_persona,
     )
     total_audio_duration = tts_result["duration_seconds"]
+    word_timings = tts_result.get("word_timings") or []
 
-    # PASSO 4: Geração de Legendas Dinâmicas Sincronizadas (20 Cenas x 3.0s = 60.0s)
-    logger.info("[Passo 3/4] Gerando legendas dinâmicas de alta retenção (20 cenas x 3.0s = 60.0s)...")
-    duration_per_scene = 3.0  # Cada cena tem rigorosamente 3 segundos
+    # PASSO 4: Geração de Legendas Dinâmicas Sincronizadas (WordBoundary real ou distribuição proporcional)
+    logger.info(f"[Passo 3/4] Gerando legendas dinâmicas sincronizadas ({len(word_timings)} palavras mapeadas)...")
+    duration_per_scene = 3.0
     scenes_timing = []
     for i, sc in enumerate(twenty_scenes):
         scenes_timing.append({
-            "text": sc.get("narration") or sc.get("on_screen_text") or "",
+            "text": clean_narration_for_tts(sc.get("narration") or sc.get("on_screen_text") or ""),
             "start": round(i * duration_per_scene, 2),
             "end": round((i + 1) * duration_per_scene, 2),
         })
@@ -402,6 +597,7 @@ async def execute_full_video_pipeline(
         scenes_timing=scenes_timing,
         output_srt_path=srt_path,
         output_ass_path=ass_path,
+        word_timings=word_timings,
     )
 
     # PASSO 5: Confirmação Estrita dos Assets Antes de Disparar FFmpeg
@@ -410,14 +606,14 @@ async def execute_full_video_pipeline(
     for i in range(1, 21):
         sc_file = scenes_dir / f"scene_{i:02d}.jpg"
         if not sc_file.exists() or sc_file.stat().st_size == 0:
-            logger.warning(f"Asset da cena #{i} ausente no disco. Gerando imagem de segurança para garantir integridade física.")
+            logger.warning(f"Asset da cena #{i} ausente no disco. Gerando imagem de segurança.")
             sc_meta = twenty_scenes[i - 1] if i - 1 < len(twenty_scenes) else {}
             fallback = create_cinematic_dark_backdrop(
                 width=1080,
                 height=1920,
                 scene_number=i,
                 title=sc_meta.get("on_screen_text") or f"Cena {i}",
-                prompt=sc_meta.get("narration") or sc_meta.get("visual_prompt") or "",
+                prompt=sc_meta.get("visual_prompt") or "",
             )
             fallback.save(str(sc_file), "JPEG", quality=92)
         verified_images.append(str(sc_file))

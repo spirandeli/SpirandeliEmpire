@@ -1,10 +1,13 @@
 import asyncio
+import base64
 import io
+import json
 import logging
 import math
 import os
 import random
-import textwrap
+import re
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from urllib.parse import quote
@@ -17,6 +20,10 @@ logger = logging.getLogger("abvos.media.images")
 
 # Cache em memória para não repetir chamadas em modelos indisponíveis para a mesma chave
 _UNAVAILABLE_IMAGEN_KEYS: set[str] = set()
+
+# Controle de janela de rate-limit por provedor (evita chamadas desnecessárias em cooldown)
+_POLLINATIONS_NEXT_AVAILABLE_AT: float = 0.0
+_HF_SPACE_COOLDOWN_UNTIL: Dict[str, float] = {}
 
 
 def _load_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -46,20 +53,22 @@ def create_cinematic_dark_backdrop(
     theme_color: str = "#0f172a",
 ) -> Image.Image:
     """
-    Cria uma composição visual 9:16 (1080x1920) rica com estética Dark Cinema:
-    - Iluminação volumétrica, eclipse/portal celestial, silhueta arquitetônica/montanhosa em camadas,
-      feixes de luz e partículas em brasa;
-    - Quadro narrativo tipográfico com o título e contexto visual da cena.
-    Usado apenas quando todas as APIs externas de IA estiverem offline.
+    Cria uma ilustração procedural 9:16 (1080x1920) com estética Dark Anime / Epic Cinema:
+    - Iluminação volumétrica, halo celestial, silhueta de personagem místico/angelical,
+      arquitetura gótica/montanhosa em camadas, feixes de luz e partículas em brasa.
+    - NUNCA imprime caixas de texto ou prompts em inglês na tela (as legendas dinâmicas
+      são renderizadas separadamente via FFmpeg/ASS).
+    Usado apenas quando ABVOS_DISABLE_EXTERNAL_IMAGE_API=1 (testes) ou todas as APIs estiverem offline.
     """
     base = Image.new("RGB", (width, height), color="#020617")
     draw = ImageDraw.Draw(base)
 
     palettes = [
-        ((10, 15, 32), (68, 22, 115), (185, 28, 28), (251, 191, 36)),   # Dark Indigo, Crimson & Gold
-        ((6, 32, 56), (14, 65, 98), (3, 105, 161), (56, 189, 248)),     # Abyssal Cyan & Ice
-        ((18, 18, 22), (69, 10, 10), (180, 83, 9), (252, 211, 77)),     # Obsidian, Hellfire & Amber
-        ((9, 20, 36), (6, 95, 70), (16, 185, 129), (167, 243, 208)),    # Shadow Emerald & Mystic Mint
+        ((8, 12, 28), (38, 18, 78), (135, 18, 38), (251, 191, 36)),    # Dark Indigo, Crimson & Gold
+        ((4, 20, 38), (12, 52, 82), (8, 95, 142), (125, 211, 252)),     # Abyssal Cyan & Celestial Ice
+        ((14, 12, 18), (58, 12, 12), (160, 62, 12), (252, 211, 77)),    # Obsidian, Hellfire & Amber
+        ((8, 18, 30), (14, 65, 55), (16, 135, 105), (167, 243, 208)),   # Shadow Emerald & Mystic Mint
+        ((12, 10, 26), (52, 22, 92), (98, 36, 150), (216, 180, 254)),   # Void Violet & Astral Lavender
     ]
     c1, c2, c3, accent = palettes[scene_number % len(palettes)]
 
@@ -81,41 +90,35 @@ def create_cinematic_dark_backdrop(
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
 
-    # 2. Feixes de luz celestial / eclipse central
     cx = width // 2
-    cy = int(height * 0.36)
+    cy = int(height * 0.40)
     random.seed(scene_number * 1337)
 
-    # Raios de luz diagonais
-    for i in range(12):
-        angle = (i / 12.0) * math.pi * 2 + (scene_number * 0.25)
-        x_end = cx + int(math.cos(angle) * 1100)
-        y_end = cy + int(math.sin(angle) * 1100)
-        overlay_draw.line([(cx, cy), (x_end, y_end)], fill=(*accent, 22), width=28)
+    # 2. Feixes de luz volumétricos vindo do topo
+    for i in range(9):
+        spread = (i - 4) * 140 + random.randint(-25, 25)
+        overlay_draw.polygon(
+            [
+                (cx - 40, 0),
+                (cx + 40, 0),
+                (cx + spread + 160, height),
+                (cx + spread - 160, height),
+            ],
+            fill=(*accent, 16),
+        )
 
-    # Halo luminoso e eclipse
-    for radius in range(460, 120, -25):
-        alpha = int(55 * (1 - radius / 460))
+    # Halo luminoso de contraluz (rim light)
+    for radius in range(520, 90, -25):
+        alpha = int(65 * (1 - radius / 520))
         overlay_draw.ellipse(
             [cx - radius, cy - radius, cx + radius, cy + radius],
             fill=(*accent, alpha),
         )
-    # Núcleo do eclipse sombrio com anel dourado/neon
-    eclipse_r = 145
-    overlay_draw.ellipse(
-        [cx - eclipse_r - 6, cy - eclipse_r - 6, cx + eclipse_r + 6, cy + eclipse_r + 6],
-        outline=(*accent, 210),
-        width=6,
-    )
-    overlay_draw.ellipse(
-        [cx - eclipse_r, cy - eclipse_r, cx + eclipse_r, cy + eclipse_r],
-        fill=(8, 10, 20, 245),
-    )
 
-    # 3. Silhueta de montanhas / templos góticos no terço inferior
+    # 3. Silhueta de montanhas / catedrais góticas ao fundo
     for layer_idx, (base_y, amp, col_alpha) in enumerate([
-        (int(height * 0.68), 110, (12, 16, 30, 190)),
-        (int(height * 0.74), 85, (6, 9, 18, 230)),
+        (int(height * 0.66), 110, (12, 16, 30, 195)),
+        (int(height * 0.73), 85, (6, 9, 18, 235)),
         (int(height * 0.80), 55, (2, 4, 10, 255)),
     ]):
         pts = [(0, height), (0, base_y)]
@@ -127,60 +130,71 @@ def create_cinematic_dark_backdrop(
         pts.append((width, height))
         overlay_draw.polygon(pts, fill=col_alpha)
 
-    # 4. Partículas e brasas flutuantes
-    for _ in range(95):
+    # 4. Silhueta dramática central (Arcanjo / Guardião / Entidade em contraluz)
+    fig_dark = (5, 7, 15, 250)
+    wing_span = 420 + (scene_number % 3) * 35
+    # Asas estilizadas em camadas
+    for w_idx in range(7):
+        drop = w_idx * 48
+        reach = wing_span - (w_idx * 38)
+        # Asa esquerda
+        overlay_draw.polygon(
+            [
+                (cx - 25, cy - 30 + drop // 3),
+                (cx - reach, cy - 220 + drop),
+                (cx - reach + 45, cy - 150 + drop),
+                (cx - 35, cy + 40 + drop // 2),
+            ],
+            fill=fig_dark,
+            outline=(*accent, 90),
+        )
+        # Asa direita
+        overlay_draw.polygon(
+            [
+                (cx + 25, cy - 30 + drop // 3),
+                (cx + reach, cy - 220 + drop),
+                (cx + reach - 45, cy - 150 + drop),
+                (cx + 35, cy + 40 + drop // 2),
+            ],
+            fill=fig_dark,
+            outline=(*accent, 90),
+        )
+
+    # Corpo, manto e cabeça em silhueta
+    overlay_draw.ellipse([cx - 42, cy - 135, cx + 42, cy - 50], fill=fig_dark, outline=(*accent, 150), width=2)
+    overlay_draw.polygon(
+        [
+            (cx - 68, cy - 45),
+            (cx + 68, cy - 45),
+            (cx + 135, int(height * 0.82)),
+            (cx - 135, int(height * 0.82)),
+        ],
+        fill=fig_dark,
+    )
+    # Olhos brilhantes sutis
+    overlay_draw.ellipse([cx - 18, cy - 95, cx - 6, cy - 88], fill=(*accent, 240))
+    overlay_draw.ellipse([cx + 6, cy - 95, cx + 18, cy - 88], fill=(*accent, 240))
+
+    # 5. Partículas e brasas flutuantes
+    for _ in range(110):
         px = random.randint(30, width - 30)
         py = random.randint(80, height - 120)
-        p_rad = random.randint(2, 7)
-        p_alpha = random.randint(70, 210)
+        p_rad = random.randint(2, 6)
+        p_alpha = random.randint(70, 215)
         overlay_draw.ellipse(
             [px - p_rad, py - p_rad, px + p_rad, py + p_rad],
             fill=(*accent, p_alpha),
         )
 
     base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
-    base = base.filter(ImageFilter.GaussianBlur(radius=1.0))
+    base = base.filter(ImageFilter.GaussianBlur(radius=0.8))
 
-    # 5. Vinheta cinematográfica e tipografia da cena
+    # 6. Vinheta cinematográfica limpa (sem qualquer texto ou caixa HUD)
     hud = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     hud_draw = ImageDraw.Draw(hud)
-
     for r in range(0, 120):
-        v_alpha = int(170 * (1 - r / 120))
+        v_alpha = int(175 * (1 - r / 120))
         hud_draw.rectangle([r, r, width - r, height - r], outline=(0, 0, 0, v_alpha), width=2)
-
-    # Painel central translúcido para título e descrição da cena
-    card_top = int(height * 0.52)
-    card_bottom = int(height * 0.74)
-    hud_draw.rounded_rectangle(
-        [70, card_top, width - 70, card_bottom],
-        radius=28,
-        fill=(5, 8, 20, 185),
-        outline=(*accent, 130),
-        width=3,
-    )
-
-    badge_font = _load_font(28, bold=True)
-    title_font = _load_font(44, bold=True)
-    desc_font = _load_font(28, bold=False)
-
-    badge_text = f"CENA {scene_number:02d} • DARK CINEMA"
-    hud_draw.text((width // 2, card_top + 48), badge_text, fill=(*accent, 255), font=badge_font, anchor="mm")
-
-    clean_title = (title or f"Cena {scene_number}").strip().upper()
-    wrapped_title = textwrap.wrap(clean_title, width=22)[:2]
-    curr_y = card_top + 115
-    for line in wrapped_title:
-        hud_draw.text((width // 2, curr_y), line, fill=(255, 255, 255, 255), font=title_font, anchor="mm")
-        curr_y += 54
-
-    if prompt:
-        clean_prompt = prompt.split("--ar")[0].strip()
-        wrapped_desc = textwrap.wrap(clean_prompt, width=38)[:3]
-        curr_y += 18
-        for line in wrapped_desc:
-            hud_draw.text((width // 2, curr_y), line, fill=(203, 213, 225, 230), font=desc_font, anchor="mm")
-            curr_y += 38
 
     base = Image.alpha_composite(base.convert("RGBA"), hud).convert("RGB")
     return base
@@ -204,7 +218,6 @@ def _save_and_normalize_image_bytes(
             rgb = img.convert("RGB")
             if trim_bottom_watermark:
                 iw, ih = rgb.size
-                # Remove 5% da borda inferior e 2.5% das laterais para manter proporção 9:16 limpa
                 crop_x = int(iw * 0.025)
                 crop_bottom = int(ih * 0.95)
                 rgb = rgb.crop((crop_x, 0, iw - crop_x, crop_bottom))
@@ -217,6 +230,15 @@ def _save_and_normalize_image_bytes(
         return False
 
 
+def _build_styled_prompt(prompt: str) -> str:
+    clean_prompt = re.sub(r"\s+", " ", (prompt or "").split("--ar")[0]).strip()[:420]
+    return (
+        f"{clean_prompt}, dark epic anime and cinematic fantasy illustration, "
+        "dramatic chiaroscuro volumetric lighting, masterpiece, ultra-detailed 8k, "
+        "vertical 9:16 composition, no text, no watermark, no letters"
+    )
+
+
 async def _try_google_genai_image(
     prompt: str,
     output_path: str,
@@ -227,13 +249,12 @@ async def _try_google_genai_image(
     """
     Provedor 1: Tenta gerar imagem 9:16 via Google GenAI (gemini-3.1-flash-image / gemini-2.5-flash-image).
     """
+    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
+        return False
     if not api_key or api_key in _UNAVAILABLE_IMAGEN_KEYS:
         return False
 
-    enhanced_prompt = (
-        f"Generate a vertical 9:16 dark epic cinematic illustration: {prompt}. "
-        "Dramatic volumetric lighting, hyper-detailed, 8k resolution, no text or watermarks."
-    )
+    enhanced_prompt = _build_styled_prompt(prompt)
 
     def _sync_call() -> Optional[bytes]:
         client = genai.Client(api_key=api_key)
@@ -264,11 +285,203 @@ async def _try_google_genai_image(
         if img_bytes and _save_and_normalize_image_bytes(img_bytes, output_path):
             logger.info(f"[Cena #{scene_number}] Imagem real gerada via Google GenAI: {output_path}")
             return True
-        # Se retornou None para ambos os modelos, marca chave para não atrasar as próximas cenas
         _UNAVAILABLE_IMAGEN_KEYS.add(api_key)
     except Exception as e:
-        logger.warning(f"[Cena #{scene_number}] Google GenAI Image indisponível ({e}), alternando para provedor Flux...")
+        logger.warning(f"[Cena #{scene_number}] Google GenAI Image indisponível ({e}), alternando para próximo provedor...")
         _UNAVAILABLE_IMAGEN_KEYS.add(api_key)
+
+    return False
+
+
+async def _try_hf_gradio_flux_image(
+    prompt: str,
+    output_path: str,
+    scene_number: int,
+    timeout: float = 28.0,
+) -> bool:
+    """
+    Provedor 2: Gera imagem 9:16 real usando Spaces oficiais Flux.1 / SD3.5 no HuggingFace Gradio API.
+    """
+    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
+        return False
+
+    styled_prompt = _build_styled_prompt(prompt)
+    seed = (scene_number * 7919) + random.randint(100, 99999)
+
+    spaces = [
+        {
+            "name": "flux-1-schnell",
+            "base": "https://black-forest-labs-flux-1-schnell.hf.space",
+            "endpoint": "/gradio_api/call/infer",
+            "data": [styled_prompt, seed, True, 768, 1344, 4],
+        },
+        {
+            "name": "flux-1-merged",
+            "base": "https://multimodalart-flux-1-merged.hf.space",
+            "endpoint": "/gradio_api/call/infer",
+            "data": [styled_prompt, seed, True, 768, 1344, 3.5, 8],
+        },
+        {
+            "name": "sd-3.5-large-turbo",
+            "base": "https://stabilityai-stable-diffusion-3-5-large-turbo.hf.space",
+            "endpoint": "/gradio_api/call/infer",
+            "data": [
+                styled_prompt,
+                "text, watermark, letters, signature, blurry, low quality, deformed",
+                seed,
+                True,
+                576,
+                1024,
+                1.2,
+                4,
+            ],
+        },
+    ]
+
+    # Rotaciona a ordem inicial por número da cena para distribuir carga entre Spaces
+    offset = scene_number % len(spaces)
+    ordered_spaces = spaces[offset:] + spaces[:offset]
+
+    hf_token = (os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_API_KEY") or "").strip()
+    headers = {"Content-Type": "application/json"}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    now = time.monotonic()
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        for sp in ordered_spaces:
+            cooldown_until = _HF_SPACE_COOLDOWN_UNTIL.get(sp["name"], 0.0)
+            if now < cooldown_until:
+                continue
+
+            call_url = f"{sp['base']}{sp['endpoint']}"
+            try:
+                r = await client.post(call_url, json={"data": sp["data"]}, headers=headers)
+                if r.status_code != 200:
+                    _HF_SPACE_COOLDOWN_UNTIL[sp["name"]] = time.monotonic() + 45.0
+                    continue
+                event_id = r.json().get("event_id")
+                if not event_id:
+                    continue
+
+                stream_url = f"{call_url}/{event_id}"
+                r2 = await client.get(stream_url, headers=headers)
+                text_body = r2.text
+                if "event: error" in text_body or "ZeroGPU quota" in text_body:
+                    _HF_SPACE_COOLDOWN_UNTIL[sp["name"]] = time.monotonic() + 65.0
+                    continue
+
+                img_url = None
+                for line in text_body.splitlines():
+                    if line.startswith("data: "):
+                        raw_json = line[6:].strip()
+                        try:
+                            parsed = json.loads(raw_json)
+                            if isinstance(parsed, list) and parsed:
+                                first = parsed[0]
+                                if isinstance(first, dict):
+                                    img_url = first.get("url") or (
+                                        f"{sp['base']}/gradio_api/file={first['path']}" if first.get("path") else None
+                                    )
+                                    break
+                        except Exception:
+                            pass
+
+                if img_url:
+                    img_resp = await client.get(img_url)
+                    if img_resp.status_code == 200 and _save_and_normalize_image_bytes(img_resp.content, output_path):
+                        logger.info(
+                            f"[Cena #{scene_number}] Imagem real IA gerada via HF {sp['name']}: {output_path}"
+                        )
+                        return True
+            except Exception as e:
+                logger.debug(f"[Cena #{scene_number}] HF Space {sp['name']} indisponível: {e}")
+
+    return False
+
+
+async def _try_aihorde_image(
+    prompt: str,
+    output_path: str,
+    scene_number: int,
+    timeout: float = 55.0,
+) -> bool:
+    """
+    Provedor 3: Gera imagem real via AI Horde / Stable Horde (cluster distribuído gratuito sem limite de 1 img/45s).
+    """
+    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
+        return False
+
+    styled_prompt = (
+        f"{_build_styled_prompt(prompt)} ### "
+        "text, watermark, letters, caption, hud, frame, border, deformed, blurry, lowres"
+    )
+    api_key = (os.getenv("AIHORDE_API_KEY") or "0000000000").strip()
+    headers = {
+        "apikey": api_key,
+        "Client-Agent": "ABVOS:2.0:admin",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "prompt": styled_prompt,
+        "params": {
+            "width": 384,
+            "height": 576,
+            "steps": 16,
+            "n": 1,
+            "sampler_name": "k_euler_a",
+            "cfg_scale": 7.0,
+        },
+        "nsfw": False,
+        "censor_nsfw": False,
+        "r2": True,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            sub = await client.post(
+                "https://stablehorde.net/api/v2/generate/async",
+                headers=headers,
+                json=payload,
+            )
+            if sub.status_code != 202:
+                logger.warning(f"[Cena #{scene_number}] AI Horde recusou submissão ({sub.status_code}): {sub.text[:160]}")
+                return False
+
+            job_id = sub.json().get("id")
+            if not job_id:
+                return False
+
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                await asyncio.sleep(2.5)
+                st = await client.get(
+                    f"https://stablehorde.net/api/v2/generate/status/{job_id}",
+                    headers=headers,
+                )
+                if st.status_code != 200:
+                    continue
+                st_data = st.json()
+                if st_data.get("faulted"):
+                    break
+                if st_data.get("done"):
+                    gens = st_data.get("generations") or []
+                    if gens:
+                        img_ref = gens[0].get("img")
+                        if img_ref:
+                            if img_ref.startswith("http"):
+                                r_img = await client.get(img_ref)
+                                raw_bytes = r_img.content if r_img.status_code == 200 else b""
+                            else:
+                                raw_bytes = base64.b64decode(img_ref)
+                            if _save_and_normalize_image_bytes(raw_bytes, output_path):
+                                logger.info(
+                                    f"[Cena #{scene_number}] Imagem real IA gerada via AI Horde: {output_path}"
+                                )
+                                return True
+                    break
+    except Exception as e:
+        logger.warning(f"[Cena #{scene_number}] Erro ao consultar AI Horde: {e}")
 
     return False
 
@@ -277,26 +490,34 @@ async def _try_pollinations_flux_image(
     prompt: str,
     output_path: str,
     scene_number: int,
-    timeout: float = 25.0,
+    timeout: float = 30.0,
+    wait_on_rate_limit: bool = False,
 ) -> bool:
     """
-    Provedor 2: Gera imagem real de IA em proporção 9:16 (1080x1920) usando Pollinations.ai (Flux),
-    garantindo cenas reais ilustradas mesmo quando a chave Gemini não possui Imagen pago.
+    Provedor 4: Gera imagem real de IA em proporção 9:16 (1080x1920) usando Pollinations.ai (Flux / Turbo).
+    Respeita automaticamente o intervalo de rate-limit (Retry after Xs) quando wait_on_rate_limit=True.
     """
+    global _POLLINATIONS_NEXT_AVAILABLE_AT
+
     if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
         return False
 
-    clean_prompt = prompt.replace("\n", " ").strip()[:380]
-    styled_prompt = (
-        f"{clean_prompt}, dark cinematic epic style, dramatic chiaroscuro lighting, "
-        "ultra detailed masterpiece, vertical 9:16 composition"
-    )
+    now = time.monotonic()
+    if now < _POLLINATIONS_NEXT_AVAILABLE_AT:
+        remaining = _POLLINATIONS_NEXT_AVAILABLE_AT - now
+        if not wait_on_rate_limit:
+            return False
+        wait_s = min(remaining + 1.2, 46.0)
+        logger.info(f"[Cena #{scene_number}] Aguardando janela de {wait_s:.1f}s do provedor Flux para gerar arte real...")
+        await asyncio.sleep(wait_s)
+
+    styled_prompt = _build_styled_prompt(prompt)
     encoded = quote(styled_prompt)
     seed = (scene_number * 7919) + random.randint(100, 9999)
 
     urls_to_try = [
         f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1920&model=flux&nologo=true&seed={seed}",
-        f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&nologo=true&seed={seed}",
+        f"https://image.pollinations.ai/prompt/{encoded}?width=768&height=1344&model=turbo&nologo=true&seed={seed + 1}",
     ]
 
     headers = {
@@ -311,12 +532,37 @@ async def _try_pollinations_flux_image(
                 ctype = resp.headers.get("content-type", "").lower()
                 if resp.status_code == 200 and ("image" in ctype or len(resp.content) > 10240):
                     if _save_and_normalize_image_bytes(resp.content, output_path, trim_bottom_watermark=True):
+                        # Registra janela de 45s por IP do Pollinations Free Tier
+                        _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 45.5
                         logger.info(
-                            f"[Cena #{scene_number}] Imagem real IA gerada via Flux (tentativa {attempt}): {output_path}"
+                            f"[Cena #{scene_number}] Imagem real IA gerada via Pollinations Flux: {output_path}"
                         )
                         return True
+
+                if resp.status_code in (402, 429):
+                    retry_s = 45.0
+                    m = re.search(r"Retry after\s+(\d+)\s*s", resp.text, re.IGNORECASE)
+                    if m:
+                        retry_s = float(m.group(1)) + 1.5
+                    _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + retry_s
+                    if wait_on_rate_limit and attempt == 1:
+                        wait_s = min(retry_s, 46.0)
+                        logger.info(
+                            f"[Cena #{scene_number}] Rate-limit Flux detectado ({wait_s:.1f}s). Aguardando para gerar imagem real..."
+                        )
+                        await asyncio.sleep(wait_s)
+                        resp_retry = await client.get(url)
+                        ctype_retry = resp_retry.headers.get("content-type", "").lower()
+                        if resp_retry.status_code == 200 and ("image" in ctype_retry or len(resp_retry.content) > 10240):
+                            if _save_and_normalize_image_bytes(resp_retry.content, output_path, trim_bottom_watermark=True):
+                                _POLLINATIONS_NEXT_AVAILABLE_AT = time.monotonic() + 45.5
+                                logger.info(
+                                    f"[Cena #{scene_number}] Imagem real IA gerada via Pollinations Flux após aguardar janela: {output_path}"
+                                )
+                                return True
+                    break
             except Exception as e:
-                logger.warning(f"[Cena #{scene_number}] Tentativa {attempt} no provedor Flux falhou: {e}")
+                logger.warning(f"[Cena #{scene_number}] Tentativa {attempt} no provedor Pollinations falhou: {e}")
                 await asyncio.sleep(0.8)
 
     return False
@@ -329,42 +575,72 @@ async def generate_single_scene_image_with_retry(
     scene_number: int = 1,
     title: str = "",
     max_retries: int = 2,
-    timeout_per_attempt: float = 22.0,
+    timeout_per_attempt: float = 25.0,
 ) -> str:
     """
-    Gera imagem de cena real 9:16 (1080x1920) utilizando arquitetura Multi-Provider:
-    1. Google GenAI (Imagen 3 / Gemini 2.0 Image Generation)
-    2. Pollinations.ai (Flux 9:16 Real AI Image Generation)
-    3. Fallback Cinematográfico com arte procedural e tipografia da cena (caso offline)
+    Gera imagem de cena real 9:16 (1080x1920) utilizando arquitetura Multi-Provider com rotação inteligente:
+    1. Google GenAI (gemini-3.1-flash-image / gemini-2.5-flash-image)
+    2. Pollinations Flux (tentativa rápida imediata se a janela de 45s estiver livre)
+    3. HuggingFace Gradio Flux.1 Schnell / Flux.1 Merged / SD3.5 Large Turbo
+    4. AI Horde / Stable Horde (cluster distribuído gratuito)
+    5. Pollinations Flux com espera de rate-limit (garante imagem de IA real se todos os anteriores estiverem ocupados)
+    6. Fallback visual Dark Anime sem texto embutido (apenas para testes offline sem internet)
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     clean_key = (gemini_key or os.getenv("GEMINI_API_KEY", "")).strip()
 
-    # 1. Tenta Google GenAI (se houver chave válida)
-    if clean_key:
-        if await _try_google_genai_image(
-            prompt=prompt,
-            output_path=output_path,
-            api_key=clean_key,
-            scene_number=scene_number,
-            timeout=timeout_per_attempt,
-        ):
-            return output_path
+    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") != "1":
+        # 1. Google GenAI
+        if clean_key:
+            if await _try_google_genai_image(
+                prompt=prompt,
+                output_path=output_path,
+                api_key=clean_key,
+                scene_number=scene_number,
+                timeout=timeout_per_attempt,
+            ):
+                return output_path
 
-    # 2. Tenta Pollinations Flux (Geração Real de Imagem IA 9:16)
-    for attempt in range(1, max_retries + 1):
+        # 2. Pollinations Flux (imediato se não estiver em cooldown)
         if await _try_pollinations_flux_image(
             prompt=prompt,
             output_path=output_path,
             scene_number=scene_number,
             timeout=timeout_per_attempt,
+            wait_on_rate_limit=False,
         ):
             return output_path
-        if attempt < max_retries:
-            await asyncio.sleep(1.0)
 
-    # 3. Fallback offline com composição visual e tipografia da cena
-    logger.info(f"[Cena #{scene_number}] Gerando composição visual cinematográfica local com tipografia.")
+        # 3. HuggingFace Gradio Spaces (Flux.1 Schnell / Merged / SD3.5)
+        if await _try_hf_gradio_flux_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=28.0,
+        ):
+            return output_path
+
+        # 4. AI Horde / Stable Horde
+        if await _try_aihorde_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=50.0,
+        ):
+            return output_path
+
+        # 5. Pollinations Flux aguardando liberação da janela (garante que todas as 20 cenas tenham imagem real)
+        if await _try_pollinations_flux_image(
+            prompt=prompt,
+            output_path=output_path,
+            scene_number=scene_number,
+            timeout=35.0,
+            wait_on_rate_limit=True,
+        ):
+            return output_path
+
+    # 6. Fallback offline com arte silhueta Dark Anime (sem caixas de texto ou prompts na tela)
+    logger.info(f"[Cena #{scene_number}] Gerando arte visual Dark Anime offline (sem texto sobreposto).")
     fallback_img = create_cinematic_dark_backdrop(
         width=1080,
         height=1920,
@@ -402,8 +678,8 @@ async def generate_all_scene_images(
     sequential: bool = True,
 ) -> List[str]:
     """
-    Gera as 20 cenas do vídeo garantindo que nenhuma cena seja suprimida e reportando
-    progresso ao banco de dados para atualização em tempo real no Kanban e Storage Viewer.
+    Gera as 20 cenas do vídeo garantindo que todas recebam ilustrações reais correspondentes
+    ao visual_prompt da cena e reportando progresso em tempo real ao banco de dados.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     generated_paths: List[str] = []
@@ -414,7 +690,8 @@ async def generate_all_scene_images(
         prompt = (
             sc.get("visual_prompt")
             or sc.get("b_roll_description")
-            or f"Cinematic dark epic scene #{scene_number}, dramatic lighting, 8k"
+            or sc.get("narration")
+            or f"Cinematic dark epic anime scene #{scene_number}, dramatic volumetric lighting, 8k"
         )
         title = sc.get("on_screen_text") or sc.get("title") or sc.get("narration") or f"Cena {scene_number}"
         filename = f"scene_{scene_number:02d}.jpg"
@@ -427,7 +704,7 @@ async def generate_all_scene_images(
             scene_number=scene_number,
             title=title,
             max_retries=2,
-            timeout_per_attempt=20.0,
+            timeout_per_attempt=25.0,
         )
         generated_paths.append(saved_path)
 

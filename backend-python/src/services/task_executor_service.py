@@ -69,10 +69,10 @@ NEGÓCIO RELACIONADO:
 Sua missão é EXECUTAR integralmente a tarefa solicitada com excelência e profundidade, gerando os entregáveis práticos e finais sem respostas vagas ou incompletas.
 {biz_info}
 
-Diretrizes para Canal Dark (Roteiros, Narrações e Imagens):
-1. Roteiros: Estruturar em cenas com timestamp, narração palavra por palavra envolvente, ganchos nos primeiros 3s e retenção hipnótica.
-2. Prompts de Imagem: Fornecer prompts visuais em inglês ultra-detalhados para Midjourney v6/Leonardo AI (estilo Anime Dark/Epic, proporção 9:16, iluminação cinematográfica).
-3. Narração & TTS: Textos prontos para sintetizadores de voz (ElevenLabs), com marcações de pausas dramáticas [pausa] e tom épico.
+Diretrizes Obrigatórias para Canal Dark (Roteiros, Narrações e Imagens de Vídeo 60s):
+1. Roteiro Sequencial de 20 Cenas: Sempre que a tarefa envolver vídeo, roteiro, série ou Canal Dark, gere EXATAMENTE 20 itens dentro da lista `items` (Cena 01 até Cena 20), formando UMA ÚNICA HISTÓRIA CONTÍNUA, cronológica e hipnótica de 60 segundos (3 segundos por cena).
+2. Narração Limpa (`script`): Em cada uma das 20 cenas, o campo `script` deve conter APENAS a frase falada em português natural (entre 7 e 10 palavras por cena, conectando-se com a cena seguinte). É ESTRITAMENTE PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção de palco ou prefixos como `Cena 1:` dentro de `script`.
+3. Prompts Visuais (`visual_prompt`): Em cada uma das 20 cenas, forneça um prompt visual em inglês ultra-detalhado descrevendo exatamente a ação, personagem, expressão, cenário e iluminação daquela cena específica (estilo Dark Anime / Epic Cinematic, proporção 9:16, sem texto ou letras na imagem).
 
 Responda em formato JSON estruturado com os seguintes campos:
 {{
@@ -81,10 +81,10 @@ Responda em formato JSON estruturado com os seguintes campos:
   "markdown_content": "O documento completo e formatado em Markdown com todos os detalhes produzidos",
   "items": [
      {{
-        "title": "Título da cena, roteiro ou asset",
-        "description": "Detalhes técnicos",
-        "script": "Texto da locução / narração",
-        "visual_prompt": "Prompt em inglês para geração da imagem (Midjourney/Leonardo)",
+        "title": "Cena 01 - Título curto da cena",
+        "description": "Contexto da cena",
+        "script": "Frase limpa falada pelo narrador sem colchetes e com sete a dez palavras.",
+        "visual_prompt": "Detailed English visual prompt describing the exact scene action, character and environment, dark epic anime style, volumetric lighting, 9:16, no text",
         "tags": ["tag1", "tag2"]
      }}
   ]

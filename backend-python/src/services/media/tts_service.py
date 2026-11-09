@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 import httpx
 import edge_tts
 
@@ -14,7 +15,55 @@ logger = logging.getLogger("abvos.media.tts")
 # Vozes padrão para Canal Dark
 DEFAULT_EDGE_VOICE_PT = "pt-BR-AntonioNeural"  # Voz grave, profunda e imponente
 DEFAULT_EDGE_VOICE_EN = "en-US-ChristopherNeural"
-ELEVENLABS_DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Ex: Rachel ou Adam (pNInz6obpgDQGcFmaJgB)
+ELEVENLABS_DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+
+
+def clean_narration_for_tts(text: str) -> str:
+    """
+    Higieniza o texto da narração antes de enviá-lo ao motor TTS e às legendas:
+    - Remove logs operacionais acidentais (ex: 'Iniciando geração de prompts... (0%)', 'Geração de Assets, TTS e FFmpeg')
+    - Remove marcações de direção de palco como [pausa], [música], (fase 2), (pausa dramática)
+    - Remove prefixos técnicos ('Cena 01:', 'Parte 1:') e símbolos Markdown (*, #, _)
+    """
+    if not text:
+        return ""
+
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Ignora linhas de log operacional ou metadados técnicos
+        if re.match(
+            r"^(?:\[Progresso|(?:Iniciando|Gerando|Renderizando|Concluído|Processando)\b.*?\(\d+%\)|Geração de Assets,\s*TTS\s*e\s*FFmpeg)",
+            line,
+            re.IGNORECASE,
+        ):
+            continue
+        lines.append(line)
+
+    cleaned = " ".join(lines)
+    # Remove instruções entre colchetes: [pausa], [pausa dramática], [som grave], etc.
+    cleaned = re.sub(r"\[[^\]]*\]", " ", cleaned)
+    # Remove anotações técnicas entre parênteses: (fase 2), (pausa), (voz grave), (0%), (100%)
+    cleaned = re.sub(
+        r"\((?:fase\s*\d+|pausa[^)]*|tom[^)]*|voz[^)]*|efeito[^)]*|sfx[^)]*|\d+%)\)",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # Remove prefixos de roteiro como "Cena 01:", "CENA 1 -", "Narrador:"
+    cleaned = re.sub(
+        r"\b(?:cena\s*\d+|parte\s*\d+|narrador|locutor|locução)\s*[:\-–—]\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # Remove caracteres markdown
+    cleaned = re.sub(r"[*_#`~>]+", "", cleaned)
+    # Normaliza espaços e pontuação repetida
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 def get_audio_duration_seconds(audio_path: str) -> float:
@@ -37,8 +86,7 @@ def get_audio_duration_seconds(audio_path: str) -> float:
         except Exception as e:
             logger.warning(f"Erro ao extrair duração via ffprobe: {e}")
 
-    # Fallback estimativa por tamanho de arquivo mp3 (~160kbps ~ 20KB/s) ou 3s por frase curta
-    size = os.path.getsize(audio_path)
+    size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
     estimated = max(2.5, round(size / 20000, 2))
     return estimated
 
@@ -52,7 +100,10 @@ async def generate_speech_elevenlabs(
     """
     Gera áudio usando a API oficial da ElevenLabs.
     """
-    voice = voice_id or os.getenv("ELEVENLABS_VOICE_ID") or "pNInz6obpgDQGcFmaJgB"  # Adam / Voz imponente
+    clean_text = clean_narration_for_tts(text) or text
+    voice = voice_id if (voice_id and len(voice_id) == 20 and " " not in voice_id) else (
+        os.getenv("ELEVENLABS_VOICE_ID") or "pNInz6obpgDQGcFmaJgB"
+    )
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
     headers = {
         "xi-api-key": api_key,
@@ -60,7 +111,7 @@ async def generate_speech_elevenlabs(
         "Accept": "audio/mpeg",
     }
     payload = {
-        "text": text,
+        "text": clean_text,
         "model_id": "eleven_multilingual_v2",
         "voice_settings": {
             "stability": 0.45,
@@ -73,38 +124,89 @@ async def generate_speech_elevenlabs(
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code == 200:
+            if resp.status_code == 200 and len(resp.content) > 1024:
                 with open(output_path, "wb") as f:
                     f.write(resp.content)
                 logger.info(f"Áudio ElevenLabs gerado com sucesso: {output_path}")
                 return True
             else:
-                logger.warning(f"ElevenLabs retornou status {resp.status_code}: {resp.text}")
+                logger.warning(f"ElevenLabs retornou status {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
         logger.error(f"Erro na requisição ElevenLabs: {e}")
 
     return False
 
 
+async def generate_speech_edge_with_timings(
+    text: str,
+    output_path: str,
+    voice: Optional[str] = None,
+    rate: str = "+2%",
+    pitch: str = "-3Hz",
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """
+    Gera síntese de voz neural com Microsoft Edge TTS extraindo simultaneamente
+    os timestamps exatos de cada palavra (WordBoundary) para sincronia perfeita de legendas.
+    """
+    clean_text = clean_narration_for_tts(text) or text.strip()
+    target_voice = voice if (voice and "Neural" in voice) else DEFAULT_EDGE_VOICE_PT
+    word_timings: List[Dict[str, Any]] = []
+
+    try:
+        communicate = edge_tts.Communicate(
+            text=clean_text,
+            voice=target_voice,
+            rate=rate,
+            pitch=pitch,
+            boundary="WordBoundary",
+        )
+        with open(output_path, "wb") as audio_file:
+            async for chunk in communicate.stream():
+                c_type = chunk.get("type")
+                if c_type == "audio":
+                    data = chunk.get("data")
+                    if data:
+                        audio_file.write(data)
+                elif c_type in ("WordBoundary", "SentenceBoundary"):
+                    w_text = (chunk.get("text") or "").strip()
+                    offset = float(chunk.get("offset") or 0) / 10_000_000.0
+                    duration = float(chunk.get("duration") or 0) / 10_000_000.0
+                    if w_text:
+                        word_timings.append({
+                            "text": w_text,
+                            "start": round(offset, 3),
+                            "end": round(offset + max(0.08, duration), 3),
+                        })
+
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 512:
+            logger.info(
+                f"Áudio Edge-TTS gerado com sucesso ({target_voice}, {len(word_timings)} palavras sincronizadas): {output_path}"
+            )
+            return True, word_timings
+    except Exception as e:
+        logger.error(f"Erro ao gerar áudio com Edge-TTS: {e}")
+
+    return False, []
+
+
 async def generate_speech_edge(
     text: str,
     output_path: str,
     voice: Optional[str] = None,
-    rate: str = "+0%",
-    pitch: str = "-2Hz",  # Levemente mais grave para atmosfera de mistério/dark
+    rate: str = "+2%",
+    pitch: str = "-3Hz",
 ) -> bool:
     """
-    Gera síntese de voz neural com Microsoft Edge TTS (sem limite de requisição, alta fidelidade).
+    Wrapper compatível que retorna booleano de sucesso na geração Edge-TTS.
     """
-    target_voice = voice or DEFAULT_EDGE_VOICE_PT
-    try:
-        communicate = edge_tts.Communicate(text=text, voice=target_voice, rate=rate, pitch=pitch)
-        await communicate.save(output_path)
-        logger.info(f"Áudio Edge-TTS gerado com sucesso ({target_voice}): {output_path}")
-        return True
-    except Exception as e:
-        logger.error(f"Erro ao gerar áudio com Edge-TTS: {e}")
-        return False
+    ok, _ = await generate_speech_edge_with_timings(
+        text=text,
+        output_path=output_path,
+        voice=voice,
+        rate=rate,
+        pitch=pitch,
+    )
+    return ok
 
 
 async def synthesize_narration(
@@ -115,18 +217,20 @@ async def synthesize_narration(
 ) -> Dict[str, Any]:
     """
     Pipeline unificado de TTS:
-    Tenta ElevenLabs se a chave estiver configurada; caso contrário ou em caso de erro,
-    executa o Edge-TTS Neural com voz imponente de alta fidelidade.
+    Higieniza o roteiro falado, tenta ElevenLabs se chave configurada, ou executa
+    Edge-TTS Neural retornando também os timestamps palavra por palavra (word_timings).
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    clean_text = clean_narration_for_tts(text) or text.strip()
     provider_used = "edge_tts"
     success = False
+    word_timings: List[Dict[str, Any]] = []
 
     effective_key = elevenlabs_key or os.getenv("ELEVENLABS_API_KEY")
     if effective_key and effective_key.strip():
         logger.info("Tentando síntese via ElevenLabs...")
         success = await generate_speech_elevenlabs(
-            text=text,
+            text=clean_text,
             output_path=output_path,
             api_key=effective_key,
             voice_id=preferred_voice,
@@ -135,16 +239,16 @@ async def synthesize_narration(
             provider_used = "elevenlabs"
 
     if not success:
-        logger.info("Executando síntese de voz via Edge-TTS Neural...")
-        success = await generate_speech_edge(
-            text=text,
+        logger.info("Executando síntese de voz neural via Edge-TTS com captura de WordBoundary...")
+        success, word_timings = await generate_speech_edge_with_timings(
+            text=clean_text,
             output_path=output_path,
             voice=preferred_voice or DEFAULT_EDGE_VOICE_PT,
         )
         provider_used = "edge_tts"
 
     if not success or not os.path.exists(output_path):
-        raise RuntimeError(f"Falha ao sintetizar áudio para o texto: {text[:50]}...")
+        raise RuntimeError(f"Falha ao sintetizar áudio para o texto: {clean_text[:50]}...")
 
     duration = get_audio_duration_seconds(output_path)
     return {
@@ -152,5 +256,6 @@ async def synthesize_narration(
         "provider": provider_used,
         "audio_path": output_path,
         "duration_seconds": duration,
+        "clean_text": clean_text,
+        "word_timings": word_timings,
     }
-
