@@ -177,91 +177,91 @@ async def _persist_video_progress(
 def _build_narrative_beats(title: str) -> List[Dict[str, str]]:
     """
     Retorna 20 batidas narrativas contínuas (em português natural sem marcadores técnicos,
-    6 a 8 palavras por cena para ritmo ideal de 60s) e prompts visuais distintos em inglês
-    quando o roteiro de entrada tiver menos de 20 cenas.
+    6 a 8 palavras por cena para ritmo ideal de 60s) e prompts visuais cinematográficos ricos
+    em inglês, priorizando variedade de enquadramentos, profundidade de cenário e imersão ambiental.
     """
     clean_topic = clean_narration_for_tts(title) or "esse mistério ancestral"
     short_topic = " ".join(clean_topic.split()[:5])
     return [
         {
             "narration": f"Um segredo antigo sobre {short_topic} estava selado.",
-            "visual_prompt": f"Silhouette of a celestial winged archangel standing before a cosmic rift, {short_topic}, dark anime style, volumetric light, 9:16",
+            "visual_prompt": f"Cinematic wide establishing shot, silhouette of celestial winged archangel standing off-center before a colossal cosmic rift tearing through obsidian clouds, {short_topic}, deep spatial perspective, volumetric Tyndall rays, 9:16",
         },
         {
             "narration": "Poucos ousaram olhar além do véu proibido.",
-            "visual_prompt": f"Ancient forbidden temple gates opening into glowing abyssal fog, {short_topic}, dramatic chiaroscuro lighting, 9:16",
+            "visual_prompt": f"Epic wide low-angle shot, ancient forbidden temple gates towering hundreds of feet into glowing abyssal fog, {short_topic}, intricate stone carvings, ground mist and floating embers, rule of thirds, 9:16",
         },
         {
             "narration": "As escrituras descreviam um poder sem limites.",
-            "visual_prompt": f"Close up on ancient glowing golden scriptures floating in dark air with burning embers, {short_topic}, dark fantasy art, 9:16",
+            "visual_prompt": f"Layered cinematic shot, foreground ancient stone altar with glowing golden scriptures floating in dark air, illuminated by warm embers with grand gothic colonnade in deep background, {short_topic}, 9:16",
         },
         {
             "narration": "Mas existia um preço oculto naquela escolha.",
-            "visual_prompt": f"Lone hooded watcher looking at a colossal eclipsed sun over gothic ruins, {short_topic}, dark epic anime, 9:16",
+            "visual_prompt": f"Atmospheric wide shot, lone hooded watcher positioned on the left third looking over ruined colossal statues toward an eclipsed sun, {short_topic}, vast architectural scale, 9:16",
         },
         {
             "narration": "No santuário profundo, o primeiro sinal despertou.",
-            "visual_prompt": f"Subterranean obsidian throne room illuminated by crimson and gold lightning, {short_topic}, Unreal Engine 5 cinematic, 9:16",
+            "visual_prompt": f"Monumental subterranean obsidian throne room, towering cyclopean pillars illuminated by crimson and gold lightning, {short_topic}, off-center figure on stone dais, deep volumetric fog, 9:16",
         },
         {
             "narration": "A antiga lenda revelou sua verdadeira face.",
-            "visual_prompt": f"Majestic warrior angel with glowing sapphire eyes emerging from shadows, {short_topic}, hyper-detailed dark anime, 9:16",
+            "visual_prompt": f"Dynamic three-quarter shot, warrior angel emerging from shadows between carved monolithic pillars, {short_topic}, sharp golden rim light, floating dust particles, deep atmospheric background, 9:16",
         },
         {
             "narration": "Tudo foi planejado em silêncio por séculos.",
-            "visual_prompt": f"Intricate celestial clockwork gears and astral constellations spinning in darkness, {short_topic}, dramatic rim light, 9:16",
+            "visual_prompt": f"Environmental macro-scale shot, intricate celestial clockwork gears and astral constellations spinning above an ancient vaulted observatory dome, {short_topic}, golden highlights on dark stone, 9:16",
         },
         {
             "narration": "Quando notaram a mudança, tudo havia ruído.",
-            "visual_prompt": f"Two rival celestial figures clashing in mid-air above storm clouds, {short_topic}, dynamic action angle, dark anime, 9:16",
+            "visual_prompt": f"Dynamic mid-air action shot, two celestial silhouettes clashing high above storm-swept gothic spires, {short_topic}, lightning arcs illuminating vast ruined cityscape below, 9:16",
         },
         {
             "narration": "O céu escureceu e o abismo respondeu.",
-            "visual_prompt": f"Dark vortex tearing through the night sky above an ancient citadel, {short_topic}, ominous atmospheric fog, 9:16",
+            "visual_prompt": f"Extreme wide landscape shot, dark vortex tearing through the storm sky above an ancient cliffside citadel, {short_topic}, volumetric clouds and radiant energy beams, 9:16",
         },
         {
             "narration": "Tentaram apagar cada vestígio daquela grande queda.",
-            "visual_prompt": f"Shadowy figures sealing ancient scrolls inside a subterranean vault with golden chains, {short_topic}, neo-noir lighting, 9:16",
+            "visual_prompt": f"Cinematic interior shot, shadowed figures sealing ancient scrolls inside a subterranean vault with massive golden chains, {short_topic}, neo-noir chiaroscuro and atmospheric haze, 9:16",
         },
         {
             "narration": "Porém nenhuma chama se apaga na escuridão.",
-            "visual_prompt": f"A single brilliant golden flame igniting in pitch black darkness, illuminating ancient armor, {short_topic}, macro shot, 9:16",
+            "visual_prompt": f"Dramatic low-angle shot, single brilliant golden flame igniting on an ancient stone pedestal in pitch darkness, illuminating ornate carvings and distant towering pillars, {short_topic}, 9:16",
         },
         {
             "narration": "A segunda profecia começou a se cumprir.",
-            "visual_prompt": f"Colossal stone statues awakening with glowing runes along a canyon, {short_topic}, wide low-angle cinematic shot, 9:16",
+            "visual_prompt": f"Colossal stone guardian statues awakening along a mist-covered canyon with glowing runes, {short_topic}, deep vertical perspective, lone traveler silhouette in lower third, 9:16",
         },
         {
             "narration": "O choque entre luz e trevas chegou.",
-            "visual_prompt": f"Radiant spear of light piercing through a massive shadow colossus, {short_topic}, epic dark anime battle, 9:16",
+            "visual_prompt": f"Grand cinematic clash, radiant spear of light piercing through a towering shadow colossus inside a shattered sacred hall, {short_topic}, dynamic diagonal framing, 9:16",
         },
         {
             "narration": "Nas cinzas, a peça final foi encontrada.",
-            "visual_prompt": f"Hand wearing gauntlets picking up a shattered glowing crystal relic on ashes, {short_topic}, extreme close-up, 9:16",
+            "visual_prompt": f"Environmental detail shot, gauntleted hand reaching for a shattered glowing crystal relic on ancient mosaic tiles amidst ashes and drifting smoke, {short_topic}, 9:16",
         },
         {
             "narration": "Cada fragmento servia a um único propósito.",
-            "visual_prompt": f"Astral tree of light connecting heaven and the dark underworld, {short_topic}, breathtaking vertical composition, 9:16",
+            "visual_prompt": f"Breathtaking vertical vista, astral tree of radiant light bridging ancient subterranean ruins with the cosmic sky above, {short_topic}, immense environmental depth, 9:16",
         },
         {
             "narration": "No instante decisivo, a verdade veio à tona.",
-            "visual_prompt": f"Archangel spreading six luminous wings amidst a storm of golden sparks, {short_topic}, climax shot, 8k dark anime, 9:16",
+            "visual_prompt": f"Epic climax shot, archangel spreading luminous wings on a high balcony overlooking a colossal cosmic storm of golden sparks and shattering marble towers, {short_topic}, 9:16",
         },
         {
             "narration": "O trono antigo desmoronou diante do juízo.",
-            "visual_prompt": f"Crumbling dark marble pillars and falling crowns in slow motion with fire embers, {short_topic}, dramatic lighting, 9:16",
+            "visual_prompt": f"Dynamic low-angle wide shot, crumbling dark marble pillars and falling golden crowns in slow motion with fire embers drifting across sacred hall, {short_topic}, 9:16",
         },
         {
             "narration": "Seu eco ainda molda o mundo atual.",
-            "visual_prompt": f"Modern dark skyline reflected in an ancient mystical mirror with glowing symbols, {short_topic}, cinematic contrast, 9:16",
+            "visual_prompt": f"Cinematic reflective shot, ancient mystical mirror on carved stone pedestal reflecting a futuristic dark skyline with glowing runes in the stone surface, {short_topic}, 9:16",
         },
         {
             "narration": "Agora você enxerga os sinais ocultos.",
-            "visual_prompt": f"Mysterious figure turning back with glowing eyes in volumetric blue fog, {short_topic}, hypnotic gaze, 9:16",
+            "visual_prompt": f"Atmospheric over-the-shoulder shot, mysterious figure on the right third gazing back through dense volumetric blue mist and glowing ancient gateways, {short_topic}, 9:16",
         },
         {
             "narration": "Pois o último capítulo acaba de recomeçar.",
-            "visual_prompt": f"Silhouette of the celestial winged figure returning to the cosmic rift, seamless loop visual, {short_topic}, dark anime, 9:16",
+            "visual_prompt": f"Magnificent wide loop shot, silhouette of celestial winged figure stepping into the cosmic rift as the sacred sanctuary restores itself, {short_topic}, seamless loop, 9:16",
         },
     ]
 
@@ -294,8 +294,8 @@ def _build_story_visual_bible(
             "clean-shaven sculpted face, ornate black-and-gold celestial armor and large dark-golden feathered wings"
         )
         default_world = (
-            "ancient gothic celestial sanctuary of dark obsidian and golden marble pillars "
-            "floating amidst cosmic storm clouds"
+            "grand architectural gothic celestial sanctuary, colossal obsidian arches, towering carved marble pillars, "
+            "deep atmospheric perspective, volumetric Tyndall sunbeams cutting through cosmic mist and floating golden embers"
         )
         default_palette = "deep obsidian black, radiant molten gold, and cold astral sapphire blue"
     else:
@@ -304,8 +304,8 @@ def _build_story_visual_bible(
             "angular jawline, wearing a long dark high-collar trench cloak with subtle golden trim"
         )
         default_world = (
-            "ancient monumental gothic citadel and subterranean sanctuary shrouded in volumetric mist "
-            "and dramatic shafts of golden light"
+            "monumental ancient gothic citadel, towering vaulted stone corridors, intricate subterranean sanctuary "
+            "with deep spatial perspective, atmospheric ground fog, dramatic shafts of amber volumetric light"
         )
         default_palette = "deep midnight indigo, obsidian black, warm amber gold, and cold cyan rim lighting"
 
@@ -336,49 +336,23 @@ def _enforce_visual_continuity_across_scenes(
     title: str = "Vídeo Dark",
 ) -> List[Dict[str, Any]]:
     """
-    Compilador de Continuidade Visual Cena-a-Cena:
-    Garante que todas as 20 cenas pareçam frames consecutivos da MESMA história e com o MESMO
-    protagonista, colocando a ação dramática e o ângulo de câmera da cena em primeiro plano
-    seguidos pela descrição concisa do protagonista e do cenário (cabendo nos 77 tokens do CLIP).
+    Compilador de Continuidade e Cinematografia Dinâmica de Cenas:
+    Preserva e potencializa a visão de cena concebida pela IA de acordo com a história específica,
+    garantindo coerência visual (mesmo protagonista e universo da visual_bible), enquadramento
+    cinematográfico imersivo (regra dos terços, profundidade de ambiente) e aspecto 9:16 vertical,
+    SEM impor templates estáticos ou atos engessados.
     """
-    protagonist = visual_bible["protagonist_description"]
-    world_setting = visual_bible["world_setting"]
-    color_palette = visual_bible["color_palette"]
-    art_style = visual_bible["art_style"]
-
-    act_progression = [
-        # Ato I (Cenas 1 a 6): Apresentação majestosa no mesmo santuário
-        "Act I wide establishing shot, standing majestically in luminous celestial hall",
-        "Act I medium shot from side angle, golden gemstones gleaming on his ornate chest armor under divine light",
-        "Act I dynamic medium shot, harmonic golden light waves radiating from his outstretched hand",
-        "Act I wide tracking shot from behind, walking across sacred obsidian floor toward the altar of fire",
-        "Act I dramatic close-up on his face and glowing golden eyes, subtle shadow of ambition crossing his expression",
-        "Act I low-angle heroic shot, his massive wings spread wide casting a long dark shadow across marble pillars",
-        # Ato II (Cenas 7 a 15): Transformação da expressão e tensão crescente no mesmo universo
-        "Act II intense close-up on his hands and torso, sacred golden aura twisting into dark crimson-gold sparks",
-        "Act II cinematic over-the-shoulder shot, whispering shadows echoing between towering gothic columns",
-        "Act II low-angle dramatic shot, looking up toward the highest celestial throne with defiant gaze",
-        "Act II side profile portrait, dark golden energy veins glowing across his ornate armor",
-        "Act II wide council scene, standing on a raised dais addressing winged celestial figures in shadow",
-        "Act II dynamic wide angle, a glowing rift of golden-violet light cracking the celestial dome behind him",
-        "Act II tense confrontation shot, armored celestial guardians watching him from the upper colonnade",
-        "Act II epic wide shot, legions of winged silhouettes aligning behind him under falling golden stars",
-        "Act II dramatic storm action shot, lightning and cosmic shockwaves shattering the sanctuary around his raised hand",
-        # Ato III (Cenas 16 a 20): Clímax e resolução mantendo 100% do mesmo personagem e cenário
-        "Act III extreme close-up on his fierce glowing eyes and silver hair in the storm wind",
-        "Act III grand battle action shot, clashing beams of golden light and dark abyssal fire in the sanctuary",
-        "Act III dramatic three-quarter shot, standing amidst fractured marble pillars and swirling golden embers",
-        "Act III atmospheric wide shot from behind, gazing over the divided celestial horizon with wings spread",
-        "Act III final cinematic loop shot, turning his head back over his shoulder with glowing golden eyes in cosmic mist",
-    ]
+    protagonist = (visual_bible.get("protagonist_description") or "").strip()
+    world_setting = (visual_bible.get("world_setting") or "").strip()
+    color_palette = (visual_bible.get("color_palette") or "").strip()
+    art_style = (visual_bible.get("art_style") or "").strip()
 
     compiled_scenes: List[Dict[str, Any]] = []
     for idx, sc in enumerate(scenes):
-        act_hint = act_progression[idx % len(act_progression)]
         raw_vis = (sc.get("visual_prompt") or "").strip()
-        raw_narr = clean_narration_for_tts(sc.get("narration") or "")
+        raw_narr = clean_narration_for_tts(sc.get("narration") or sc.get("script") or "")
 
-        # Limpa sufixos redundantes para re-ancorar na estrutura unificada da história
+        # Limpa sufixos redundantes para re-ancorar na estrutura unificada
         cleaned_action = re.sub(
             r"\b(?:vertical\s*9:16|9:16|8k\s*resolution|8k|unreal\s*engine\s*5|character\s+design\s+sheet)\b",
             "",
@@ -386,18 +360,32 @@ def _enforce_visual_continuity_across_scenes(
             flags=re.IGNORECASE,
         ).strip(" ,.-")
 
-        if not cleaned_action or len(cleaned_action) < 35:
-            scene_action = f"{act_hint}, depicting '{raw_narr}'"
+        # Se a cena já possui direção visual concebida pela IA para esta história específica:
+        if cleaned_action and len(cleaned_action) >= 20:
+            scene_action = cleaned_action
         else:
-            scene_action = f"{act_hint}, {cleaned_action}"
+            # Deriva a cena dinamicamente a partir da narração da própria cena e do tema da história:
+            scene_action = f"Cinematic shot depicting '{raw_narr}', dynamic composition and atmospheric depth tailored to {clean_narration_for_tts(title) or title}"
 
-        # Coloca a ação específica e o ângulo de câmera no início para evitar poses estáticas repetidas,
-        # mantendo o mesmo protagonista, cenário e paleta em todas as 20 cenas:
-        continuous_prompt = (
-            f"Scene {idx + 1:02d} action: {scene_action}. "
-            f"Same main character ({protagonist}) in {world_setting}. "
-            f"{art_style}, {color_palette}, vertical 9:16"
+        # Monta o prompt da cena respeitando a concepção pensada pela IA para aquela história,
+        # integrando as âncoras da história (protagonista, cenário, paleta e estilo) sem duplicação:
+        prompt_parts: List[str] = [f"Scene {idx + 1:02d}: {scene_action}"]
+
+        if protagonist and protagonist.lower()[:20] not in scene_action.lower():
+            prompt_parts.append(f"Character (recurring design, off-center rule of thirds): {protagonist}")
+        if world_setting and world_setting.lower()[:20] not in scene_action.lower():
+            prompt_parts.append(f"Environment & World: {world_setting}")
+        if color_palette and color_palette.lower()[:15] not in scene_action.lower():
+            prompt_parts.append(f"Palette: {color_palette}")
+        if art_style and art_style.lower()[:15] not in scene_action.lower():
+            prompt_parts.append(f"Style: {art_style}")
+
+        prompt_parts.append(
+            "rule of thirds composition, off-center subject, deep environmental perspective, "
+            "intricate setting details, volumetric lighting, vertical 9:16, no centered passport portrait, no plain background"
         )
+
+        continuous_prompt = ". ".join(p.rstrip(". ") for p in prompt_parts if p)
 
         updated_sc = dict(sc)
         updated_sc["visual_prompt"] = continuous_prompt
@@ -414,8 +402,8 @@ async def _generate_twenty_scenes_via_gemini(
 ) -> tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
     """
     Solicita ao Gemini a criação da Bíblia Visual da História (`visual_bible`) e de exatamente
-    20 cenas conectadas em narrativa contínua de 60 segundos, garantindo que o mesmo personagem
-    e o mesmo universo visual sejam mantidos da Cena 1 à Cena 20.
+    20 cenas conectadas em narrativa contínua de 60 segundos, concebendo a cinematografia,
+    os cenários e a iluminação SOB MEDIDA para a história específica solicitada.
     """
     if not api_key or os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
         return [], None
@@ -423,28 +411,41 @@ async def _generate_twenty_scenes_via_gemini(
     try:
         from src.services.jeffrey_orchestrator import call_gemini_generate_content
 
-        sys_prompt = """Você é o Diretor de Roteiro e Fotografia de Canal Dark do ABVOS.
-Gere uma Bíblia Visual Unificada (`visual_bible`) e EXATAMENTE 20 cenas sequenciais e contínuas para um vídeo vertical de 60 segundos.
-Regras obrigatórias de Continuidade Visual e Narrativa:
-1. A narração (`narration`) das 20 cenas deve formar UMA ÚNICA HISTÓRIA CONTÍNUA, envolvente e cronológica em Português do Brasil.
-2. Cada `narration` deve ter entre 7 e 10 palavras (para durar cerca de 3 segundos na fala).
-3. PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção, ou prefixos como `Cena 1:` dentro de `narration`.
-4. CONTINUIDADE TOTAL DE PERSONAGEM E HISTÓRIA: Defina em `visual_bible` a aparência física EXATA e IMUTÁVEL do protagonista (`protagonist_description`: gênero, rosto, cor e corte de cabelo, cor dos olhos, armadura/vestimenta), o cenário principal (`world_setting`), a paleta de cores (`color_palette`) e o estilo (`art_style`).
-5. Em CADA UM dos 20 `visual_prompt` (em INGLÊS), repita as características físicas do protagonista de `visual_bible` e descreva uma cena física e concreta (postura, expressão facial, ação visível e iluminação no mesmo cenário). NUNCA escreva prompts abstratos ou mude o personagem de uma cena para outra.
+        sys_prompt = """Você é o Diretor de Arte, Fotografia e Roteiro de Vídeos Dark do ABVOS.
+Sua missão é conceber uma produção cinematográfica vertical (9:16) de altíssimo impacto visual, CRIANDO CADA DETALHE DE CENÁRIO, ATMOSFERA E PERSONAGEM SOB MEDIDA DE ACORDO COM A HISTÓRIA SOLICITADA (sem templates genéricos).
+
+DIRETRIZES DE DIREÇÃO CINEMATOGRÁFICA DINÂMICA:
+1. Universo Visual e Personagem Específicos da História (`visual_bible`):
+   - Analise profundamente o tema do vídeo (seja história real, mistério, ficção científica, mitologia, conspiração, guerra ou suspense).
+   - `world_setting`: Crie o ambiente específico onde a história se passa (ex: trincheira encharcada na fumaça; gabinete secreto com arquivos sob luz âmbar; cidade futurista chuvosa com neons; monastério antigo na névoa). Detalhe a arquitetura, textura, iluminação e clima.
+   - `protagonist_description`: Crie a figura ou protagonista característico desse tema (trajes, feições e elementos recorrentes consistentes).
+   - `color_palette` e `art_style`: Paleta e traço cinematográfico de alta imersão adequados ao gênero.
+
+2. CONCEPÇÃO DE CADA CENA PENSADA PARA A HISTÓRIA (ANTI-RETRATO CENTRALIZADO):
+   - Para CADA UMA das 20 cenas, imagine ativamente a tomada cinematográfica ideal para ilustrar a frase narrada:
+     * Alterne enquadramentos: Planos abertos monumentais (revelando a escala e a atmosfera do ambiente), planos médios com o personagem integrado em interação física com o cenário (apoiado em mesas, caminhando por corredores, olhando pela janela), planos de detalhe/artefatos (mão segurando um documento, dispositivo ou relíquia) e planos over-the-shoulder ou contra-plongée.
+     * O ambiente deve ser vivo e ricamente trabalhado: névoa volumétrica, chuva, fumaça, raios de luz atravessando frestas, reflexos no chão, arquitetura ao fundo.
+     * Use a Regra dos Terços (Rule of Thirds): posicione os sujeitos descentralizados para deixar o ambiente respirar e contextualizar a história.
+     * É ESTRITAMENTE PROIBIDO gerar 20 retratos centralizados estáticos com fundo desfocado ou vazio.
+
+3. Roteiro e Narração Limpa:
+   - Gere EXATAMENTE 20 cenas sequenciais formando UMA ÚNICA HISTÓRIA cronológica e contínua de 60s (3s por cena).
+   - Cada `narration` em português deve ter entre 7 e 10 palavras limpas (sem colchetes, sem '[pausa]' e sem prefixos de cena).
+   - Cada `visual_prompt` deve ser em INGLÊS, altamente visual e rico em detalhes de câmera e ambiente.
 
 Responda APENAS um JSON válido no formato:
 {
   "visual_bible": {
-    "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, sculpted face, wearing ornate black-and-gold celestial armor and six dark-golden feathered wings",
-    "world_setting": "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars",
-    "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
-    "art_style": "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, consistent character sheet"
+    "protagonist_description": "Descrição física detalhada do protagonista condizente com a história",
+    "world_setting": "Descrição rica do cenário, arquitetura, clima e atmosfera específicos da história",
+    "color_palette": "Cores dominantes e iluminação de contraste",
+    "art_style": "Estilo visual de arte cinematográfica adaptado ao tema"
   },
   "scenes": [
     {
       "scene_number": 1,
       "narration": "Frase falada limpa em português com sete a dez palavras.",
-      "visual_prompt": "Same tall male celestial archangel with long platinum-silver hair, golden eyes and black-and-gold armor standing in the gothic celestial sanctuary, dramatic volumetric lighting, 9:16",
+      "visual_prompt": "Cinematic shot description with specific camera angle, rich environment, dynamic lighting and integrated subject, 9:16",
       "on_screen_text": "TÍTULO CURTO"
     }
   ]

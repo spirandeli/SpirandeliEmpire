@@ -53,7 +53,9 @@ Persona da Voz (TTS/ElevenLabs): {req.voice_persona or 'Voz grave, documental e 
 DIRETRIZES CRÍTICAS:
 1. Hook Inicial (0-3 segundos): Deve ser impossível de ignorar, uma quebra de padrão total que prenda a atenção de imediato.
 2. {"Roteiro Sequencial de 20 Cenas Conectadas: Gere EXATAMENTE 20 cenas (scene_number 1 a 20), onde cada `narration` tem entre 6 e 9 palavras limpas em português (sem colchetes) e a Cena 20 faz loop com a Cena 1." if is_short else "Tensão em 5 Atos: Crie mini-cliffhangers a cada 90 segundos para manter a audiência assistindo até o final."}
-3. Bíblia Visual (`visual_bible`) e Continuidade de Personagem: Defina o protagonista com feições físicas fixas (`protagonist_description`), o cenário contínuo (`world_setting`), a paleta (`color_palette`) e o traço (`art_style`), e repita o mesmo protagonista em todas as cenas com ângulos de câmera variados.
+3. Bíblia Visual (`visual_bible`) e Direção Cinematográfica Imersiva Sob Medida:
+   - Pense o universo visual da história (`world_setting`: arquitetura, texturas, profundidade de camadas, clima e iluminação volumétrica), o protagonista (`protagonist_description`), a paleta (`color_palette`) e o traço (`art_style`) ESPECIFICAMENTE de acordo com o tema solicitado (sem templates fixos).
+   - DIREÇÃO DE CENA DINÂMICA (ANTI-RETRATO CENTRALIZADO): É expressamente PROIBIDO gerar 20 retratos centralizados estáticos do personagem com fundo genérico! Cada `visual_prompt` deve ser concebido para aquele exato segundo da história: alterne planos gerais monumentais (Wide Establishing Shots revelando o ambiente), planos médios com regra dos terços (personagem descentralizado, primeiro plano e fundo detalhados), planos over-the-shoulder e tomadas de detalhe de cenário ou artefatos.
 
 Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdown ```json ... ``` extras ou texto introdutório) com a seguinte estrutura:
 {{
@@ -64,17 +66,17 @@ Retorne sua resposta EXCLUSIVAMENTE em formato JSON puro (sem marcações markdo
   "suggested_music": "Estilo da trilha de fundo e BPM sugerido",
   "seo_tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
   "visual_bible": {{
-    "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, clean-shaven sculpted face, ornate black-and-gold celestial armor and large dark-golden feathered wings",
-    "world_setting": "ancient gothic celestial sanctuary of dark obsidian and golden marble pillars floating amidst cosmic storm clouds",
-    "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
-    "art_style": "2D dark epic anime cinematic illustration in the style of Castlevania Nocturne, dramatic chiaroscuro volumetric lighting"
+    "protagonist_description": "Descrição física detalhada do protagonista condizente com a história",
+    "world_setting": "Descrição rica do cenário, arquitetura, clima e atmosfera específicos da história",
+    "color_palette": "Cores dominantes e iluminação de contraste",
+    "art_style": "Estilo visual de arte cinematográfica adaptado ao tema"
   }},
   "scenes": [
     {{
       "scene_number": 1,
       "timestamp": "00:00 - 00:03",
       "narration": "Frase curta e impactante de seis a nove palavras.",
-      "visual_prompt": "Wide establishing shot of the same protagonist in the gothic sanctuary, dramatic lighting, vertical 9:16",
+      "visual_prompt": "Cinematic shot description with specific camera angle, rich environment, dynamic lighting and integrated subject, 9:16",
       "b_roll_description": "Descrição da cena visual e movimento de câmera",
       "on_screen_text": "TEXTO CURTO"
     }}

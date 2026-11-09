@@ -315,35 +315,34 @@ def _build_styled_prompt(
     visual_bible: Optional[Dict[str, str]] = None,
 ) -> str:
     """
-    Constrói um prompt enxuto (~55-65 palavras para caber integralmente na janela de 77 tokens do CLIP)
-    colocando a AÇÃO DA CENA + PROTAGONISTA CONSISTENTE + ESTILO ANIME CINEMATOGRÁFICO sem termos como
-    'character sheet' (que geravam linhas divisórias ou poses estáticas).
+    Constrói um prompt cinematográfico equilibrado, garantindo riqueza de cenário (Worldbuilding),
+    enquadramentos cinematográficos em camadas (foreground/midground/background) e continuidade de personagem
+    sem que o personagem fique isolado ou centralizado em pose estática ("centered passport portrait").
     """
     clean_prompt = re.sub(r"\s+", " ", (prompt or "").split("--ar")[0]).strip()
     clean_prompt = re.sub(r"consistent character (?:design )?sheet,?\s*", "", clean_prompt, flags=re.IGNORECASE)
 
+    parts: List[str] = [clean_prompt]
     if visual_bible:
         protagonist = (visual_bible.get("protagonist_description") or "").strip()
         world_setting = (visual_bible.get("world_setting") or "").strip()
         color_palette = (visual_bible.get("color_palette") or "").strip()
 
-        parts: List[str] = [clean_prompt]
         if protagonist and protagonist.lower()[:24] not in clean_prompt.lower():
-            parts.append(f"Character: {protagonist}")
+            parts.append(f"Character (off-center, integrated): {protagonist}")
         if world_setting and world_setting.lower()[:20] not in clean_prompt.lower():
-            parts.append(f"Setting: {world_setting}")
+            parts.append(f"Environment: {world_setting}")
         if color_palette and color_palette.lower()[:18] not in clean_prompt.lower():
             parts.append(f"Palette: {color_palette}")
 
-        combined = ". ".join(p.rstrip(".") for p in parts if p)
-    else:
-        combined = clean_prompt
+    combined = ". ".join(p.rstrip(".") for p in parts if p)
+    combined = combined[:900].strip()
 
-    combined = combined[:520].strip()
     return (
-        f"{combined}, 2D dark epic anime film still in the style of Castlevania Nocturne, "
-        "dynamic cinematic angle, dramatic chiaroscuro volumetric lighting, "
-        "sharp focus, masterpiece 8k vertical 9:16, no text, no watermark, no split screen"
+        f"{combined}, 2D dark epic anime cinematic film still in the style of Castlevania Nocturne, "
+        "rule of thirds composition, deep environmental perspective, rich detailed background architecture, "
+        "dramatic chiaroscuro volumetric Tyndall lighting, sharp focus, masterpiece 8k vertical 9:16, "
+        "no centered passport portrait, no plain background, no empty wall, no text, no split screen"
     )
 
 

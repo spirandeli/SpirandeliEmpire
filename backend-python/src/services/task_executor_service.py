@@ -72,9 +72,9 @@ Sua missão é EXECUTAR integralmente a tarefa solicitada com excelência e prof
 Diretrizes Obrigatórias para Canal Dark (Roteiros, Narrações e Imagens de Vídeo 60s):
 1. Roteiro Sequencial de 20 Cenas: Sempre que a tarefa envolver vídeo, roteiro, série ou Canal Dark, gere EXATAMENTE 20 itens dentro da lista `items` (Cena 01 até Cena 20), formando UMA ÚNICA HISTÓRIA CONTÍNUA, cronológica e hipnótica de 60 segundos (3 segundos por cena).
 2. Narração Limpa (`script`): Em cada uma das 20 cenas, o campo `script` deve conter APENAS a frase falada em português natural (entre 7 e 10 palavras por cena, conectando-se com a cena seguinte). É ESTRITAMENTE PROIBIDO incluir `[pausa]`, colchetes, `(fase 2)`, parênteses de direção de palco ou prefixos como `Cena 1:` dentro de `script`.
-3. Bíblia Visual da História (`visual_bible`) e Continuidade Entre Cenas (`visual_prompt`):
-   - Defina o objeto `visual_bible` com a aparência física IMUTÁVEL do protagonista (`protagonist_description`: gênero, feições do rosto, cor/corte de cabelo, cor dos olhos, armadura/traje), cenário contínuo (`world_setting`), paleta de cores (`color_palette`) e estilo (`art_style`).
-   - Em cada uma das 20 cenas, o `visual_prompt` em inglês DEVE repetir as características físicas do protagonista de `visual_bible` e descrever uma cena física concreta no mesmo universo (nunca mude de personagem, estilo ou escreva metáforas abstratas).
+3. Direção de Arte e Cenografia Sob Medida para a História (`visual_bible` e `visual_prompt`):
+   - NUNCA use templates fixos ou anjos se a história for de outro assunto! Pense o universo visual (`world_setting`: arquitetura, texturas, iluminação volumétrica, elementos em camadas), o protagonista/figuras (`protagonist_description`) e a paleta (`color_palette`) especificamente adaptados ao tema solicitado (história real, mistério, ficção, guerra, suspense, etc.).
+   - CONCEPÇÃO DINÂMICA DE CADA CENA (ANTI-RETRATO CENTRALIZADO): Cada um dos 20 `visual_prompt` em inglês DEVE ser pensado como uma tomada de cinema rica em ambiente para aquele exato momento da história. Alterne planos abertos para revelar a escala e o local, planos médios descentralizados na regra dos terços (com elementos de primeiro plano e fundo trabalhando o cenário), detalhes narrativos de objetos/cenário e ângulos dramáticos. É PROIBIDO gerar 20 retratos centralizados estáticos com fundo desfocado/vazio.
 
 Responda em formato JSON estruturado com os seguintes campos:
 {{
@@ -82,17 +82,17 @@ Responda em formato JSON estruturado com os seguintes campos:
   "deliverable_type": "dark_script | image_prompts | voiceover_tts | strategy | general",
   "markdown_content": "O documento completo e formatado em Markdown com todos os detalhes produzidos",
   "visual_bible": {{
-     "protagonist_description": "tall male celestial archangel with long flowing platinum-silver hair, sharp glowing golden amber eyes, sculpted face, ornate black-and-gold celestial armor and six dark-golden feathered wings",
-     "world_setting": "ancient monumental gothic celestial sanctuary of dark obsidian and golden marble pillars",
-     "color_palette": "deep obsidian black, radiant molten gold, and cold astral sapphire blue",
-     "art_style": "dark epic anime cinematic painting in the style of Castlevania and Fate/Zero, consistent character sheet"
+     "protagonist_description": "Descrição física detalhada do protagonista condizente com a história",
+     "world_setting": "Descrição rica do cenário, arquitetura, clima e atmosfera específicos da história",
+     "color_palette": "Cores dominantes e iluminação de contraste",
+     "art_style": "Estilo visual de arte cinematográfica adaptado ao tema"
   }},
   "items": [
      {{
         "title": "Cena 01 - Título curto da cena",
         "description": "Contexto da cena",
         "script": "Frase limpa falada pelo narrador sem colchetes e com sete a dez palavras.",
-        "visual_prompt": "Same tall male celestial archangel with long platinum-silver hair, golden eyes and black-and-gold armor in the gothic celestial sanctuary, dramatic volumetric lighting, 9:16, no text",
+        "visual_prompt": "Cinematic shot description with specific camera angle, rich environment, dynamic lighting and integrated subject, 9:16, no text",
         "tags": ["tag1", "tag2"]
      }}
   ]
