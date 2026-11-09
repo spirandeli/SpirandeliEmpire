@@ -33,14 +33,15 @@ from src.services.memory_service import (
 logger = logging.getLogger("abvos.jeffrey_orchestrator")
 settings = get_settings()
 
+# Cache em memória para modelos que atingiram cota (429) ou erro temporário
+_QUOTA_EXHAUSTED_UNTIL: dict[str, float] = {}
+
 MAX_REACT_STEPS = 5
 FALLBACK_MODELS = [
-    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
-    "gemini-flash-lite-latest",
     "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
     "gemini-3.5-flash",
-    "gemini-3-flash-preview",
 ]
 
 
@@ -127,7 +128,12 @@ async def call_gemini_generate_content(
     }
 
     async with httpx.AsyncClient(timeout=20.0) as client:
+        now_ts = time.time()
         for model in models_to_try:
+            # Pula modelos que atingiram cota recentemente para resposta imediata
+            if now_ts < _QUOTA_EXHAUSTED_UNTIL.get(model, 0):
+                continue
+
             api_model = "gemini-3.8-flash" if model in ("gemini-3.8", "gemini-3.8-pro") else model
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{api_model}:generateContent?key={api_key}"
             try:
@@ -139,17 +145,22 @@ async def call_gemini_generate_content(
                     data = res.json()
                     logger.info(f"Gemini call success with model {model} ({elapsed}ms)")
                     return data, model
-                elif res.status_code in (503, 429):
-                    logger.warning(f"Model {model} indisponível ({res.status_code}). Tentando fallback...")
-                    last_error = f"HTTP {res.status_code}: {res.text[:120]}"
+                elif res.status_code == 429:
+                    _QUOTA_EXHAUSTED_UNTIL[model] = time.time() + 600  # 10 min cooldown
+                    logger.warning(f"Model {model} com cota diária esgotada (429). Cooldown ativado, tentando fallback...")
+                    last_error = f"HTTP 429: {res.text[:120]}"
+                    continue
+                elif res.status_code == 503:
+                    logger.warning(f"Model {model} indisponível (503). Tentando fallback...")
+                    last_error = f"HTTP 503: {res.text[:120]}"
                     continue
                 else:
                     logger.error(f"Gemini API error ({res.status_code}): {res.text[:200]}")
                     last_error = f"HTTP {res.status_code}: {res.text[:200]}"
                     continue
             except Exception as e:
-                logger.warning(f"Erro ao chamar {model}: {e}")
-                last_error = str(e)
+                logger.warning(f"Erro ao chamar {model}: {repr(e)}")
+                last_error = repr(e)
                 continue
 
     raise RuntimeError(f"Falha ao conectar aos modelos do Gemini. Último erro: {last_error}")
