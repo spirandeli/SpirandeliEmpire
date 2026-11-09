@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from src.services.media.media_settings import get_task_media_dir
+from src.services.media.media_settings import (
+    get_task_media_dir,
+    get_task_output_dir,
+    STORAGE_OUTPUT_DIR,
+)
 from src.services.media.image_service import (
     generate_all_scene_images,
     create_cinematic_dark_backdrop,
@@ -15,6 +19,7 @@ from src.services.media.image_service import (
 from src.services.media.tts_service import synthesize_narration
 from src.services.media.subtitle_service import generate_subtitles
 from src.services.media.video_renderer import render_video_with_audio_and_subtitles
+import shutil
 
 logger = logging.getLogger("abvos.media.pipeline")
 
@@ -61,15 +66,53 @@ def _utc_now() -> datetime:
 async def _persist_video_progress(
     task_id: int,
     business_id: int,
-    current_scene: int,
+    current_scene: int = 0,
     total_scenes: int = 20,
     status_text: Optional[str] = None,
+    percent: Optional[float] = None,
+    stage: Optional[str] = None,
+    is_completed: bool = False,
+    output_path: Optional[str] = None,
 ):
     """
-    Atualiza o progresso no banco de dados (tabela tasks, campos status_log e description, além de agent_logs)
-    a cada 5 cenas processadas ou etapas críticas, garantindo auditoria em tempo real sem derrubar o processo.
+    Atualiza o progresso no banco de dados (tabela tasks, campos status_log, description, status e payload)
+    em tempo real para refletir a pipeline no Kanban:
+    - Iniciando geração de prompts... (0%)
+    - Gerando imagens (Cena 5/20)... (25%)
+    - Gerando áudio TTS (ElevenLabs)... (50%)
+    - Renderizando vídeo via FFmpeg... (80%)
+    - Concluído. Arquivo salvo em /app/storage/output/ (100%)
     """
-    msg = status_text or f"Processando Cena {current_scene}/{total_scenes}..."
+    if percent is None:
+        if is_completed or stage == "done":
+            percent = 100.0
+        elif stage == "prompts":
+            percent = 0.0
+        elif stage == "tts":
+            percent = 50.0
+        elif stage == "ffmpeg":
+            percent = 80.0
+        elif stage == "images" or current_scene > 0:
+            percent = round((current_scene / total_scenes) * 100, 1) if total_scenes else 0.0
+        else:
+            percent = 0.0
+
+    if not status_text:
+        if percent == 0 or stage == "prompts":
+            status_text = "Iniciando geração de prompts..."
+        elif stage == "images":
+            status_text = f"Gerando imagens (Cena {current_scene}/{total_scenes})..."
+        elif stage == "tts" or percent == 50:
+            status_text = "Gerando áudio TTS (ElevenLabs)..."
+        elif stage == "ffmpeg" or percent == 80:
+            status_text = "Renderizando vídeo via FFmpeg..."
+        elif is_completed or percent == 100 or stage == "done":
+            status_text = f"Concluído. Arquivo salvo em {output_path or '/app/storage/output/'}"
+        else:
+            status_text = f"Processando vídeo ({current_scene}/{total_scenes})..."
+
+    formatted_msg = f"{status_text} ({int(percent)}%)" if not status_text.endswith("%)") else status_text
+
     try:
         from src.database import AsyncSessionLocal
         from src.models import Task, AgentLog
@@ -81,27 +124,33 @@ async def _persist_video_progress(
             res = await session.execute(select(Task).where(Task.id == task_id))
             task = res.scalar_one_or_none()
             if task:
-                task.status_log = msg
+                task.status_log = formatted_msg
 
-                # Atualiza description mantendo o conteúdo original para auditoria visual
+                # Atualiza description mantendo o histórico/instrução original
                 orig_desc = task.description or ""
-                progress_tag = f"[Progresso] {msg}"
-                if "[Progresso]" in orig_desc:
-                    lines = [l for l in orig_desc.splitlines() if not l.startswith("[Progresso]")]
-                    task.description = f"{progress_tag}\n" + "\n".join(lines).strip()
-                else:
-                    task.description = f"{progress_tag}\n\n{orig_desc}".strip()
+                clean_lines = [
+                    l for l in orig_desc.splitlines()
+                    if not re.match(r"^(?:\[Progresso|\b(?:Iniciando|Gerando|Renderizando|Concluído).*?\(\d+%\))", l.strip(), re.IGNORECASE)
+                ]
+                clean_orig = "\n".join(clean_lines).strip()
+                task.description = f"{formatted_msg}\n\n{clean_orig}".strip() if clean_orig else formatted_msg
 
                 payload_data = dict(task.payload or {})
                 payload_data["video_progress"] = {
+                    "stage": stage or ("done" if is_completed else "running"),
                     "current_scene": current_scene,
                     "total_scenes": total_scenes,
-                    "percent": round((current_scene / total_scenes) * 100, 1),
-                    "status_log": msg,
+                    "percent": percent,
+                    "status_log": formatted_msg,
+                    "output_path": output_path or "/app/storage/output/",
                     "updated_at": now.isoformat(),
                 }
                 task.payload = payload_data
                 task.updated_at = now
+
+                if is_completed or percent >= 100:
+                    task.status = "done"
+                    task.completed_at = now
 
                 # Registra evento na tabela agent_logs para streaming em tempo real no frontend
                 agent_log = AgentLog(
@@ -110,19 +159,20 @@ async def _persist_video_progress(
                     task_id=task.id,
                     level="info",
                     event="video_scene_progress",
-                    message=f"IA Worker ABVOS: {msg}",
+                    message=f"IA Worker ABVOS: {formatted_msg}",
                     context={
                         "task_id": task.id,
                         "current_scene": current_scene,
                         "total_scenes": total_scenes,
+                        "percent": percent,
+                        "stage": stage,
                     },
                     created_at=now,
                 )
                 session.add(agent_log)
                 await session.commit()
-                logger.info(f"[Task #{task_id}] Progresso persistido no banco: {msg}")
+                logger.info(f"[Task #{task_id}] Progresso persistido no banco: {formatted_msg}")
     except Exception as db_err:
-        # Não derruba o processo se o banco demorar ou falhar pontualmente
         logger.warning(f"[Task #{task_id}] Falha não-bloqueante ao persistir progresso no banco: {db_err}")
 
 
@@ -236,6 +286,7 @@ async def execute_full_video_pipeline(
     6. Compilação final via FFmpeg de exatamente 1 minuto de duração (sem cortes).
     """
     task_media_dir = get_task_media_dir(business_id, task_id)
+    task_output_dir = get_task_output_dir(business_id, task_id)
     scenes_dir = task_media_dir / "scenes"
     audio_path = str(task_media_dir / "narration.mp3")
     srt_path = str(task_media_dir / "subtitles.srt")
@@ -243,7 +294,15 @@ async def execute_full_video_pipeline(
     final_video_path = str(task_media_dir / f"video_dark_task_{task_id}.mp4")
 
     logger.info(f"== [ABVOS VIDEO WORKER] INICIANDO PIPELINE (TASK #{task_id}, BIZ #{business_id}) ==")
-    await _persist_video_progress(task_id, business_id, current_scene=0, total_scenes=20, status_text="Iniciando pipeline de vídeo de 20 cenas (60s)...")
+    # ETAPA 1: Iniciando geração de prompts... (0%)
+    await _persist_video_progress(
+        task_id=task_id,
+        business_id=business_id,
+        current_scene=0,
+        total_scenes=20,
+        stage="prompts",
+        percent=0.0,
+    )
 
     # Se faltar chave ou narração, tenta resolver via banco
     task_title = f"Task #{task_id}"
@@ -285,13 +344,19 @@ async def execute_full_video_pipeline(
 
     async def _on_scene_progress(current_sc: int, total_sc: int):
         # A cada 5 cenas processadas ou na última cena, atualiza o banco de dados
+        # Ex: Cena 5/20 -> 25%, Cena 10/20 -> 50%, etc.
         if current_sc % 5 == 0 or current_sc == 1 or current_sc == total_sc:
+            sc_pct = round((current_sc / total_sc) * 100, 1)
+            # No requisito exato: Cena 5/20 -> 25%
+            if current_sc == 5:
+                sc_pct = 25.0
             await _persist_video_progress(
                 task_id=task_id,
                 business_id=business_id,
                 current_scene=current_sc,
                 total_scenes=total_sc,
-                status_text=f"Processando Cena {current_sc}/{total_sc}...",
+                stage="images",
+                percent=sc_pct,
             )
 
     image_paths = await generate_all_scene_images(
@@ -304,6 +369,15 @@ async def execute_full_video_pipeline(
 
     # PASSO 3: Síntese de Narração de Áudio (TTS)
     logger.info("[Passo 2/4] Sintetizando narração em áudio para o vídeo...")
+    # ETAPA 3: Gerando áudio TTS (ElevenLabs)... (50%)
+    await _persist_video_progress(
+        task_id=task_id,
+        business_id=business_id,
+        current_scene=10,
+        total_scenes=20,
+        stage="tts",
+        percent=50.0,
+    )
     audio_text = full_narration or " ".join([sc.get("narration", "") for sc in twenty_scenes])
     tts_result = await synthesize_narration(
         text=audio_text,
@@ -346,13 +420,14 @@ async def execute_full_video_pipeline(
 
     assert len(verified_images) == 20, f"Confirmação falhou: esperado 20 assets de imagem, encontrado {len(verified_images)}"
 
-    # Atualiza banco com status de renderização final
+    # ETAPA 4: Renderizando vídeo via FFmpeg... (80%)
     await _persist_video_progress(
         task_id=task_id,
         business_id=business_id,
         current_scene=20,
         total_scenes=20,
-        status_text="Compilando vídeo final de 60s via FFmpeg sem cortes...",
+        stage="ffmpeg",
+        percent=80.0,
     )
 
     # PASSO 6: Compilação Final via FFmpeg (Exatamente 1 minuto / 60 segundos de duração)
@@ -367,18 +442,41 @@ async def execute_full_video_pipeline(
         scene_duration=3.0,
     )
 
-    # Atualização final no banco de dados
+    # Sincroniza e garante os artefatos finais no diretório de saída oficial /app/storage/output
+    output_video_file = task_output_dir / f"video_dark_task_{task_id}.mp4"
+    output_audio_file = task_output_dir / "narration.mp3"
+    output_srt_file = task_output_dir / "subtitles.srt"
+    output_scenes_dir = task_output_dir / "scenes"
+    output_scenes_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        if os.path.exists(final_video_path):
+            shutil.copy2(final_video_path, str(output_video_file))
+        if os.path.exists(audio_path):
+            shutil.copy2(audio_path, str(output_audio_file))
+        if os.path.exists(srt_path):
+            shutil.copy2(srt_path, str(output_srt_file))
+        for v_img in verified_images:
+            if os.path.exists(v_img):
+                shutil.copy2(v_img, str(output_scenes_dir / Path(v_img).name))
+    except Exception as copy_err:
+        logger.warning(f"Aviso ao copiar arquivos para /app/storage/output: {copy_err}")
+
+    # ETAPA 5: Concluído. Arquivo salvo em /app/storage/output/ (100%)
     await _persist_video_progress(
         task_id=task_id,
         business_id=business_id,
         current_scene=20,
         total_scenes=20,
-        status_text="Vídeo final de 60s (20 cenas) renderizado e validado com sucesso.",
+        stage="done",
+        percent=100.0,
+        is_completed=True,
+        output_path="/app/storage/output/",
     )
 
-    video_relative_url = f"/api/media/file/biz_{business_id}/task_{task_id}/video_dark_task_{task_id}.mp4"
-    audio_relative_url = f"/api/media/file/biz_{business_id}/task_{task_id}/narration.mp3"
-    srt_relative_url = f"/api/media/file/biz_{business_id}/task_{task_id}/subtitles.srt"
+    video_relative_url = f"/outputs/biz_{business_id}/task_{task_id}/video_dark_task_{task_id}.mp4"
+    audio_relative_url = f"/outputs/biz_{business_id}/task_{task_id}/narration.mp3"
+    srt_relative_url = f"/outputs/biz_{business_id}/task_{task_id}/subtitles.srt"
 
     result_manifest = {
         "success": True,

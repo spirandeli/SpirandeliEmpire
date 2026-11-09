@@ -24,6 +24,7 @@ const pageTitle = computed(() => {
     'businesses.index': 'Hub de Negócios',
     'businesses.detail': 'Detalhes do Venture',
     'tasks.board': 'Quadro de Tarefas',
+    'storage.viewer': 'Galeria de Produção (Storage Viewer)',
     'languages.academy': 'Academia de Idiomas',
     'settings.integrations': 'Integrações & Cofre',
     'admin.ai-governance': 'Governança IA & FinOps',
@@ -131,6 +132,20 @@ function openChat(businessId = null) {
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
           <span>Operações (Kanban)</span>
+        </RouterLink>
+
+        <RouterLink
+          to="/storage-viewer"
+          class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition"
+          :class="route.name === 'storage.viewer' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-semibold' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'"
+        >
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <div class="flex items-center justify-between flex-1">
+            <span>Galeria de Produção</span>
+            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">Outputs</span>
+          </div>
         </RouterLink>
 
         <RouterLink

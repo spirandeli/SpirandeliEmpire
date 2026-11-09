@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from src.config import get_settings
-from src.services.media.media_settings import STORAGE_MEDIA_DIR
+from src.services.media.media_settings import STORAGE_MEDIA_DIR, STORAGE_OUTPUT_DIR
 from src.routers import (
     admin,
     agent,
@@ -16,6 +16,7 @@ from src.routers import (
     integrations,
     languages,
     media,
+    storage_viewer,
     tasks,
     webhooks,
 )
@@ -129,13 +130,18 @@ app.include_router(calendar.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(media.router, prefix="/api")
+app.include_router(storage_viewer.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
 
 # Rotas compatíveis sob o prefixo /api/v1
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(media.router, prefix="/api/v1")
+app.include_router(storage_viewer.router, prefix="/api/v1")
 app.include_router(approvals.router, prefix="/api/v1")
 
-# Rota estática direta para inspeção/download de mídia
+# Rota estática direta para inspeção/download de mídia e outputs do pipeline
+STORAGE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=str(STORAGE_OUTPUT_DIR)), name="outputs")
+
 if STORAGE_MEDIA_DIR.exists():
     app.mount("/media", StaticFiles(directory=str(STORAGE_MEDIA_DIR)), name="media-static")

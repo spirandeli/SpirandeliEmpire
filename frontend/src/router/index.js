@@ -39,6 +39,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/storage-viewer',
+    name: 'storage.viewer',
+    component: () => import('@/views/StorageViewerView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/languages',
     name: 'languages.academy',
     component: () => import('@/views/LanguageAcademyView.vue'),

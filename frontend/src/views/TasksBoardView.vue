@@ -6,6 +6,7 @@ import { useTaskStore } from '@/stores/tasks'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
 import { api } from '@/services/api'
+import { groupKanbanTasks } from '@/utils/scriptGrouping'
 
 const taskStore = useTaskStore()
 const businessStore = useBusinessStore()
@@ -20,6 +21,26 @@ const activeMobileCol = ref('all')
 const executingTaskId = ref(null)
 const selectedTaskForDetail = ref(null)
 const showDetailModal = ref(false)
+const groupTasksByProject = ref(true)
+const expandedTaskGroups = ref(new Set())
+
+function toggleTaskGroup(groupKey) {
+  if (expandedTaskGroups.value.has(groupKey)) {
+    expandedTaskGroups.value.delete(groupKey)
+  } else {
+    expandedTaskGroups.value.add(groupKey)
+  }
+}
+
+function isTaskGroupExpanded(groupKey) {
+  return expandedTaskGroups.value.has(groupKey)
+}
+
+function getColumnTasks(col) {
+  if (!col?.tasks) return []
+  if (!groupTasksByProject.value) return col.tasks
+  return groupKanbanTasks(col.tasks)
+}
 
 const newTask = ref({
   business_id: '',
@@ -190,6 +211,102 @@ function getColumnBadgeColor(status) {
       return 'bg-slate-800 text-slate-300'
   }
 }
+
+function getTaskVideoProgress(task) {
+  if (!task) return null
+
+  // 1. Do payload estruturado
+  const p = task.payload?.video_progress
+  if (p && typeof p.percent === 'number') {
+    const pct = Math.min(100, Math.max(0, p.percent))
+    const isCompleted = pct >= 100 || task.status === 'done' || p.stage === 'done'
+    return {
+      percent: pct,
+      statusText: p.status_log || p.status_text || (isCompleted ? 'Concluído. Arquivo salvo em /app/storage/output/ (100%)' : 'Processando vídeo...'),
+      stage: p.stage || (isCompleted ? 'done' : 'running'),
+      isCompleted,
+      isRunning: !isCompleted && (task.status === 'in_progress_agent' || task.status === 'in_progress' || p.stage !== 'pending'),
+    }
+  }
+
+  // 2. Extrai da descrição ou status_log (ex: "Gerando imagens (Cena 5/20)... (25%)")
+  const fullText = `${task.status_log || ''} \n ${task.description || ''}`
+  const match = fullText.match(/(Iniciando[^\n\(\)]+|Gerando[^\n\(\)]+|Renderizando[^\n\(\)]+|Concluído[^\n\(\)]+|Processando[^\n\(\)]+)\s*\((?:(\d+(?:\.\d+)?)%)\)/i)
+  if (match) {
+    const rawStage = match[1].trim()
+    const pct = parseFloat(match[2])
+    const isCompleted = pct >= 100 || task.status === 'done' || rawStage.toLowerCase().includes('concluído')
+    return {
+      percent: Math.min(100, Math.max(0, pct)),
+      statusText: `${rawStage} (${Math.round(pct)}%)`,
+      stage: isCompleted ? 'done' : 'running',
+      isCompleted,
+      isRunning: !isCompleted && (task.status === 'in_progress_agent' || task.status === 'in_progress'),
+    }
+  }
+
+  // 3. Fallback para tarefas de vídeo em andamento
+  const isVideo = (task.title + ' ' + (task.description || '')).toLowerCase().includes('vídeo') ||
+                  (task.title + ' ' + (task.description || '')).toLowerCase().includes('video')
+  if (isVideo) {
+    const isDone = task.status === 'done' || task.status === 'completed'
+    if (isDone) {
+      return {
+        percent: 100,
+        statusText: 'Concluído. Arquivo salvo em /app/storage/output/ (100%)',
+        stage: 'done',
+        isCompleted: true,
+        isRunning: false,
+      }
+    }
+    if (task.status === 'in_progress_agent' || task.status === 'in_progress') {
+      return {
+        percent: 25,
+        statusText: 'Gerando imagens (Cena 5/20)... (25%)',
+        stage: 'running',
+        isCompleted: false,
+        isRunning: true,
+      }
+    }
+  }
+
+  return null
+}
+
+const isDispatchingSeries = ref(false)
+
+async function handleDispatchSeries() {
+  const bizId = selectedBusinessId.value || (businessStore.businesses[0]?.id)
+  if (!bizId) {
+    swal.warning('Venture obrigatório', 'Selecione ou crie um negócio para associar as tarefas da série.')
+    return
+  }
+
+  const confirmed = await swal.confirm({
+    title: 'Iniciar Série 01 - A Queda de Lúcifer?',
+    text: 'O ABVOS criará automaticamente 3 tarefas no Kanban:\n1. [Vídeo] Série 01 - Parte 1\n2. [Vídeo] Série 01 - Parte 2\n3. [Vídeo] Série 01 - Parte 3',
+    confirmText: 'Sim, criar 3 tarefas no Kanban',
+    confirmButtonColor: '#10b981',
+  })
+
+  if (!confirmed) return
+
+  isDispatchingSeries.value = true
+  try {
+    const res = await api.post('/api/v1/storage/series/dispatch', {
+      business_id: Number(bizId),
+      series_title: 'Série 01 - A Queda de Lúcifer',
+      parts_count: 3,
+      auto_execute_part_1: false,
+    })
+    swal.toast(res.data.message || 'Tarefas da série criadas com sucesso no Kanban!', 'success')
+    await loadBoard()
+  } catch (err) {
+    swal.error('Erro ao despachar série', err.response?.data?.detail || err.message)
+  } finally {
+    isDispatchingSeries.value = false
+  }
+}
 </script>
 
 <template>
@@ -200,15 +317,29 @@ function getColumnBadgeColor(status) {
           <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight">Quadro Operacional & Tarefas (Kanban)</h1>
           <p class="text-xs text-slate-400 mt-0.5">Distribuição Híbrida: Tarefas do Agente Autônomo vs. Ações Humanas</p>
         </div>
-        <button
-          @click="showCreateModal = true"
-          class="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center justify-center space-x-1.5 min-h-[44px]"
-        >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          <span>Nova Tarefa</span>
-        </button>
+        <div class="flex items-center space-x-2">
+          <!-- Botão Disparar Série -->
+          <button
+            @click="handleDispatchSeries"
+            :disabled="isDispatchingSeries"
+            class="w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition flex items-center justify-center space-x-1.5 min-h-[44px] disabled:opacity-50"
+            title="Criar automaticamente as 3 tarefas no Kanban para Série 01 - A Queda de Lúcifer"
+          >
+            <span>🎬</span>
+            <span>{{ isDispatchingSeries ? 'Criando Série...' : 'Iniciar Série (Partes 1, 2 e 3)' }}</span>
+          </button>
+
+          <!-- Botão Nova Tarefa -->
+          <button
+            @click="showCreateModal = true"
+            class="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-lg shadow-emerald-400/20 transition flex items-center justify-center space-x-1.5 min-h-[44px]"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Nova Tarefa</span>
+          </button>
+        </div>
       </div>
     </template>
 
@@ -250,8 +381,22 @@ function getColumnBadgeColor(status) {
           </div>
         </div>
 
-        <!-- Toggle do Drawer de Logs -->
-        <div class="pt-1 flex sm:justify-end">
+        <!-- Ações e Toggles de Visualização -->
+        <div class="pt-1 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+          <!-- Toggle Agrupamento de Tarefas por Projeto/Série -->
+          <button
+            type="button"
+            @click="groupTasksByProject = !groupTasksByProject"
+            class="w-full sm:w-auto px-3.5 py-2 text-xs font-semibold rounded-xl border transition flex items-center justify-center space-x-2 min-h-[42px]"
+            :class="groupTasksByProject
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'"
+            title="Agrupar tarefas que pertencem ao mesmo vídeo ou projeto"
+          >
+            <span>{{ groupTasksByProject ? '🎬 Agrupado por Vídeo/Série' : '📄 Todas as Tarefas (Avulsas)' }}</span>
+          </button>
+
+          <!-- Toggle do Drawer de Logs -->
           <button
             @click="showLogsDrawer = !showLogsDrawer"
             class="w-full sm:w-auto px-3.5 py-2 text-xs font-semibold rounded-xl border transition flex items-center justify-center space-x-2 min-h-[42px]"
@@ -329,13 +474,157 @@ function getColumnBadgeColor(status) {
               Nenhuma tarefa
             </div>
 
-            <!-- Card de Tarefa Individual (Clicável) -->
-            <div
-              v-for="task in col.tasks"
-              :key="task.id"
-              @click="openTaskDetail(task)"
-              class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900/40 cursor-pointer transition space-y-2.5 shadow-sm group"
-            >
+            <!-- Iteração sobre Tarefas (Agrupadas ou Individuais) -->
+            <template v-for="task in getColumnTasks(col)" :key="task.id">
+              <!-- CASO 1: Card Mestre de Tarefas Agrupadas (Série/Vídeo/Projeto) -->
+              <div
+                v-if="task.isGroup"
+                class="p-3.5 rounded-xl bg-slate-950 border border-indigo-500/40 hover:border-indigo-500/80 transition space-y-2.5 shadow-md shadow-indigo-950/20 group"
+              >
+                <!-- Top Tags do Grupo -->
+                <div class="flex items-center justify-between text-[10px]">
+                  <span class="font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1">
+                    <span>🎬</span>
+                    <span>PRODUÇÃO / SÉRIE</span>
+                  </span>
+                  <span
+                    class="font-bold uppercase"
+                    :class="{
+                      'text-rose-400': task.priority === 'urgent' || task.priority === 'high',
+                      'text-amber-400': task.priority === 'medium',
+                      'text-slate-400': task.priority === 'low'
+                    }"
+                  >
+                    {{ task.priority }}
+                  </span>
+                </div>
+
+                <!-- Título do Grupo -->
+                <div>
+                  <h4 class="text-xs font-black text-white group-hover:text-indigo-300 transition leading-snug">
+                    {{ task.title }}
+                  </h4>
+                  <div v-if="task.business" class="text-[10px] text-slate-500 truncate mt-0.5">
+                    Venture: <strong class="text-slate-400">{{ task.business.name }}</strong>
+                  </div>
+                </div>
+
+                <!-- Resumo & Barra de Progresso de Cenas -->
+                <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between text-[10px]">
+                    <span class="text-slate-400 font-semibold">{{ task.subtasks.length }} subtarefas / cenas</span>
+                    <span class="font-mono font-bold text-indigo-300">{{ task.completedCount }}/{{ task.totalCount }}</span>
+                  </div>
+                  <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      class="bg-gradient-to-r from-indigo-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300"
+                      :style="{ width: `${task.progressPercent}%` }"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- Botão Toggle de Subtarefas -->
+                <button
+                  type="button"
+                  @click.stop="toggleTaskGroup(task.groupKey)"
+                  class="w-full px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-900 border border-slate-800 flex items-center justify-between text-[11px] text-slate-300 transition"
+                >
+                  <span class="flex items-center space-x-1.5">
+                    <span class="text-indigo-400">🎞️</span>
+                    <span>{{ isTaskGroupExpanded(task.groupKey) ? 'Ocultar Cenas' : `Ver ${task.subtasks.length} Cenas da Série` }}</span>
+                  </span>
+                  <svg
+                    class="w-3.5 h-3.5 transition-transform duration-200"
+                    :class="{'rotate-180': isTaskGroupExpanded(task.groupKey)}"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <!-- Subtarefas Expandidas -->
+                <div v-if="isTaskGroupExpanded(task.groupKey)" class="space-y-2 pt-1">
+                  <div
+                    v-for="sub in task.subtasks"
+                    :key="sub.id"
+                    @click="openTaskDetail(sub)"
+                    class="p-2.5 rounded-lg bg-slate-900 border border-slate-800/80 hover:border-emerald-500/50 hover:bg-slate-850 cursor-pointer transition space-y-1.5"
+                  >
+                    <div class="flex items-center justify-between text-[10px]">
+                      <span class="font-mono text-indigo-300 font-bold">
+                        Cena #{{ sub.parsedSceneNumber || '•' }}
+                      </span>
+                      <span
+                        class="px-1.5 py-0.2 rounded font-semibold text-[9px] uppercase"
+                        :class="sub.assignee === 'agent' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-sky-500/10 text-sky-400'"
+                      >
+                        {{ sub.assignee === 'agent' ? '🤖 IA' : '👤 Humano' }}
+                      </span>
+                    </div>
+
+                    <h5 class="text-[11px] font-bold text-slate-200 line-clamp-1">
+                      {{ sub.parsedSceneTitle || sub.title }}
+                    </h5>
+
+                    <!-- Barra de Progresso da Subtarefa/Cena -->
+                    <div v-if="getTaskVideoProgress(sub)" class="space-y-1 pt-0.5">
+                      <div class="flex items-center justify-between text-[9px]">
+                        <span class="text-slate-400 truncate max-w-[150px]">{{ getTaskVideoProgress(sub).statusText }}</span>
+                        <span class="font-mono font-bold text-indigo-300">{{ Math.round(getTaskVideoProgress(sub).percent) }}%</span>
+                      </div>
+                      <div class="w-full bg-slate-950 rounded-full h-1 overflow-hidden">
+                        <div
+                          class="h-1 rounded-full transition-all duration-300"
+                          :class="getTaskVideoProgress(sub).isCompleted ? 'bg-emerald-400' : 'bg-indigo-500 animate-pulse'"
+                          :style="{ width: `${getTaskVideoProgress(sub).percent}%` }"
+                        ></div>
+                      </div>
+                    </div>
+
+                    <!-- Ações da Subtarefa -->
+                    <div class="pt-1.5 border-t border-slate-950 flex items-center justify-between text-[10px]" @click.stop>
+                      <div class="flex items-center space-x-1">
+                        <button
+                          v-if="col.status !== 'backlog'"
+                          @click.stop="handleMove(sub, (col.status === 'done' || col.status === 'completed') ? 'awaiting_supervision' : col.status === 'todo_user' ? 'in_progress_agent' : col.status === 'awaiting_supervision' ? 'in_progress_agent' : 'backlog')"
+                          title="Mover para trás"
+                          class="p-1 rounded bg-slate-950 hover:bg-slate-800 text-slate-400"
+                        >
+                          &larr;
+                        </button>
+                        <button
+                          v-if="col.status !== 'done' && col.status !== 'completed'"
+                          @click.stop="handleMove(sub, col.status === 'backlog' ? (sub.assignee === 'agent' ? 'in_progress_agent' : 'todo_user') : col.status === 'in_progress_agent' ? 'awaiting_supervision' : 'done')"
+                          title="Avançar etapa"
+                          class="p-1 rounded bg-slate-950 hover:bg-slate-800 text-emerald-400 font-bold"
+                        >
+                          &rarr;
+                        </button>
+                      </div>
+
+                      <button
+                        v-if="sub.assignee === 'agent' && sub.status !== 'done'"
+                        @click.stop="handleExecuteTask(sub)"
+                        :disabled="executingTaskId === sub.id"
+                        class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold flex items-center space-x-1 transition disabled:opacity-50"
+                      >
+                        <span v-if="executingTaskId === sub.id" class="animate-spin">⏳</span>
+                        <span v-else>⚡</span>
+                        <span>Executar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CASO 2: Card de Tarefa Individual Normal (Clicável) -->
+              <div
+                v-else
+                @click="openTaskDetail(task)"
+                class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900/40 cursor-pointer transition space-y-2.5 shadow-sm group"
+              >
               <!-- Tags de Topo -->
               <div class="flex items-center justify-between text-[10px]">
                 <span
@@ -367,6 +656,56 @@ function getColumnBadgeColor(status) {
               <!-- Negócio Vinculado -->
               <div v-if="task.business" class="text-[10px] text-slate-500 truncate">
                 Venture: <strong class="text-slate-400">{{ task.business.name }}</strong>
+              </div>
+
+              <!-- BARRA DE PROGRESSO DINÂMICA DE VÍDEO (PIPELINE ABVOS) -->
+              <div
+                v-if="getTaskVideoProgress(task)"
+                class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2"
+              >
+                <div class="flex items-center justify-between text-[10px]">
+                  <span class="flex items-center space-x-1.5 font-bold text-slate-300">
+                    <span v-if="getTaskVideoProgress(task).isRunning" class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+                    <span v-else-if="getTaskVideoProgress(task).isCompleted" class="text-emerald-400">✓</span>
+                    <span v-else class="text-slate-500">🎬</span>
+                    <span class="truncate max-w-[170px]" :title="getTaskVideoProgress(task).statusText">
+                      {{ getTaskVideoProgress(task).statusText }}
+                    </span>
+                  </span>
+                  <span
+                    class="font-mono font-bold px-1.5 py-0.2 rounded text-[10px]"
+                    :class="getTaskVideoProgress(task).isCompleted ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/20 text-indigo-300'"
+                  >
+                    {{ Math.round(getTaskVideoProgress(task).percent) }}%
+                  </span>
+                </div>
+
+                <!-- Barra com gradiente dinâmico -->
+                <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden p-0.5 border border-slate-800">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :class="getTaskVideoProgress(task).isCompleted
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/30'
+                      : 'bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 animate-pulse'"
+                    :style="{ width: `${getTaskVideoProgress(task).percent}%` }"
+                  ></div>
+                </div>
+
+                <!-- Ação Rápida quando Concluído (100%): Assistir na Galeria -->
+                <div v-if="getTaskVideoProgress(task).isCompleted" class="pt-1 flex items-center justify-between text-[10px]">
+                  <span class="text-emerald-400 font-semibold flex items-center space-x-1">
+                    <span>Pronto em</span>
+                    <code class="text-[9px] bg-slate-950 px-1 py-0.5 rounded text-slate-300">/app/storage/output</code>
+                  </span>
+                  <RouterLink
+                    to="/storage-viewer"
+                    class="text-indigo-400 hover:text-indigo-300 font-bold underline decoration-dotted flex items-center space-x-1"
+                    @click.stop
+                  >
+                    <span>Ver Vídeo</span>
+                    <span>&rarr;</span>
+                  </RouterLink>
+                </div>
               </div>
 
               <!-- Indicadores Visuais de Entregável & Status -->
@@ -442,6 +781,7 @@ function getColumnBadgeColor(status) {
                 </div>
               </div>
             </div>
+            </template>
           </div>
         </div>
       </div>

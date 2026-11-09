@@ -8,6 +8,7 @@ import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
 import { api } from '@/services/api'
+import { groupDarkScripts } from '@/utils/scriptGrouping'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +42,74 @@ const newScriptForm = ref({
   visual_style: 'Cinemático 8k hiper-realista, iluminação dramática, Unreal Engine 5 render style',
   voice_persona: 'Voz masculina profunda e documental, ritmo pausado',
 })
+
+const darkScriptsViewMode = ref('grouped') // 'grouped' | 'flat'
+const expandedGroupKeys = ref(new Set())
+
+const displayDarkScripts = computed(() => {
+  if (darkScriptsViewMode.value === 'flat') {
+    return darkScripts.value
+  }
+  return groupDarkScripts(darkScripts.value)
+})
+
+const groupedStats = computed(() => {
+  const groups = displayDarkScripts.value
+  const totalSeries = groups.filter((g) => g.isGroup).length
+  const totalStandalone = groups.filter((g) => !g.isGroup).length
+  return {
+    totalSeries,
+    totalStandalone,
+    totalCards: groups.length,
+    totalScenes: darkScripts.value.length,
+  }
+})
+
+function toggleGroupExpand(key) {
+  if (expandedGroupKeys.value.has(key)) {
+    expandedGroupKeys.value.delete(key)
+  } else {
+    expandedGroupKeys.value.add(key)
+  }
+}
+
+function isGroupExpanded(key) {
+  return expandedGroupKeys.value.has(key)
+}
+
+function openScriptDetail(scriptOrGroup) {
+  if (scriptOrGroup.isGroup) {
+    const consolidatedScenes = []
+    let sceneIdx = 1
+    for (const item of scriptOrGroup.items) {
+      if (item.scenes && item.scenes.length > 0) {
+        for (const sc of item.scenes) {
+          consolidatedScenes.push({
+            ...sc,
+            scene_number: sc.scene_number || sceneIdx++,
+            origin_item_title: item.parsedSceneTitle || item.title,
+          })
+        }
+      } else {
+        consolidatedScenes.push({
+          scene_number: item.parsedSceneNumber || sceneIdx++,
+          timestamp: `Cena #${item.parsedSceneNumber || sceneIdx}`,
+          narration: item.full_narration || item.hook || item.title,
+          visual_prompt: item.visual_prompt || item.content?.visual_prompt || 'Visual prompt cinemático para IA',
+          on_screen_text: item.parsedSceneTitle || item.title,
+          b_roll_description: item.b_roll_description || item.content?.b_roll_description || '',
+          origin_item_title: item.parsedSceneTitle || item.title,
+        })
+      }
+    }
+    selectedDarkScript.value = {
+      ...scriptOrGroup,
+      scenes: consolidatedScenes,
+    }
+  } else {
+    selectedDarkScript.value = scriptOrGroup
+  }
+}
 
 const isDarkChannel = computed(() => {
   const arch = business.value?.archetype || business.value?.type
@@ -719,12 +788,46 @@ function formatTaskPriority(priority) {
 
         <!-- Seção 2: Roteiros Produzidos & Fila de Produção -->
         <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h4 class="text-sm font-bold text-white tracking-tight">Roteiros Prontos & Supervisão</h4>
+              <div class="flex items-center space-x-2">
+                <h4 class="text-sm font-bold text-white tracking-tight">Roteiros Prontos & Supervisão</h4>
+                <span v-if="darkScriptsViewMode === 'grouped' && groupedStats.totalSeries > 0" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  Agrupado por Produção ({{ groupedStats.totalSeries }} séries)
+                </span>
+              </div>
               <p class="text-xs text-slate-400 mt-0.5">Roteiros completos com narração, minutagem e prompts de imagens para IA.</p>
             </div>
-            <span class="text-xs text-slate-500 font-mono">{{ darkScripts.length }} roteiros</span>
+
+            <div class="flex items-center space-x-3">
+              <!-- Seletor de Modo de Visualização (Agrupado vs Plano) -->
+              <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  @click="darkScriptsViewMode = 'grouped'"
+                  class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center space-x-1.5"
+                  :class="darkScriptsViewMode === 'grouped' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'"
+                  title="Agrupar cenas do mesmo vídeo ou série em um card mestre"
+                >
+                  <span>🎬</span>
+                  <span>Agrupado</span>
+                </button>
+                <button
+                  type="button"
+                  @click="darkScriptsViewMode = 'flat'"
+                  class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center space-x-1.5"
+                  :class="darkScriptsViewMode === 'flat' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'"
+                  title="Exibir cada cena como um card individual"
+                >
+                  <span>📄</span>
+                  <span>Cenas Avulsas</span>
+                </button>
+              </div>
+
+              <span class="text-xs text-slate-500 font-mono">
+                {{ darkScriptsViewMode === 'grouped' ? `${displayDarkScripts.length} produções (${darkScripts.length} cenas)` : `${darkScripts.length} roteiros` }}
+              </span>
+            </div>
           </div>
 
           <!-- Estado Vazio -->
@@ -736,44 +839,129 @@ function formatTaskPriority(priority) {
           <!-- Grid de Roteiros -->
           <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
-              v-for="s in darkScripts"
-              :key="s.id"
-              class="p-5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between space-y-4 shadow-sm"
+              v-for="s in displayDarkScripts"
+              :key="s.isGroup ? s.groupKey : s.id"
+              class="p-5 rounded-xl bg-slate-950 border transition flex flex-col justify-between space-y-4 shadow-sm"
+              :class="s.isGroup ? 'border-indigo-500/40 hover:border-indigo-500/80 bg-gradient-to-b from-indigo-950/10 to-slate-950 md:col-span-2' : 'border-slate-800 hover:border-slate-700'"
             >
               <div>
+                <!-- Cabeçalho do Card (Agrupado vs Simples) -->
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-2">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase" :class="s.format_type === 'long' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span
+                      v-if="s.isGroup"
+                      class="px-2.5 py-0.5 rounded text-[10px] font-black font-mono uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1 shadow-sm"
+                    >
+                      <span>🎬</span>
+                      <span>SÉRIE / VÍDEO CONSOLIDADO</span>
+                    </span>
+                    <span
+                      class="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase"
+                      :class="s.format_type === 'long' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'"
+                    >
                       {{ s.format_type === 'long' ? 'YouTube Longo' : 'Shorts / TikTok' }}
                     </span>
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                      {{ s.status === 'supervision' ? 'Em Supervisão' : s.status }}
+                      {{ s.status === 'supervision' ? 'Em Supervisão' : s.status === 'approved' ? 'Aprovado' : s.status }}
                     </span>
                   </div>
-                  <span class="text-[10px] text-slate-500 font-mono">{{ s.scenes_count || (s.scenes && s.scenes.length) || 0 }} cenas</span>
+                  <span class="text-[11px] font-bold font-mono" :class="s.isGroup ? 'text-indigo-400 bg-indigo-950/40 px-2.5 py-0.5 rounded-full border border-indigo-500/20' : 'text-slate-500'">
+                    {{ s.isGroup ? `${s.items.length} cenas agrupadas` : `${s.scenes_count || (s.scenes && s.scenes.length) || 0} cenas` }}
+                  </span>
                 </div>
 
-                <h5 class="text-base font-bold text-white mt-3">{{ s.title }}</h5>
+                <!-- Título -->
+                <h5 class="text-base font-black text-white mt-3 tracking-tight flex items-center space-x-2">
+                  <span>{{ s.title }}</span>
+                  <span v-if="s.isGroup" class="text-xs text-slate-400 font-normal">({{ s.items.length }} partes)</span>
+                </h5>
 
                 <!-- Gancho Destacado -->
                 <div v-if="s.hook" class="mt-2.5 p-3 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-xs">
-                  <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-0.5">Hook Inicial (0-3s):</span>
+                  <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block mb-0.5">
+                    {{ s.isGroup ? '⚡ Hook de Abertura da Produção:' : 'Hook Inicial (0-3s):' }}
+                  </span>
                   <p class="text-slate-200 italic font-medium">"{{ s.hook }}"</p>
                 </div>
 
-                <p v-if="s.full_narration" class="text-xs text-slate-400 mt-2.5 line-clamp-2 leading-relaxed">
+                <p v-if="!s.isGroup && s.full_narration" class="text-xs text-slate-400 mt-2.5 line-clamp-2 leading-relaxed">
                   {{ s.full_narration }}
                 </p>
 
                 <!-- Tags SEO -->
                 <div v-if="s.seo_tags && s.seo_tags.length" class="flex flex-wrap gap-1 mt-3">
                   <span
-                    v-for="(tag, tidx) in s.seo_tags.slice(0, 5)"
+                    v-for="(tag, tidx) in s.seo_tags.slice(0, 6)"
                     :key="tidx"
                     class="px-2 py-0.5 rounded text-[10px] bg-slate-900 text-slate-400 font-mono"
                   >
                     #{{ tag }}
                   </span>
+                </div>
+
+                <!-- Gaveta Accordion de Cenas (Exclusivo para Grupos) -->
+                <div v-if="s.isGroup" class="mt-4 pt-3 border-t border-slate-900/80">
+                  <button
+                    type="button"
+                    @click="toggleGroupExpand(s.groupKey)"
+                    class="w-full px-3 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800/80 flex items-center justify-between text-xs text-slate-300 font-semibold transition group"
+                  >
+                    <span class="flex items-center space-x-2">
+                      <span class="text-indigo-400">🎞️</span>
+                      <span>{{ isGroupExpanded(s.groupKey) ? 'Recolher Lista de Cenas' : `Ver Todas as ${s.items.length} Cenas Deste Vídeo` }}</span>
+                    </span>
+                    <span class="text-[11px] text-slate-500 group-hover:text-slate-300 flex items-center space-x-1">
+                      <span>{{ isGroupExpanded(s.groupKey) ? 'Ocultar' : 'Expandir' }}</span>
+                      <svg
+                        class="w-4 h-4 transition-transform duration-200"
+                        :class="{'rotate-180': isGroupExpanded(s.groupKey)}"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </span>
+                  </button>
+
+                  <!-- Cenas Aninhadas Expandidas -->
+                  <div v-if="isGroupExpanded(s.groupKey)" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div
+                      v-for="(subItem, subIdx) in s.items"
+                      :key="subItem.id || subIdx"
+                      class="p-3.5 rounded-xl bg-slate-900 border border-slate-800/90 hover:border-indigo-500/40 space-y-2 transition flex flex-col justify-between"
+                    >
+                      <div>
+                        <div class="flex items-center justify-between">
+                          <span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-indigo-500/20 text-indigo-300">
+                            Cena #{{ subItem.parsedSceneNumber || (subIdx + 1) }}
+                          </span>
+                          <span class="text-[10px] text-slate-400 font-mono">
+                            {{ subItem.status === 'supervision' ? 'Em Supervisão' : subItem.status }}
+                          </span>
+                        </div>
+                        <h6 class="text-xs font-bold text-white mt-1.5 line-clamp-1">
+                          {{ subItem.parsedSceneTitle || subItem.title }}
+                        </h6>
+                        <p v-if="subItem.hook || subItem.full_narration" class="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                          "{{ subItem.hook || subItem.full_narration }}"
+                        </p>
+                      </div>
+
+                      <div class="pt-2 border-t border-slate-950 flex items-center justify-end">
+                        <button
+                          type="button"
+                          @click.stop="openScriptDetail(subItem)"
+                          class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 transition flex items-center space-x-1"
+                        >
+                          <span>Ver Cena & Prompts</span>
+                          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -784,17 +972,17 @@ function formatTaskPriority(priority) {
                 </span>
                 <div class="flex items-center space-x-2">
                   <button
-                    @click="selectedDarkScript = s"
-                    class="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center space-x-1 shadow-sm"
+                    @click="openScriptDetail(s)"
+                    class="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center space-x-1.5 shadow-sm"
                   >
-                    <span>Ver Cenas & Prompts</span>
+                    <span>{{ s.isGroup ? 'Ver Roteiro Consolidado' : 'Ver Cenas & Prompts' }}</span>
                     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   </button>
                   <router-link
-                    v-if="s.approval_queue_id"
+                    v-if="s.approval_queue_id || (s.items && s.items.some(it => it.approval_queue_id))"
                     to="/approvals"
                     class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition"
                     title="Aprovar na fila de supervisão"
@@ -1233,6 +1421,9 @@ function formatTaskPriority(priority) {
                   <div class="flex items-center space-x-2">
                     <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold text-[10px]">
                       Cena #{{ scene.scene_number || (sidx + 1) }}
+                    </span>
+                    <span v-if="scene.origin_item_title" class="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium text-[10px] truncate max-w-[220px]" :title="scene.origin_item_title">
+                      {{ scene.origin_item_title }}
                     </span>
                     <span class="text-slate-400 font-mono text-[11px]">{{ scene.timestamp }}</span>
                   </div>

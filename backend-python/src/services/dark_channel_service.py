@@ -320,6 +320,7 @@ async def list_dark_scripts(db: AsyncSession, business_id: int) -> list[dict[str
         results.append({
             "id": a.id,
             "business_id": a.business_id,
+            "parent_id": a.parent_id,
             "title": a.title or "Sem título",
             "format_type": content_dict.get("format_type", "short" if a.type == "dark_script_short" else "long"),
             "target_platform": a.platform,

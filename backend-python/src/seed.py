@@ -2,9 +2,10 @@ import asyncio
 from datetime import datetime, timezone
 from sqlalchemy.future import select
 from src.database import AsyncSessionLocal
-from src.models import User
+from src.models import User, Business
 from src.security import hash_password
 from src.services.user_onboarding import provision_starter_kit
+from src.services.media.task_dispatcher import dispatch_series_video_tasks
 
 
 def _utc_now():
@@ -128,6 +129,23 @@ async def seed():
             print("DEMO_USER_READY: demo@spirandeliempire.tech")
         else:
             print("DEMO_USER_EXISTS: demo@spirandeliempire.tech")
+
+        # 5. Seeder de Séries de Vídeo no Kanban (Série 1 - A Queda de Lúcifer: Partes 1, 2 e 3)
+        res_users = await session.execute(select(User))
+        all_users = res_users.scalars().all()
+        for u in all_users:
+            b_res = await session.execute(select(Business).where(Business.user_id == u.id))
+            user_biz = b_res.scalars().all()
+            for b in user_biz:
+                await dispatch_series_video_tasks(
+                    db=session,
+                    user_id=u.id,
+                    business_id=b.id,
+                    series_title="Série 01 - A Queda de Lúcifer",
+                    parts_count=3,
+                    auto_execute_part_1=False,
+                )
+        print("SERIES_VIDEO_TASKS_SEEDED: Série 01 - A Queda de Lúcifer (Partes 1, 2 e 3)")
 
 
 if __name__ == "__main__":
