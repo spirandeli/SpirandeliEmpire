@@ -67,13 +67,23 @@ def get_ffprobe_path() -> str:
     return str(local_bin)
 
 
+def _ensure_writable_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(str(path), 0o777)
+        if path.parent.exists():
+            os.chmod(str(path.parent), 0o777)
+    except OSError:
+        pass
+    return path
+
+
 def get_task_media_dir(business_id: int, task_id: int) -> Path:
     """
     Retorna e garante a existência do diretório específico da tarefa.
     """
     path = STORAGE_MEDIA_DIR / f"biz_{business_id}" / f"task_{task_id}"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return _ensure_writable_dir(path)
 
 
 def get_task_output_dir(business_id: int, task_id: int) -> Path:
@@ -81,7 +91,6 @@ def get_task_output_dir(business_id: int, task_id: int) -> Path:
     Retorna e garante a existência do diretório de saída em /app/storage/output.
     """
     path = STORAGE_OUTPUT_DIR / f"biz_{business_id}" / f"task_{task_id}"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return _ensure_writable_dir(path)
 
 

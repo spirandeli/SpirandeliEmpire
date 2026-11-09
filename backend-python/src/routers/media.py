@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
-from src.services.media.media_settings import STORAGE_MEDIA_DIR
+from src.services.media.media_settings import STORAGE_MEDIA_DIR, STORAGE_OUTPUT_DIR
 
 router = APIRouter(prefix="/media", tags=["Media"])
 
@@ -42,19 +42,25 @@ def scan_task_media_dir(task_id: int, business_id: Optional[int] = None) -> dict
     task_folder = f"task_{task_id}"
 
     target_dir: Optional[Path] = None
+    active_root: Path = STORAGE_MEDIA_DIR
 
-    if biz_folder:
-        candidate = STORAGE_MEDIA_DIR / biz_folder / task_folder
-        if candidate.exists() and candidate.is_dir():
-            target_dir = candidate
-
-    if not target_dir:
-        # Busca em STORAGE_MEDIA_DIR por correspondência da pasta da task
-        for p in STORAGE_MEDIA_DIR.glob(f"*/{task_folder}"):
-            if p.is_dir():
-                target_dir = p
-                biz_folder = p.parent.name
+    for root_candidate in (STORAGE_MEDIA_DIR, STORAGE_OUTPUT_DIR):
+        if biz_folder:
+            candidate = root_candidate / biz_folder / task_folder
+            if candidate.exists() and candidate.is_dir():
+                target_dir = candidate
+                active_root = root_candidate
                 break
+
+        if not target_dir:
+            for p in root_candidate.glob(f"*/{task_folder}"):
+                if p.is_dir():
+                    target_dir = p
+                    active_root = root_candidate
+                    biz_folder = p.parent.name
+                    break
+        if target_dir:
+            break
 
     if not target_dir or not target_dir.exists():
         return {
@@ -103,7 +109,7 @@ def scan_task_media_dir(task_id: int, business_id: Optional[int] = None) -> dict
             "size_mb": size_mb,
             "created_at": created_at,
             "modified_at": modified_at,
-            "relative_path": str(f_path.relative_to(STORAGE_MEDIA_DIR)),
+            "relative_path": str(f_path.relative_to(active_root)),
             "url": rel_url,
             "download_url": down_url,
         }
@@ -170,18 +176,21 @@ async def get_media_file(
     Serve arquivos de mídia gerados (vídeos .mp4, áudios .mp3, imagens .jpg, legendas .srt)
     com suporte a streaming (Range requests) e download direto.
     """
-    target_path = (STORAGE_MEDIA_DIR / business_folder / task_folder / filename).resolve()
+    target_path = None
+    for root_dir in (STORAGE_MEDIA_DIR, STORAGE_OUTPUT_DIR):
+        cand = (root_dir / business_folder / task_folder / filename).resolve()
+        try:
+            cand.relative_to(root_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso não autorizado ao diretório de mídia.",
+            )
+        if cand.exists() and cand.is_file():
+            target_path = cand
+            break
 
-    # Prevenção contra Directory Traversal
-    try:
-        target_path.relative_to(STORAGE_MEDIA_DIR.resolve())
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso não autorizado ao diretório de mídia.",
-        )
-
-    if not target_path.exists() or not target_path.is_file():
+    if not target_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Arquivo de mídia não encontrado.",
@@ -226,17 +235,21 @@ async def get_scene_image(
     """
     Serve imagens individuais de cada cena gerada.
     """
-    target_path = (STORAGE_MEDIA_DIR / business_folder / task_folder / "scenes" / filename).resolve()
+    target_path = None
+    for root_dir in (STORAGE_MEDIA_DIR, STORAGE_OUTPUT_DIR):
+        cand = (root_dir / business_folder / task_folder / "scenes" / filename).resolve()
+        try:
+            cand.relative_to(root_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso não autorizado.",
+            )
+        if cand.exists() and cand.is_file():
+            target_path = cand
+            break
 
-    try:
-        target_path.relative_to(STORAGE_MEDIA_DIR.resolve())
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso não autorizado.",
-        )
-
-    if not target_path.exists() or not target_path.is_file():
+    if not target_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Imagem de cena não encontrada.",

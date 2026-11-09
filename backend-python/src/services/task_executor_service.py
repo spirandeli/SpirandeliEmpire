@@ -17,7 +17,7 @@ from src.models import (
     User,
 )
 from src.services.jeffrey_orchestrator import call_gemini_generate_content, get_effective_gemini_key
-from src.services.media.pipeline import execute_full_media_pipeline
+from src.services.media.pipeline import execute_full_media_pipeline, _persist_video_progress
 
 logger = logging.getLogger("abvos.task_executor")
 
@@ -107,8 +107,24 @@ Produza agora o entregável final estruturado."""
     is_video_task = (
         (business and business.archetype in ("canal_dark", "dark_channel_automation"))
         or getattr(task, "agent_action", None) == "render_video_series"
-        or any(k in (task.title + " " + (task.description or "")).lower() for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução"])
+        or any(
+            k in (task.title + " " + (task.description or "")).lower()
+            for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução", "reels", "série", "serie", "mp4"]
+        )
     )
+
+    if is_video_task:
+        task.status = "in_progress_agent"
+        task.failure_reason = None
+        await db.commit()
+        await _persist_video_progress(
+            task_id=task.id,
+            business_id=business.id if business else 0,
+            current_scene=0,
+            total_scenes=20,
+            stage="prompts",
+            percent=0.0,
+        )
 
     response_data = {}
     model_used = "gemini-3.8-flash"
@@ -222,6 +238,17 @@ Produza agora o entregável final estruturado."""
         except Exception as media_err:
             logger.error(f"Erro ao executar pipeline multimídia para tarefa #{task.id}: {media_err}")
             parsed_output["media_error"] = str(media_err)
+            task.failure_reason = f"Falha no pipeline de vídeo (VPS): {str(media_err)}"
+            task.status_log = f"Erro na renderização: {str(media_err)[:180]}"
+            payload_copy = dict(task.payload or {})
+            payload_copy["video_progress"] = {
+                "stage": "failed",
+                "percent": 0.0,
+                "status_log": task.status_log,
+                "error": str(media_err),
+                "updated_at": _utc_now().isoformat(),
+            }
+            task.payload = payload_copy
 
     # Se for venture de Canal Dark, registra também os roteiros como ContentAsset se ainda não registrados
     if business and business.archetype in ("canal_dark", "dark_channel_automation") and not media_result:
@@ -304,9 +331,14 @@ Produza agora o entregável final estruturado."""
     task.result = parsed_output
     if media_result and media_result.get("success"):
         task.status = "done"
+        task.failure_reason = None
+        task.completed_at = now
+    elif is_video_task and parsed_output.get("media_error"):
+        task.status = "awaiting_supervision"
+        task.completed_at = None
     else:
         task.status = "awaiting_supervision"
-    task.completed_at = now
+        task.completed_at = now
     task.updated_at = now
 
     # Registra Log Operacional

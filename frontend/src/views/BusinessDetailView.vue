@@ -1,9 +1,11 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AgentChatDrawer from '@/components/AgentChatDrawer.vue'
 import BusinessGrowthTab from '@/components/BusinessGrowthTab.vue'
+import BusinessGalleryTab from '@/components/BusinessGalleryTab.vue'
+import BusinessSettingsCredentialsTab from '@/components/BusinessSettingsCredentialsTab.vue'
 import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { useBusinessStore } from '@/stores/business'
 import { useSwal } from '@/composables/useSwal'
@@ -16,7 +18,8 @@ const businessStore = useBusinessStore()
 const swal = useSwal()
 
 const businessId = route.params.id
-const activeTab = ref('canvas') // canvas | tiktok | automations | tasks
+const activeTab = ref('canvas') // dark_studio | tiktok | gallery | credentials | tasks | canvas | automations | growth
+const galleryCounts = ref({ videos: 0, files: 0 })
 const isChatDrawerOpen = ref(false)
 const miningInProgress = ref(false)
 const tasks = ref([])
@@ -118,12 +121,38 @@ const isDarkChannel = computed(() => {
 
 onMounted(async () => {
   await loadBusiness()
-  await loadTasks()
+  await Promise.all([loadTasks(), loadGallerySummary()])
   if (isDarkChannel.value) {
     activeTab.value = 'dark_studio'
     await loadDarkStudio()
+  } else {
+    activeTab.value = 'tiktok'
+  }
+  if (route.query.tab && typeof route.query.tab === 'string') {
+    activeTab.value = route.query.tab
   }
 })
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (newTab && typeof newTab === 'string') {
+      activeTab.value = newTab
+    }
+  }
+)
+
+async function loadGallerySummary() {
+  try {
+    const res = await api.get('/v1/storage/outputs', { params: { business_id: Number(businessId) } })
+    galleryCounts.value = {
+      videos: res.data?.videos_count || (res.data?.videos || []).length || 0,
+      files: res.data?.total_files || (res.data?.files || []).length || 0,
+    }
+  } catch {
+    // silencioso
+  }
+}
 
 async function loadDarkStudio() {
   loadingDarkStudio.value = true
@@ -401,6 +430,10 @@ const automations = computed(() => {
   return business.value?.automations || []
 })
 
+const configuredChannels = computed(() => {
+  return business.value?.channels_configured || []
+})
+
 async function handleToggleStatus() {
   try {
     if (business.value.status === 'active') {
@@ -511,76 +544,52 @@ function formatTaskPriority(priority) {
     </template>
 
     <div class="space-y-6">
-      <!-- Top Action Bar -->
-      <div class="p-3 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4">
-        <!-- Navegação por Abas -->
-        <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1 xl:pb-0 flex-1 min-w-0">
-          <button
-            @click="activeTab = 'growth'"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'growth' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            <span>⚡</span>
-            <span>ROI & Auto-Otimização</span>
-          </button>
-          <button
-            @click="activeTab = 'canvas'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'canvas' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            Business Model Canvas & Marca
-          </button>
-          <!-- Aba Dinâmica por Arquétipo: Estúdio Dark ou Vitrine TikTok -->
-          <button
-            v-if="isDarkChannel"
-            @click="activeTab = 'dark_studio'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'dark_studio' ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            <span>🎬</span>
-            <span>Estúdio Dark & Roteiros</span>
-            <span class="px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px]">
-              {{ darkScripts.length }}
+      <!-- Card Executivo do Negócio: Resumo, Canais Conectados e Ações Rápidas (Separado das Abas) -->
+      <div class="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-lg shadow-black/20">
+        <div class="space-y-2 min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+              {{ businessModelLabel }}
             </span>
-          </button>
-          <button
-            v-else
-            @click="activeTab = 'tiktok'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'tiktok' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            <span>Vitrine TikTok Shop</span>
-            <span class="px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px]">
-              {{ tiktokProducts.length }}
+            <span
+              class="px-2.5 py-1 text-[10px] font-bold rounded-lg border cursor-pointer transition"
+              :class="configuredChannels.includes('youtube')
+                ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-300'"
+              @click="activeTab = 'credentials'"
+              title="Configurar acesso do YouTube"
+            >
+              ▶️ YouTube: {{ configuredChannels.includes('youtube') ? (business.channels?.youtube?.handle || 'Conectado') : 'Sem acesso' }}
             </span>
-          </button>
-          <button
-            @click="activeTab = 'automations'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'automations' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            <span>Automações Cron</span>
-            <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px]">
-              {{ automations.length }}
+            <span
+              class="px-2.5 py-1 text-[10px] font-bold rounded-lg border cursor-pointer transition"
+              :class="configuredChannels.includes('tiktok')
+                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-300'"
+              @click="activeTab = 'credentials'"
+              title="Configurar acesso do TikTok"
+            >
+              🎵 TikTok: {{ configuredChannels.includes('tiktok') ? (business.channels?.tiktok?.handle || 'Conectado') : 'Sem acesso' }}
             </span>
-          </button>
-          <button
-            @click="activeTab = 'tasks'"
-            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shrink-0 min-h-[38px] whitespace-nowrap"
-            :class="activeTab === 'tasks' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-          >
-            <span>Operações & Tarefas</span>
-            <span class="px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300 text-[10px]">
-              {{ tasks.length }}
-            </span>
-          </button>
+          </div>
+          <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+            {{ business.description || 'Venture autônomo gerenciado pelo Gemini 3.8 com produção de mídia, roteiros e execução de tarefas.' }}
+          </p>
         </div>
 
-        <!-- Botões de Ação Rápida -->
-        <div class="flex items-center gap-2 shrink-0 pt-2 xl:pt-0 border-t border-slate-800/80 xl:border-t-0 w-full xl:w-auto">
+        <!-- Botões de Ação Rápida Isolados (Sem Colidir com as Abas) -->
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            @click="activeTab = 'credentials'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+          >
+            <span>🔐</span>
+            <span>Acessos &amp; Contas</span>
+          </button>
+
           <button
             @click="isChatDrawerOpen = true"
-            class="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center justify-center space-x-1.5 shadow-md shadow-indigo-600/20 min-h-[38px] whitespace-nowrap active:scale-95"
+            class="px-4 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 min-h-[38px] whitespace-nowrap active:scale-95"
           >
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>Conversar com COO IA</span>
@@ -588,7 +597,7 @@ function formatTaskPriority(priority) {
 
           <button
             @click="handleToggleStatus"
-            class="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-semibold rounded-xl border transition min-h-[38px] text-center whitespace-nowrap active:scale-95"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl border transition min-h-[38px] text-center whitespace-nowrap active:scale-95"
             :class="business.status === 'active'
               ? 'bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20'
               : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20'"
@@ -598,6 +607,130 @@ function formatTaskPriority(priority) {
         </div>
       </div>
 
+      <!-- Barra de Navegação por Abas (100% da Largura, Sem Textos Cortados) -->
+      <div class="p-2 rounded-2xl bg-slate-900 border border-slate-800">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <!-- 1. Estúdio Dark ou Vitrine TikTok -->
+          <button
+            v-if="isDarkChannel"
+            @click="activeTab = 'dark_studio'"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'dark_studio' ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>🎬</span>
+            <span>Estúdio Dark &amp; Roteiros</span>
+            <span class="px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono">
+              {{ darkScripts.length }}
+            </span>
+          </button>
+          <button
+            v-else
+            @click="activeTab = 'tiktok'"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'tiktok' ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>🛒</span>
+            <span>Vitrine TikTok Shop</span>
+            <span class="px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono">
+              {{ tiktokProducts.length }}
+            </span>
+          </button>
+
+          <!-- 2. Galeria & Arquivos Deste Negócio -->
+          <button
+            @click="activeTab = 'gallery'"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'gallery' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>🎞️</span>
+            <span>Galeria &amp; Vídeos</span>
+            <span class="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+              {{ galleryCounts.videos }}
+            </span>
+          </button>
+
+          <!-- 3. Dados & Acessos (YouTube, TikTok, Config) -->
+          <button
+            @click="activeTab = 'credentials'"
+            class="px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'credentials' ? 'bg-amber-500/20 text-amber-200 border border-amber-500/30 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>🔐</span>
+            <span>Dados &amp; Acessos</span>
+            <span
+              class="px-1.5 py-0.5 rounded-full text-[10px] font-mono"
+              :class="configuredChannels.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'"
+            >
+              {{ configuredChannels.length }}
+            </span>
+          </button>
+
+          <!-- 4. Operações & Tarefas -->
+          <button
+            @click="activeTab = 'tasks'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'tasks' ? 'bg-slate-800 text-white border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>📋</span>
+            <span>Operações &amp; Tarefas</span>
+            <span class="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-mono">
+              {{ tasks.length }}
+            </span>
+          </button>
+
+          <!-- 5. Canvas & Marca -->
+          <button
+            @click="activeTab = 'canvas'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'canvas' ? 'bg-slate-800 text-white border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>🧭</span>
+            <span>Canvas &amp; Marca</span>
+          </button>
+
+          <!-- 6. Automações Cron -->
+          <button
+            @click="activeTab = 'automations'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'automations' ? 'bg-slate-800 text-white border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>⏰</span>
+            <span>Automações Cron</span>
+            <span class="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+              {{ automations.length }}
+            </span>
+          </button>
+
+          <!-- 7. ROI & Auto-Otimização -->
+          <button
+            @click="activeTab = 'growth'"
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 min-h-[38px] whitespace-nowrap"
+            :class="activeTab === 'growth' ? 'bg-slate-800 text-white border border-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+          >
+            <span>⚡</span>
+            <span>ROI &amp; Growth</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ABA: Galeria de Vídeos & Arquivos Deste Negócio -->
+      <div v-if="activeTab === 'gallery'">
+        <BusinessGalleryTab
+          :business-id="businessId"
+          :business="business"
+          @counts="(c) => { galleryCounts = c }"
+        />
+      </div>
+
+      <!-- ABA: Dados Gerais & Acessos do Negócio (YouTube / TikTok / Integrações) -->
+      <div v-if="activeTab === 'credentials'">
+        <BusinessSettingsCredentialsTab
+          :business-id="businessId"
+          :business="business"
+          @updated="loadBusiness"
+        />
+      </div>
+
       <!-- ABA 0: ROI & Auto-Otimização (Growth Engine) -->
       <div v-if="activeTab === 'growth'">
         <BusinessGrowthTab :business-id="businessId" :business="business" />
@@ -605,63 +738,55 @@ function formatTaskPriority(priority) {
 
       <!-- ABA 1: Business Model Canvas & Regras da Marca -->
       <div v-if="activeTab === 'canvas'" class="space-y-6">
-        <!-- Canvas Grid (9 Blocos Executivos) -->
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <!-- Coluna 1: Parcerias Chave -->
-          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1">
-              <span>Parcerias Chave</span>
-            </h4>
-            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-              <li v-for="(item, idx) in canvasData.key_partners || []" :key="idx">{{ item }}</li>
-            </ul>
-          </div>
+        <!-- Proposta de Valor em Destaque -->
+        <div class="p-5 rounded-2xl bg-indigo-950/25 border border-indigo-500/30 space-y-2">
+          <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">💎 Proposta de Valor Central</h4>
+          <ul class="text-xs text-slate-200 space-y-1.5 list-disc list-inside">
+            <li v-for="(item, idx) in canvasData.value_propositions || []" :key="idx" class="font-medium">{{ item }}</li>
+          </ul>
+        </div>
 
-          <!-- Coluna 2: Atividades Chave + Recursos Chave -->
-          <div class="space-y-4">
-            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Atividades Chave</h4>
-              <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                <li v-for="(item, idx) in canvasData.key_activities || []" :key="idx">{{ item }}</li>
-              </ul>
-            </div>
-            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Recursos Chave</h4>
-              <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                <li v-for="(item, idx) in canvasData.key_resources || []" :key="idx">{{ item }}</li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Coluna 3: Proposta de Valor (Destaque Central) -->
-          <div class="p-5 rounded-xl bg-indigo-950/20 border border-indigo-500/30 space-y-3">
-            <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">Proposta de Valor</h4>
-            <ul class="text-xs text-slate-200 space-y-2 list-disc list-inside">
-              <li v-for="(item, idx) in canvasData.value_propositions || []" :key="idx" class="font-medium">{{ item }}</li>
-            </ul>
-          </div>
-
-          <!-- Coluna 4: Relacionamento + Canais -->
-          <div class="space-y-4">
-            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Relacionamento</h4>
-              <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                <li v-for="(item, idx) in canvasData.customer_relationships || []" :key="idx">{{ item }}</li>
-              </ul>
-            </div>
-            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Canais</h4>
-              <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-                <li v-for="(item, idx) in canvasData.channels || []" :key="idx">{{ item }}</li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Coluna 5: Segmentos de Clientes -->
+        <!-- Canvas Grid Responsivo (3 Colunas Equilibradas) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Segmentos de Clientes</h4>
             <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
               <li v-for="(item, idx) in canvasData.customer_segments || []" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Canais de Distribuição</h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li v-for="(item, idx) in canvasData.channels || []" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Relacionamento</h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li v-for="(item, idx) in canvasData.customer_relationships || []" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Atividades Chave</h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li v-for="(item, idx) in canvasData.key_activities || []" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Recursos Chave</h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li v-for="(item, idx) in canvasData.key_resources || []" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Parcerias Chave</h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li v-for="(item, idx) in canvasData.key_partners || []" :key="idx">{{ item }}</li>
             </ul>
           </div>
         </div>

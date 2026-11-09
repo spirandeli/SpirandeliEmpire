@@ -16,6 +16,7 @@ from src.schemas.task import (
 )
 from src.services.task_executor_service import execute_agent_task
 from src.routers.media import scan_task_media_dir
+from src.routers.storage_viewer import delete_task_storage_dirs
 
 logger = logging.getLogger("abvos.routers.tasks")
 
@@ -211,6 +212,7 @@ async def board(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def store(
     payload: TaskCreateRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -247,6 +249,9 @@ async def store(
     await db.commit()
     await db.refresh(task)
     task.business = biz
+
+    if task_status == "in_progress_agent" and task.assignee == "agent":
+        background_tasks.add_task(_bg_execute_task, task.id, current_user)
 
     return {"data": _format_task(task)}
 
@@ -402,6 +407,7 @@ async def destroy(
     db: AsyncSession = Depends(get_db),
 ):
     task = await _get_user_task(task_id, current_user, db)
+    delete_task_storage_dirs(task_id=task.id, business_id=task.business_id)
     task.deleted_at = _utc_now()
     await db.commit()
     return None

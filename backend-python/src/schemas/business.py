@@ -19,14 +19,40 @@ class BusinessCreateRequest(BaseModel):
 
 
 class BusinessUpdateRequest(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=2, max_length=255)
     niche: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
+    archetype: Optional[str] = None
+    north_star_metric: Optional[str] = None
     target_kpi_value: Optional[Decimal] = None
     canvas: Optional[dict[str, Any]] = None
     brand_rules: Optional[dict[str, Any]] = None
     goals: Optional[dict[str, Any]] = None
+
+
+class ChannelAccountCredentials(BaseModel):
+    """Acesso a uma conta de plataforma (YouTube, TikTok...) vinculada ao negócio.
+
+    Para `password` e `api_key_or_token`: omitir/None/"" mantém o valor salvo;
+    "__clear__" remove o valor salvo.
+    """
+    enabled: Optional[bool] = None
+    label: Optional[str] = Field(None, max_length=120)
+    handle: Optional[str] = Field(None, max_length=255)
+    channel_url: Optional[str] = Field(None, max_length=500)
+    username_email: Optional[str] = Field(None, max_length=255)
+    password: Optional[str] = Field(None, max_length=500)
+    api_key_or_token: Optional[str] = Field(None, max_length=4000)
+    notes: Optional[str] = Field(None, max_length=2000)
+    auto_publish: Optional[bool] = None
+
+
+class BusinessChannelsUpdateRequest(BaseModel):
+    youtube: Optional[ChannelAccountCredentials] = None
+    tiktok: Optional[ChannelAccountCredentials] = None
+    instagram: Optional[ChannelAccountCredentials] = None
+    custom_platform: Optional[ChannelAccountCredentials] = None
 
 
 class BusinessAutomationCreateRequest(BaseModel):

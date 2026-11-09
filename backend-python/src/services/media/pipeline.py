@@ -258,8 +258,8 @@ def ensure_twenty_scenes(
             "scene_number": i + 1,
             "duration": 3.0,
             "narration": narr_text,
-            "visual_prompt": f"Hyper-realistic dark cinematic shot representing: {title}, {cam}, 8k resolution, volumetric light --ar 9:16",
-            "on_screen_text": f"FASE {i + 1}: {part_name.upper()}",
+            "visual_prompt": f"Dark epic cinematic illustration depicting: {narr_text} — Context: {title}, scene #{i + 1}, {cam}, 8k resolution, volumetric lighting, vertical 9:16",
+            "on_screen_text": f"CENA {i + 1:02d}: {part_name.upper()}",
         })
 
     return normalized_scenes
@@ -411,7 +411,14 @@ async def execute_full_video_pipeline(
         sc_file = scenes_dir / f"scene_{i:02d}.jpg"
         if not sc_file.exists() or sc_file.stat().st_size == 0:
             logger.warning(f"Asset da cena #{i} ausente no disco. Gerando imagem de segurança para garantir integridade física.")
-            fallback = create_cinematic_dark_backdrop(width=1080, height=1920, scene_number=i)
+            sc_meta = twenty_scenes[i - 1] if i - 1 < len(twenty_scenes) else {}
+            fallback = create_cinematic_dark_backdrop(
+                width=1080,
+                height=1920,
+                scene_number=i,
+                title=sc_meta.get("on_screen_text") or f"Cena {i}",
+                prompt=sc_meta.get("narration") or sc_meta.get("visual_prompt") or "",
+            )
             fallback.save(str(sc_file), "JPEG", quality=92)
         verified_images.append(str(sc_file))
 

@@ -205,6 +205,75 @@ class DispatchSeriesRequest(BaseModel):
     auto_execute_part_1: Optional[bool] = False
 
 
+class BatchDeleteFilesRequest(BaseModel):
+    paths: List[str]
+
+
+def _cleanup_empty_parents(file_path: Path, base_root: Path):
+    """Remove diretórios pais vazios até atingir base_root."""
+    try:
+        curr = file_path.parent
+        resolved_root = base_root.resolve()
+        while curr.exists() and curr.resolve() != resolved_root and str(curr.resolve()).startswith(str(resolved_root)):
+            if not any(curr.iterdir()):
+                curr.rmdir()
+                curr = curr.parent
+            else:
+                break
+    except Exception:
+        pass
+
+
+def _delete_relative_path_everywhere(rel_path: str) -> bool:
+    """
+    Remove um arquivo relativo tanto de STORAGE_OUTPUT_DIR quanto de STORAGE_MEDIA_DIR
+    para impedir que a sincronização recopie arquivos excluídos pelo usuário.
+    """
+    clean_rel = rel_path.lstrip("/").replace("\\", "/")
+    if not clean_rel or ".." in clean_rel.split("/"):
+        raise ValueError("Caminho de arquivo inválido.")
+
+    deleted_any = False
+    for base_dir in (STORAGE_OUTPUT_DIR, STORAGE_MEDIA_DIR):
+        if not base_dir.exists():
+            continue
+        candidate = (base_dir / clean_rel).resolve()
+        if str(candidate).startswith(str(base_dir.resolve())):
+            if candidate.is_file():
+                candidate.unlink(missing_ok=True)
+                _cleanup_empty_parents(candidate, base_dir)
+                deleted_any = True
+            elif candidate.is_dir():
+                shutil.rmtree(candidate, ignore_errors=True)
+                _cleanup_empty_parents(candidate, base_dir)
+                deleted_any = True
+
+    return deleted_any
+
+
+def delete_task_storage_dirs(task_id: int, business_id: Optional[int] = None) -> int:
+    """
+    Remove todos os diretórios e arquivos de mídia/output associados a uma task_id.
+    Retorna a quantidade de arquivos removidos.
+    """
+    removed_files = 0
+    for base_dir in (STORAGE_OUTPUT_DIR, STORAGE_MEDIA_DIR):
+        if not base_dir.exists():
+            continue
+        patterns = [f"biz_{business_id}/task_{task_id}"] if business_id else []
+        patterns.append(f"*/task_{task_id}")
+        seen_dirs = set()
+        for pat in patterns:
+            for match_dir in base_dir.glob(pat):
+                if match_dir.is_dir() and match_dir.resolve() not in seen_dirs:
+                    seen_dirs.add(match_dir.resolve())
+                    for root, _, files in os.walk(match_dir):
+                        removed_files += len(files)
+                    shutil.rmtree(match_dir, ignore_errors=True)
+                    _cleanup_empty_parents(match_dir, base_dir)
+    return removed_files
+
+
 @router.get("/download")
 async def download_storage_file(
     path: str = Query(..., description="Caminho relativo do arquivo dentro de storage/output"),
@@ -544,4 +613,207 @@ async def trigger_task_video_render(
         "status": "started",
         "task_id": task.id,
         "message": f"Renderização iniciada para '{task.title}'. O progresso será atualizado automaticamente.",
+    }
+
+
+@router.delete("/files")
+async def delete_storage_file(
+    path: str = Query(..., description="Caminho relativo do arquivo dentro de storage/output"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exclui um arquivo específico (.mp4, .mp3, .jpg, .png, .srt) do storage da VPS
+    (tanto em /app/storage/output quanto em /app/storage/media).
+    Se for o vídeo principal de uma tarefa, atualiza os metadados da tarefa.
+    """
+    try:
+        deleted = _delete_relative_path_everywhere(path)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no storage.")
+
+    # Se excluiu um vídeo .mp4 de uma task, atualiza o status da task se não restarem vídeos
+    task_match = re.search(r"task_(\d+)", path)
+    if task_match and path.lower().endswith(".mp4"):
+        t_id = int(task_match.group(1))
+        t_res = await db.execute(select(Task).where(Task.id == t_id))
+        task_obj = t_res.scalar_one_or_none()
+        if task_obj:
+            payload_copy = dict(task_obj.payload or {})
+            if "video_progress" in payload_copy:
+                payload_copy["video_progress"]["stage"] = "pending"
+                payload_copy["video_progress"]["percent"] = 0.0
+                payload_copy["video_progress"]["status_log"] = "Vídeo excluído pelo operador. Pronto para re-renderizar."
+                task_obj.payload = payload_copy
+            if isinstance(task_obj.result, dict):
+                res_copy = dict(task_obj.result)
+                res_copy.pop("video_url", None)
+                if isinstance(res_copy.get("media"), dict):
+                    res_copy["media"].pop("video", None)
+                task_obj.result = res_copy
+            task_obj.status_log = "Vídeo excluído pelo operador."
+            await db.commit()
+
+    return {
+        "status": "deleted",
+        "path": path,
+        "message": f"Arquivo '{Path(path).name}' excluído com sucesso da VPS.",
+    }
+
+
+@router.post("/files/delete-batch")
+async def delete_storage_files_batch(
+    payload: BatchDeleteFilesRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exclui múltiplos arquivos selecionados em lote no Storage Viewer.
+    """
+    deleted_paths = []
+    errors = []
+    affected_task_ids = set()
+
+    for rel_path in payload.paths:
+        try:
+            if _delete_relative_path_everywhere(rel_path):
+                deleted_paths.append(rel_path)
+                tm = re.search(r"task_(\d+)", rel_path)
+                if tm and rel_path.lower().endswith(".mp4"):
+                    affected_task_ids.add(int(tm.group(1)))
+            else:
+                errors.append({"path": rel_path, "error": "Não encontrado"})
+        except Exception as e:
+            errors.append({"path": rel_path, "error": str(e)})
+
+    if affected_task_ids:
+        t_res = await db.execute(select(Task).where(Task.id.in_(affected_task_ids)))
+        for task_obj in t_res.scalars().all():
+            payload_copy = dict(task_obj.payload or {})
+            if "video_progress" in payload_copy:
+                payload_copy["video_progress"]["stage"] = "pending"
+                payload_copy["video_progress"]["percent"] = 0.0
+                payload_copy["video_progress"]["status_log"] = "Vídeo excluído em lote."
+                task_obj.payload = payload_copy
+            task_obj.status_log = "Vídeo excluído pelo operador."
+        await db.commit()
+
+    return {
+        "status": "deleted",
+        "deleted_count": len(deleted_paths),
+        "deleted_paths": deleted_paths,
+        "errors": errors,
+        "message": f"{len(deleted_paths)} arquivo(s) excluído(s) com sucesso da VPS.",
+    }
+
+
+@router.delete("/tasks/{task_id}/files")
+async def delete_task_all_files(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exclui todos os arquivos de mídia (.mp4, .mp3, .srt, cenas .jpg/.png) de uma tarefa específica
+    e reseta seu estado de vídeo para permitir nova geração limpa.
+    """
+    t_res = await db.execute(select(Task).where(Task.id == task_id))
+    task_obj = t_res.scalar_one_or_none()
+    biz_id = task_obj.business_id if task_obj else None
+
+    removed_count = delete_task_storage_dirs(task_id=task_id, business_id=biz_id)
+
+    if task_obj:
+        payload_copy = dict(task_obj.payload or {})
+        payload_copy["video_progress"] = {
+            "stage": "pending",
+            "percent": 0.0,
+            "current_scene": 0,
+            "total_scenes": 20,
+            "status_log": "Arquivos limpos pelo operador. Pronto para nova geração.",
+            "output_path": "/app/storage/output/",
+        }
+        task_obj.payload = payload_copy
+        task_obj.status_log = "Arquivos limpos pelo operador. Pronto para nova geração."
+        if isinstance(task_obj.result, dict):
+            res_copy = dict(task_obj.result)
+            res_copy.pop("video_url", None)
+            res_copy.pop("audio_url", None)
+            res_copy.pop("srt_url", None)
+            res_copy.pop("media", None)
+            task_obj.result = res_copy
+        if task_obj.status == "done":
+            task_obj.status = "backlog"
+            task_obj.completed_at = None
+        await db.commit()
+
+    return {
+        "status": "cleared",
+        "task_id": task_id,
+        "removed_files_count": removed_count,
+        "message": f"Todos os arquivos da Tarefa #{task_id} foram excluídos da VPS.",
+    }
+
+
+@router.post("/cleanup")
+async def cleanup_invalid_and_orphan_files(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Varre /app/storage/output e /app/storage/media removendo:
+    1. Arquivos corrompidos, vazios ou mocks de teste (< 256 bytes);
+    2. Pastas de tarefas que já foram excluídas no banco de dados (deleted_at IS NOT NULL);
+    3. Diretórios vazios órfãos.
+    """
+    removed_files = 0
+    removed_dirs = 0
+
+    # Identifica tasks deletadas no banco
+    del_res = await db.execute(select(Task.id).where(Task.deleted_at.is_not(None)))
+    deleted_task_ids = set(del_res.scalars().all())
+
+    for base_dir in (STORAGE_OUTPUT_DIR, STORAGE_MEDIA_DIR):
+        if not base_dir.exists():
+            continue
+
+        for root, dirs, files in os.walk(base_dir, topdown=False):
+            root_path = Path(root)
+            if root_path.resolve() == base_dir.resolve():
+                continue
+
+            # Verifica se pertence a uma task deletada
+            tm = re.search(r"task_(\d+)", root_path.as_posix())
+            if tm and int(tm.group(1)) in deleted_task_ids:
+                removed_files += len(files)
+                shutil.rmtree(root_path, ignore_errors=True)
+                removed_dirs += 1
+                continue
+
+            for f_name in files:
+                if f_name == ".gitkeep":
+                    continue
+                f_path = root_path / f_name
+                try:
+                    if f_path.stat().st_size < 256:
+                        f_path.unlink(missing_ok=True)
+                        removed_files += 1
+                except Exception:
+                    pass
+
+            try:
+                if root_path.exists() and not any(root_path.iterdir()):
+                    root_path.rmdir()
+                    removed_dirs += 1
+            except Exception:
+                pass
+
+    return {
+        "status": "cleaned",
+        "removed_files": removed_files,
+        "removed_dirs": removed_dirs,
+        "message": f"Limpeza concluída: {removed_files} arquivo(s) inválido(s)/órfão(s) e {removed_dirs} pasta(s) vazia(s) removidos.",
     }

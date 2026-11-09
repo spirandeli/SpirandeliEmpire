@@ -215,17 +215,34 @@ function getColumnBadgeColor(status) {
 function getTaskVideoProgress(task) {
   if (!task) return null
 
-  // 1. Do payload estruturado
   const p = task.payload?.video_progress
+  const hasRealVideo = Boolean(
+    task.result?.video_url ||
+    task.result?.media?.video?.url ||
+    (p && p.stage === 'done' && !task.result?.media_error)
+  )
+
+  if (task.result?.media_error || p?.stage === 'failed') {
+    return {
+      percent: 0,
+      statusText: task.status_log || task.failure_reason || `Erro na mídia: ${task.result?.media_error || 'Falha FFmpeg'}`,
+      stage: 'failed',
+      isCompleted: false,
+      isRunning: false,
+      isFailed: true,
+    }
+  }
+
+  // 1. Do payload estruturado
   if (p && typeof p.percent === 'number') {
     const pct = Math.min(100, Math.max(0, p.percent))
-    const isCompleted = pct >= 100 || task.status === 'done' || p.stage === 'done'
+    const isCompleted = (pct >= 100 && hasRealVideo) || p.stage === 'done'
     return {
       percent: pct,
-      statusText: p.status_log || p.status_text || (isCompleted ? 'Concluído. Arquivo salvo em /app/storage/output/ (100%)' : 'Processando vídeo...'),
+      statusText: p.status_log || p.status_text || (isCompleted ? 'Concluído. Arquivo salvo em /app/storage/output/ (100%)' : 'Processando vídeo na VPS...'),
       stage: p.stage || (isCompleted ? 'done' : 'running'),
       isCompleted,
-      isRunning: !isCompleted && (task.status === 'in_progress_agent' || task.status === 'in_progress' || p.stage !== 'pending'),
+      isRunning: !isCompleted && (task.status === 'in_progress_agent' || task.status === 'in_progress' || (p.stage && p.stage !== 'pending')),
     }
   }
 
@@ -235,7 +252,7 @@ function getTaskVideoProgress(task) {
   if (match) {
     const rawStage = match[1].trim()
     const pct = parseFloat(match[2])
-    const isCompleted = pct >= 100 || task.status === 'done' || rawStage.toLowerCase().includes('concluído')
+    const isCompleted = (pct >= 100 || rawStage.toLowerCase().includes('concluído')) && !task.result?.media_error
     return {
       percent: Math.min(100, Math.max(0, pct)),
       statusText: `${rawStage} (${Math.round(pct)}%)`,
@@ -249,8 +266,7 @@ function getTaskVideoProgress(task) {
   const isVideo = (task.title + ' ' + (task.description || '')).toLowerCase().includes('vídeo') ||
                   (task.title + ' ' + (task.description || '')).toLowerCase().includes('video')
   if (isVideo) {
-    const isDone = task.status === 'done' || task.status === 'completed'
-    if (isDone) {
+    if ((task.status === 'done' || task.status === 'completed') && hasRealVideo) {
       return {
         percent: 100,
         statusText: 'Concluído. Arquivo salvo em /app/storage/output/ (100%)',
@@ -262,7 +278,7 @@ function getTaskVideoProgress(task) {
     if (task.status === 'in_progress_agent' || task.status === 'in_progress') {
       return {
         percent: 25,
-        statusText: 'Gerando imagens (Cena 5/20)... (25%)',
+        statusText: 'Gerando imagens na VPS (Cena 5/20)... (25%)',
         stage: 'running',
         isCompleted: false,
         isRunning: true,

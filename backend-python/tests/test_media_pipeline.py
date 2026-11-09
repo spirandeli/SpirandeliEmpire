@@ -1,3 +1,5 @@
+import os
+import shutil
 import pytest
 from pathlib import Path
 from src.services.media.pipeline import (
@@ -6,7 +8,12 @@ from src.services.media.pipeline import (
     ensure_twenty_scenes,
     router,
 )
-from src.services.media.media_settings import get_ffmpeg_path, get_ffprobe_path
+from src.services.media.media_settings import (
+    get_ffmpeg_path,
+    get_ffprobe_path,
+    STORAGE_MEDIA_DIR,
+    STORAGE_OUTPUT_DIR,
+)
 from src.worker import WorkerSettings
 
 
@@ -67,28 +74,34 @@ async def test_full_media_pipeline_execution(tmp_path):
         },
     ]
 
-    res = await execute_full_video_pipeline(
-        business_id=1,
-        task_id=888,
-        scenes=scenes,
-        full_narration="O mistério oculto nos confins do tempo. Registros proibidos que agora vêm à tona.",
-    )
+    os.environ["ABVOS_DISABLE_EXTERNAL_IMAGE_API"] = "1"
+    try:
+        res = await execute_full_video_pipeline(
+            business_id=9991,
+            task_id=999888,
+            scenes=scenes,
+            full_narration="O mistério oculto nos confins do tempo. Registros proibidos que agora vêm à tona.",
+        )
 
-    assert res["success"] is True
-    assert res["business_id"] == 1
-    assert res["task_id"] == 888
-    # 20 cenas garantidas
-    assert res["scenes_count"] == 20
-    assert len(res["images_generated"]) == 20
+        assert res["success"] is True
+        assert res["business_id"] == 9991
+        assert res["task_id"] == 999888
+        # 20 cenas garantidas
+        assert res["scenes_count"] == 20
+        assert len(res["images_generated"]) == 20
 
-    # Validação do vídeo compilado
-    assert Path(res["video"]["path"]).exists()
-    assert res["video"]["resolution"] == "1080x1920"
-    assert res["video"]["aspect_ratio"] == "9:16"
-    assert res["video"]["duration_seconds"] == 60.0
-    assert res["video"]["size_mb"] > 0
+        # Validação do vídeo compilado
+        assert Path(res["video"]["path"]).exists()
+        assert res["video"]["resolution"] == "1080x1920"
+        assert res["video"]["aspect_ratio"] == "9:16"
+        assert res["video"]["duration_seconds"] == 60.0
+        assert res["video"]["size_mb"] > 0
 
-    # Validação dos assets
-    assert Path(res["audio"]["path"]).exists()
-    assert Path(res["subtitles"]["srt_path"]).exists()
-    assert Path(res["subtitles"]["ass_path"]).exists()
+        # Validação dos assets
+        assert Path(res["audio"]["path"]).exists()
+        assert Path(res["subtitles"]["srt_path"]).exists()
+        assert Path(res["subtitles"]["ass_path"]).exists()
+    finally:
+        os.environ.pop("ABVOS_DISABLE_EXTERNAL_IMAGE_API", None)
+        shutil.rmtree(STORAGE_MEDIA_DIR / "biz_9991", ignore_errors=True)
+        shutil.rmtree(STORAGE_OUTPUT_DIR / "biz_9991", ignore_errors=True)

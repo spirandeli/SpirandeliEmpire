@@ -259,14 +259,33 @@ async function handleDelete(biz) {
               </div>
               <div class="flex items-center justify-between text-xs">
                 <span class="text-slate-500 font-medium">Automações Ativas:</span>
-                <span class="text-indigo-400 font-semibold">{{ biz.automations_count || biz.automations?.length || 2 }} regras ativas</span>
+                <span class="text-indigo-400 font-semibold">{{ biz.automations_count ?? biz.automations?.length ?? 0 }} regras ativas</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-medium">Canais Conectados:</span>
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class="px-2 py-0.5 rounded text-[10px] font-bold border"
+                    :class="(biz.channels_configured || []).includes('youtube')
+                      ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                      : 'bg-slate-950 text-slate-500 border-slate-800'"
+                    title="Status do acesso YouTube"
+                  >▶️ YT</span>
+                  <span
+                    class="px-2 py-0.5 rounded text-[10px] font-bold border"
+                    :class="(biz.channels_configured || []).includes('tiktok')
+                      ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                      : 'bg-slate-950 text-slate-500 border-slate-800'"
+                    title="Status do acesso TikTok"
+                  >🎵 TikTok</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Bottom Footer Actions -->
-          <div class="px-6 py-4 bg-slate-950/60 border-t border-slate-800/80 flex items-center justify-between">
-            <div class="flex items-center space-x-2">
+          <div class="px-6 py-4 bg-slate-950/60 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <div class="flex items-center space-x-1.5">
               <button
                 @click="handleToggleStatus(biz)"
                 class="p-2 text-xs rounded-xl border transition"
@@ -295,15 +314,31 @@ async function handleDelete(biz) {
               </button>
             </div>
 
-            <router-link
-              :to="`/businesses/${biz.id}`"
-              class="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center space-x-1"
-            >
-              <span>Acessar Hub</span>
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-            </router-link>
+            <div class="flex items-center gap-1.5">
+              <router-link
+                :to="{ path: `/businesses/${biz.id}`, query: { tab: 'gallery' } }"
+                class="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-slate-800 transition"
+                title="Abrir Galeria de Vídeos e Arquivos deste negócio"
+              >
+                🎞️ Galeria
+              </router-link>
+              <router-link
+                :to="{ path: `/businesses/${biz.id}`, query: { tab: 'credentials' } }"
+                class="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition"
+                title="Configurar acessos de YouTube e TikTok deste negócio"
+              >
+                🔐 Acessos
+              </router-link>
+              <router-link
+                :to="`/businesses/${biz.id}`"
+                class="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center space-x-1"
+              >
+                <span>Hub</span>
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </router-link>
+            </div>
           </div>
         </div>
       </div>

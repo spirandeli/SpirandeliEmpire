@@ -41,6 +41,9 @@ backend/bootstrap/cache/*.php
 
 # ABVOS Media & Binaries
 backend-python/bin/
-backend-python/storage/media/
+backend-python/storage/media/*
+!backend-python/storage/media/.gitkeep
+backend-python/storage/output/*
+!backend-python/storage/output/.gitkeep
 *.swp
 .DS_Store

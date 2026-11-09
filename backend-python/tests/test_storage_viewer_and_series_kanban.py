@@ -11,6 +11,7 @@ from src.database import AsyncSessionLocal
 from src.models import Task, Business, User
 from src.services.media.media_settings import (
     STORAGE_OUTPUT_DIR,
+    STORAGE_MEDIA_DIR,
     get_task_output_dir,
 )
 from src.services.media.task_dispatcher import dispatch_series_video_tasks
@@ -198,7 +199,34 @@ async def test_storage_viewer_and_series_dispatch():
             dl_req = await ac.get(target_task["primary_video"]["download_url"])
             assert dl_req.status_code == 200
             assert "attachment" in dl_req.headers.get("content-disposition", "")
+
+            # 9. Testa exclusão de arquivo individual (DELETE /api/v1/storage/files)
+            scene_rel_path = f"biz_{biz_id}/task_{task_id}/scenes/scene_01.png"
+            del_file_res = await ac.delete(
+                "/api/v1/storage/files",
+                params={"path": scene_rel_path},
+                headers=headers,
+            )
+            assert del_file_res.status_code == 200
+            assert del_file_res.json()["status"] == "deleted"
+            assert not img_sample.exists()
+
+            # 10. Testa exclusão de todos os arquivos da Task (DELETE /api/v1/storage/tasks/{task_id}/files)
+            del_task_res = await ac.delete(
+                f"/api/v1/storage/tasks/{task_id}/files",
+                headers=headers,
+            )
+            assert del_task_res.status_code == 200
+            assert del_task_res.json()["status"] == "cleared"
+            assert not video_sample.exists()
+            assert not audio_sample.exists()
+
+            # 11. Testa limpeza de órfãos (POST /api/v1/storage/cleanup)
+            cleanup_res = await ac.post("/api/v1/storage/cleanup", headers=headers)
+            assert cleanup_res.status_code == 200
+            assert cleanup_res.json()["status"] == "cleaned"
         finally:
             shutil.rmtree(STORAGE_OUTPUT_DIR / f"biz_{biz_id}", ignore_errors=True)
+            shutil.rmtree(STORAGE_MEDIA_DIR / f"biz_{biz_id}", ignore_errors=True)
 
 

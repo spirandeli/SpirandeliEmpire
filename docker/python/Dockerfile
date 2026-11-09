@@ -6,12 +6,15 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# Instala dependências de compilação mínimas
+# Instala dependências de compilação mínimas + FFmpeg nativo e fontes para legendas .ass
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     default-libmysqlclient-dev \
     pkg-config \
     curl \
+    ffmpeg \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivos de dependência

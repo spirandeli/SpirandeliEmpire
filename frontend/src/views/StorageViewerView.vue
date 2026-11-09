@@ -10,6 +10,8 @@ const businessStore = useBusinessStore()
 
 const isLoading = ref(true)
 const isRefreshing = ref(false)
+const isCleaningUp = ref(false)
+const isDeletingBatch = ref(false)
 const storageData = ref({
   total_files: 0,
   total_size_mb: 0,
@@ -29,6 +31,8 @@ const selectedVideoForPlayer = ref(null)
 const videoPlaybackError = ref(false)
 const isDispatchingSeries = ref(false)
 const renderingTaskIds = ref({})
+const selectedFilePaths = ref([])
+const lightboxFile = ref(null)
 let pollInterval = null
 
 onMounted(async () => {
@@ -37,10 +41,12 @@ onMounted(async () => {
     loadStorageOutputs(),
   ])
   startAutoPolling()
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   stopAutoPolling()
+  window.removeEventListener('keydown', handleKeydown)
 })
 
 function startAutoPolling() {
@@ -79,15 +85,19 @@ async function loadStorageOutputs(showToast = false) {
         const currentMatch = vids.find(
           (v) => v.relative_path === selectedVideoForPlayer.value.relative_path
         )
-        if (!currentMatch) {
-          selectedVideoForPlayer.value = vids[0]
-        }
+        selectedVideoForPlayer.value = currentMatch || vids[0]
       }
+    } else {
+      selectedVideoForPlayer.value = null
     }
+
+    // Remove da seleção arquivos que já não existem mais no disco
+    const existingPaths = new Set((storageData.value.files || []).map((f) => f.relative_path))
+    selectedFilePaths.value = selectedFilePaths.value.filter((p) => existingPaths.has(p))
 
     // Limpa flags locais de renderização para tarefas que já concluíram
     for (const st of storageData.value.series_tasks || []) {
-      if (st.has_rendered_video || st.stage === 'done') {
+      if (st.has_rendered_video || st.stage === 'done' || st.stage === 'failed') {
         delete renderingTaskIds.value[st.id]
       }
     }
@@ -154,9 +164,62 @@ const filteredFiles = computed(() => {
   return list
 })
 
+// Cenas e Áudio associados ao vídeo atualmente selecionado no Player
+const selectedVideoTaskAssets = computed(() => {
+  if (!selectedVideoForPlayer.value) return { scenes: [], audio: null, subtitles: [] }
+  const tId = selectedVideoForPlayer.value.task_id
+  const bId = selectedVideoForPlayer.value.business_id
+  const all = storageData.value.files || []
+  const taskFiles = all.filter(
+    (f) => Number(f.task_id) === Number(tId) && (!bId || Number(f.business_id) === Number(bId))
+  )
+  const scenes = taskFiles
+    .filter((f) => f.type === 'image')
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const audio = taskFiles.find((f) => f.type === 'audio') || null
+  const subtitles = taskFiles.filter((f) => f.type === 'subtitle')
+  return { scenes, audio, subtitles }
+})
+
+// Lista de imagens navegáveis no Lightbox
+const navigableImages = computed(() => {
+  if (activeTab.value === 'videos' && selectedVideoTaskAssets.value.scenes.length > 0) {
+    return selectedVideoTaskAssets.value.scenes
+  }
+  return filteredFiles.value.filter((f) => f.type === 'image')
+})
+
+const allFilteredSelected = computed(() => {
+  if (filteredFiles.value.length === 0) return false
+  return filteredFiles.value.every((f) => selectedFilePaths.value.includes(f.relative_path))
+})
+
+function toggleSelectAllFiltered() {
+  if (allFilteredSelected.value) {
+    const filteredSet = new Set(filteredFiles.value.map((f) => f.relative_path))
+    selectedFilePaths.value = selectedFilePaths.value.filter((p) => !filteredSet.has(p))
+  } else {
+    const current = new Set(selectedFilePaths.value)
+    for (const f of filteredFiles.value) {
+      current.add(f.relative_path)
+    }
+    selectedFilePaths.value = Array.from(current)
+  }
+}
+
+function toggleFileSelection(relPath) {
+  const idx = selectedFilePaths.value.indexOf(relPath)
+  if (idx >= 0) {
+    selectedFilePaths.value.splice(idx, 1)
+  } else {
+    selectedFilePaths.value.push(relPath)
+  }
+}
+
 function selectVideo(video) {
   videoPlaybackError.value = false
   selectedVideoForPlayer.value = video
+  activeTab.value = 'videos'
   if (window.innerWidth < 768) {
     const el = document.getElementById('main-video-player')
     if (el) el.scrollIntoView({ behavior: 'smooth' })
@@ -166,9 +229,33 @@ function selectVideo(video) {
 function selectVideoByTaskId(taskId) {
   const vid = (storageData.value.videos || []).find((v) => Number(v.task_id) === Number(taskId))
   if (vid) {
-    activeTab.value = 'videos'
     selectVideo(vid)
   }
+}
+
+function openLightbox(file) {
+  lightboxFile.value = file
+}
+
+function closeLightbox() {
+  lightboxFile.value = null
+}
+
+function stepLightbox(delta) {
+  if (!lightboxFile.value) return
+  const imgs = navigableImages.value
+  if (imgs.length <= 1) return
+  const idx = imgs.findIndex((i) => i.relative_path === lightboxFile.value.relative_path)
+  if (idx === -1) return
+  const nextIdx = (idx + delta + imgs.length) % imgs.length
+  lightboxFile.value = imgs[nextIdx]
+}
+
+function handleKeydown(e) {
+  if (!lightboxFile.value) return
+  if (e.key === 'Escape') closeLightbox()
+  if (e.key === 'ArrowRight') stepLightbox(1)
+  if (e.key === 'ArrowLeft') stepLightbox(-1)
 }
 
 function handleDownload(file) {
@@ -180,6 +267,103 @@ function handleDownload(file) {
   link.click()
   document.body.removeChild(link)
   swal.toast(`Download iniciado: ${file.name}`, 'info')
+}
+
+async function handleDeleteFile(file) {
+  if (!file || !file.relative_path) return
+
+  const confirmed = await swal.confirm({
+    title: `Excluir "${file.name}"?`,
+    text: `O arquivo (${file.size_mb} MB) será permanentemente removido do storage da VPS.`,
+    confirmText: 'Sim, excluir arquivo',
+    confirmButtonColor: '#ef4444',
+  })
+
+  if (!confirmed) return
+
+  try {
+    await api.delete('/v1/storage/files', {
+      params: { path: file.relative_path },
+    })
+    if (lightboxFile.value?.relative_path === file.relative_path) {
+      closeLightbox()
+    }
+    swal.toast(`Arquivo "${file.name}" excluído da VPS!`, 'success')
+    await loadStorageOutputs(false)
+  } catch (err) {
+    swal.error('Erro ao excluir arquivo', err.response?.data?.detail || err.message)
+  }
+}
+
+async function handleDeleteBatchSelected() {
+  const count = selectedFilePaths.value.length
+  if (count === 0) return
+
+  const confirmed = await swal.confirm({
+    title: `Excluir ${count} arquivo(s) selecionado(s)?`,
+    text: 'Todos os arquivos marcados serão permanentemente removidos do disco da VPS.',
+    confirmText: `Sim, excluir ${count} arquivo(s)`,
+    confirmButtonColor: '#ef4444',
+  })
+
+  if (!confirmed) return
+
+  isDeletingBatch.value = true
+  try {
+    const res = await api.post('/v1/storage/files/delete-batch', {
+      paths: selectedFilePaths.value,
+    })
+    selectedFilePaths.value = []
+    swal.toast(res.data?.message || `${count} arquivo(s) excluído(s) com sucesso!`, 'success')
+    await loadStorageOutputs(false)
+  } catch (err) {
+    swal.error('Erro na exclusão em lote', err.response?.data?.detail || err.message)
+  } finally {
+    isDeletingBatch.value = false
+  }
+}
+
+async function handleDeleteTaskFiles(taskId, taskTitle = '') {
+  if (!taskId) return
+
+  const confirmed = await swal.confirm({
+    title: `Limpar todos os arquivos da Task #${taskId}?`,
+    text: `Isso excluirá o vídeo (.mp4), narração (.mp3), legendas e todas as 20 cenas de "${taskTitle || `Task #${taskId}`}" na VPS.`,
+    confirmText: 'Sim, limpar pasta da Task',
+    confirmButtonColor: '#ef4444',
+  })
+
+  if (!confirmed) return
+
+  try {
+    const res = await api.delete(`/v1/storage/tasks/${taskId}/files`)
+    swal.toast(res.data?.message || `Arquivos da Task #${taskId} removidos!`, 'success')
+    await loadStorageOutputs(false)
+  } catch (err) {
+    swal.error('Erro ao limpar arquivos da tarefa', err.response?.data?.detail || err.message)
+  }
+}
+
+async function handleCleanupStorage() {
+  const confirmed = await swal.confirm({
+    title: 'Limpar arquivos órfãos e corrompidos?',
+    text: 'O sistema varrerá o storage da VPS removendo arquivos inválidos (< 256 bytes), pastas vazias e mídias de tarefas já excluídas.',
+    confirmText: 'Sim, limpar storage',
+    confirmButtonColor: '#f59e0b',
+  })
+
+  if (!confirmed) return
+
+  isCleaningUp.value = true
+  try {
+    const res = await api.post('/v1/storage/cleanup')
+    swal.toast(res.data?.message || 'Storage limpo com sucesso!', 'success')
+    await loadStorageOutputs(false)
+  } catch (err) {
+    swal.error('Erro na limpeza do storage', err.response?.data?.detail || err.message)
+  } finally {
+    isCleaningUp.value = false
+  }
 }
 
 async function handleRenderSingleTask(task) {
@@ -203,7 +387,7 @@ async function handleDispatchDefaultSeries() {
 
   const confirmed = await swal.confirm({
     title: 'Iniciar Série 01 - A Queda de Lúcifer?',
-    text: 'O sistema criará as 3 tarefas no Kanban (Partes 1, 2 e 3) e iniciará automaticamente a renderização de 20 cenas + narração TTS + FFmpeg.',
+    text: 'O sistema criará as 3 tarefas no Kanban (Partes 1, 2 e 3) e iniciará automaticamente a renderização na VPS de 20 cenas reais + narração TTS + FFmpeg.',
     confirmText: 'Sim, criar e renderizar',
     confirmButtonColor: '#10b981',
   })
@@ -242,11 +426,22 @@ async function handleDispatchDefaultSeries() {
             </span>
           </div>
           <p class="text-xs text-slate-400 mt-0.5">
-            Inspeção visual direta de vídeos (.mp4), narrações (.mp3) e assets gerados pelo pipeline ABVOS
+            Controle total de visualização, reprodução e exclusão de vídeos (.mp4), narrações (.mp3) e cenas na VPS
           </p>
         </div>
 
-        <div class="flex items-center space-x-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Botão Limpar Inválidos / Órfãos -->
+          <button
+            @click="handleCleanupStorage"
+            :disabled="isCleaningUp"
+            class="px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition flex items-center space-x-1.5 disabled:opacity-50"
+            title="Remover arquivos corrompidos, vazios ou de tarefas excluídas"
+          >
+            <span>🧹</span>
+            <span>{{ isCleaningUp ? 'Limpando...' : 'Limpar Órfãos' }}</span>
+          </button>
+
           <!-- Botão Despachar Série -->
           <button
             @click="handleDispatchDefaultSeries"
@@ -263,7 +458,7 @@ async function handleDispatchDefaultSeries() {
             @click="loadStorageOutputs(true)"
             :disabled="isRefreshing"
             class="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition flex items-center justify-center min-w-[38px]"
-            title="Recarregar arquivos do disco"
+            title="Recarregar arquivos do disco da VPS"
           >
             <svg
               class="w-4 h-4"
@@ -317,7 +512,7 @@ async function handleDispatchDefaultSeries() {
             ⚡
           </div>
           <div>
-            <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Formato Nativo</span>
+            <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Motor VPS</span>
             <span class="text-xs font-bold text-amber-300 font-mono">9:16 (1080x1920)</span>
           </div>
         </div>
@@ -332,11 +527,11 @@ async function handleDispatchDefaultSeries() {
           <div class="flex items-center space-x-2">
             <span class="text-sm">⚡</span>
             <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">
-              Pipeline de Renderização de Séries ({{ filteredSeriesTasks.length }})
+              Pipeline de Renderização na VPS ({{ filteredSeriesTasks.length }})
             </h2>
           </div>
           <span class="text-[11px] text-slate-400">
-            20 Cenas x 3s = 60s • TTS + FFmpeg 9:16
+            20 Cenas IA x 3s = 60s • TTS + FFmpeg 9:16
           </span>
         </div>
 
@@ -353,17 +548,24 @@ async function handleDispatchDefaultSeries() {
                   class="px-2 py-0.5 rounded-full text-[10px] font-bold"
                   :class="{
                     'bg-emerald-500/20 text-emerald-300': st.has_rendered_video,
+                    'bg-rose-500/20 text-rose-300': !st.has_rendered_video && st.stage === 'failed',
                     'bg-amber-500/20 text-amber-300 animate-pulse': !st.has_rendered_video && (st.status === 'in_progress_agent' || renderingTaskIds[st.id]),
-                    'bg-slate-800 text-slate-400': !st.has_rendered_video && st.status !== 'in_progress_agent' && !renderingTaskIds[st.id],
+                    'bg-slate-800 text-slate-400': !st.has_rendered_video && st.stage !== 'failed' && st.status !== 'in_progress_agent' && !renderingTaskIds[st.id],
                   }"
                 >
-                  {{ st.has_rendered_video ? 'Pronto (.mp4)' : (st.status === 'in_progress_agent' || renderingTaskIds[st.id] ? `${st.percent}% Renderizando` : 'Na Fila') }}
+                  {{
+                    st.has_rendered_video
+                      ? 'Pronto (.mp4)'
+                      : st.stage === 'failed'
+                        ? 'Falha na Renderização'
+                        : (st.status === 'in_progress_agent' || renderingTaskIds[st.id] ? `${st.percent}% Renderizando` : 'Na Fila')
+                  }}
                 </span>
               </div>
               <h4 class="text-xs font-bold text-slate-100 line-clamp-1 mt-1" :title="st.title">
                 {{ st.title }}
               </h4>
-              <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5 font-mono">
+              <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5 font-mono" :title="st.status_log">
                 {{ st.status_log || 'Aguardando disparo do pipeline...' }}
               </p>
             </div>
@@ -373,26 +575,38 @@ async function handleDispatchDefaultSeries() {
               <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
                 <div
                   class="h-full transition-all duration-500 rounded-full"
-                  :class="st.has_rendered_video ? 'bg-emerald-500' : 'bg-indigo-500'"
+                  :class="st.has_rendered_video ? 'bg-emerald-500' : (st.stage === 'failed' ? 'bg-rose-500' : 'bg-indigo-500')"
                   :style="{ width: `${Math.min(100, Math.max(5, st.percent || 0))}%` }"
                 ></div>
               </div>
 
-              <div class="flex items-center justify-end gap-2 pt-0.5">
+              <div class="flex items-center justify-between gap-2 pt-0.5">
                 <button
                   v-if="st.has_rendered_video"
-                  @click="selectVideoByTaskId(st.id)"
-                  class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold transition"
+                  @click="handleDeleteTaskFiles(st.id, st.title)"
+                  class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-[10px] font-semibold transition"
+                  title="Excluir vídeo e cenas desta tarefa na VPS"
                 >
-                  ▶ Assistir no Player
+                  🗑️ Limpar
                 </button>
-                <button
-                  @click="handleRenderSingleTask(st)"
-                  :disabled="renderingTaskIds[st.id] || st.status === 'in_progress_agent'"
-                  class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-bold transition disabled:opacity-50"
-                >
-                  {{ renderingTaskIds[st.id] || st.status === 'in_progress_agent' ? '⏳ Processando...' : (st.has_rendered_video ? '↻ Re-renderizar' : '⚡ Renderizar Agora') }}
-                </button>
+                <span v-else></span>
+
+                <div class="flex items-center gap-1.5">
+                  <button
+                    v-if="st.has_rendered_video"
+                    @click="selectVideoByTaskId(st.id)"
+                    class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold transition"
+                  >
+                    ▶ Assistir
+                  </button>
+                  <button
+                    @click="handleRenderSingleTask(st)"
+                    :disabled="renderingTaskIds[st.id] || st.status === 'in_progress_agent'"
+                    class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-bold transition disabled:opacity-50"
+                  >
+                    {{ renderingTaskIds[st.id] || st.status === 'in_progress_agent' ? '⏳ Processando...' : (st.has_rendered_video ? '↻ Re-renderizar' : '⚡ Renderizar Agora') }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -471,12 +685,11 @@ async function handleDispatchDefaultSeries() {
       <!-- ESTADO DE CARREGAMENTO -->
       <div v-if="isLoading" class="p-12 text-center">
         <div class="inline-block animate-spin text-3xl mb-3">🎬</div>
-        <p class="text-xs text-slate-400">Varrendo recursivamente /app/storage/output...</p>
+        <p class="text-xs text-slate-400">Varrendo recursivamente /app/storage/output na VPS...</p>
       </div>
 
-      <!-- ABA 1: GALERIA DE VÍDEOS COM PLAYER PRINCIPAL -->
+      <!-- ABA 1: GALERIA DE VÍDEOS COM PLAYER PRINCIPAL + INSPEÇÃO DE CENAS -->
       <div v-else-if="activeTab === 'videos'" class="space-y-6">
-        <!-- SEÇÃO PRINCIPAL: PLAYER EMBUTIDO & LISTAGEM LADO A LADO -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <!-- Coluna Esquerda: Player de Vídeo em Destaque (5 Colunas) -->
           <div id="main-video-player" class="lg:col-span-5 rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-4 shadow-xl shadow-slate-950/50 sticky top-4">
@@ -513,11 +726,17 @@ async function handleDispatchDefaultSeries() {
                 </video>
                 <div
                   v-if="videoPlaybackError"
-                  class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center space-y-2"
+                  class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center space-y-3"
                 >
                   <span class="text-2xl">⚠️</span>
                   <p class="text-xs font-bold text-slate-200">Não foi possível reproduzir este arquivo de vídeo.</p>
-                  <p class="text-[11px] text-slate-400">O arquivo pode ainda estar sendo gravado pelo FFmpeg ou ser um artefato de teste.</p>
+                  <p class="text-[11px] text-slate-400">O arquivo pode ainda estar sendo gravado pelo FFmpeg ou estar corrompido.</p>
+                  <button
+                    @click="handleDeleteFile(selectedVideoForPlayer)"
+                    class="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition"
+                  >
+                    🗑️ Excluir Arquivo Inválido
+                  </button>
                 </div>
               </template>
               <div v-else class="p-8 text-center text-slate-500 space-y-2">
@@ -526,7 +745,7 @@ async function handleDispatchDefaultSeries() {
               </div>
             </div>
 
-            <!-- Metadados e Botão de Download 1-Clique -->
+            <!-- Metadados, Download e Exclusão -->
             <div v-if="selectedVideoForPlayer" class="space-y-3 pt-1">
               <div>
                 <h4 class="text-sm font-black text-white leading-snug">
@@ -537,9 +756,9 @@ async function handleDispatchDefaultSeries() {
                     Venture: <strong class="text-emerald-400">{{ selectedVideoForPlayer.business_name }}</strong>
                   </span>
                   <span v-if="selectedVideoForPlayer.business_name">•</span>
-                  <span>Arquivo: <strong class="text-slate-200">{{ selectedVideoForPlayer.name }}</strong></span>
+                  <span>Task #{{ selectedVideoForPlayer.task_id || '•' }}</span>
                   <span>•</span>
-                  <span>Modificado: {{ new Date(selectedVideoForPlayer.modified_at).toLocaleDateString() }}</span>
+                  <span>{{ new Date(selectedVideoForPlayer.modified_at).toLocaleString() }}</span>
                 </div>
               </div>
 
@@ -552,7 +771,17 @@ async function handleDispatchDefaultSeries() {
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  <span>Baixar Vídeo (.mp4)</span>
+                  <span>Baixar (.mp4)</span>
+                </button>
+
+                <!-- Excluir Vídeo -->
+                <button
+                  @click="handleDeleteFile(selectedVideoForPlayer)"
+                  class="px-3 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold text-xs transition flex items-center space-x-1"
+                  title="Excluir este vídeo da VPS"
+                >
+                  <span>🗑️</span>
+                  <span>Excluir</span>
                 </button>
 
                 <!-- Abrir em nova aba -->
@@ -567,6 +796,52 @@ async function handleDispatchDefaultSeries() {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
                 </a>
+              </div>
+
+              <!-- Áudio e Miniaturas das Cenas deste Vídeo -->
+              <div
+                v-if="selectedVideoTaskAssets.audio || selectedVideoTaskAssets.scenes.length > 0"
+                class="pt-3 border-t border-slate-800 space-y-3"
+              >
+                <div v-if="selectedVideoTaskAssets.audio" class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="font-bold text-slate-300">🎙️ Narração TTS ({{ selectedVideoTaskAssets.audio.size_mb }} MB)</span>
+                    <button
+                      @click="handleDownload(selectedVideoTaskAssets.audio)"
+                      class="text-emerald-400 hover:underline text-[10px]"
+                    >
+                      Baixar .mp3
+                    </button>
+                  </div>
+                  <audio :src="selectedVideoTaskAssets.audio.static_url" controls class="w-full h-8 rounded"></audio>
+                </div>
+
+                <div v-if="selectedVideoTaskAssets.scenes.length > 0" class="space-y-2">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="font-bold text-slate-300">
+                      🖼️ Cenas Geradas ({{ selectedVideoTaskAssets.scenes.length }})
+                    </span>
+                    <span class="text-[10px] text-slate-500">Clique para ampliar</span>
+                  </div>
+                  <div class="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">
+                    <div
+                      v-for="(sc, idx) in selectedVideoTaskAssets.scenes"
+                      :key="sc.relative_path"
+                      @click="openLightbox(sc)"
+                      class="relative aspect-[9/16] rounded-lg overflow-hidden border border-slate-800 hover:border-emerald-400 cursor-pointer group"
+                    >
+                      <img
+                        :src="sc.static_url"
+                        :alt="sc.name"
+                        loading="lazy"
+                        class="w-full h-full object-cover group-hover:scale-105 transition"
+                      />
+                      <span class="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/80 text-[8px] font-mono text-white">
+                        #{{ idx + 1 }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -586,9 +861,9 @@ async function handleDispatchDefaultSeries() {
               class="p-10 rounded-2xl bg-slate-900 border border-dashed border-slate-800 text-center space-y-3"
             >
               <div class="text-4xl">🎬</div>
-              <h3 class="text-sm font-bold text-slate-200">Nenhum vídeo renderizado encontrado para este filtro</h3>
+              <h3 class="text-sm font-bold text-slate-200">Nenhum vídeo renderizado na VPS para este filtro</h3>
               <p class="text-xs text-slate-400 max-w-md mx-auto">
-                Inicie uma série para disparar o pipeline autônomo com 20 cenas, narração TTS e compilação FFmpeg.
+                Dispare uma série ou clique em "Renderizar Agora" na fila acima para gerar 20 cenas ilustradas por IA, narração TTS e compilação FFmpeg.
               </p>
               <button
                 @click="handleDispatchDefaultSeries"
@@ -610,7 +885,7 @@ async function handleDispatchDefaultSeries() {
                   ? 'border-emerald-500 bg-slate-900/90 shadow-md shadow-emerald-500/10'
                   : 'border-slate-800 hover:border-slate-700 hover:bg-slate-850'"
               >
-                <!-- Thumbnail Preview com Mini-Player ou Ícone -->
+                <!-- Thumbnail Preview com Mini-Player -->
                 <div class="relative bg-black rounded-lg aspect-[9/16] max-h-48 overflow-hidden flex items-center justify-center border border-slate-800 group-hover:border-slate-700">
                   <video
                     :src="v.static_url"
@@ -641,21 +916,41 @@ async function handleDispatchDefaultSeries() {
                 </div>
 
                 <!-- Botões de Ação Rápida -->
-                <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" @click.stop>
-                  <button
-                    @click.stop="selectVideo(v)"
-                    class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-bold transition flex items-center space-x-1"
-                  >
-                    <span>▶ Play</span>
-                  </button>
+                <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1.5" @click.stop>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      @click.stop="selectVideo(v)"
+                      class="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-bold transition flex items-center space-x-1"
+                    >
+                      <span>▶ Play</span>
+                    </button>
 
-                  <button
-                    @click.stop="handleDownload(v)"
-                    class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold transition flex items-center space-x-1"
-                    title="Baixar arquivo .mp4"
-                  >
-                    <span>⬇ Baixar</span>
-                  </button>
+                    <button
+                      @click.stop="handleDownload(v)"
+                      class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold transition flex items-center space-x-1"
+                      title="Baixar arquivo .mp4"
+                    >
+                      <span>⬇ Baixar</span>
+                    </button>
+                  </div>
+
+                  <div class="flex items-center gap-1">
+                    <button
+                      v-if="v.task_id"
+                      @click.stop="handleDeleteTaskFiles(v.task_id, v.task_title || v.name)"
+                      class="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 text-[10px] font-bold transition"
+                      title="Excluir vídeo e todas as cenas desta Task"
+                    >
+                      🗑️ Tudo
+                    </button>
+                    <button
+                      @click.stop="handleDeleteFile(v)"
+                      class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-500/30 text-slate-400 hover:text-rose-300 text-[10px] font-bold transition"
+                      title="Excluir apenas este arquivo .mp4"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -663,13 +958,48 @@ async function handleDispatchDefaultSeries() {
         </div>
       </div>
 
-      <!-- ABA 2: TODOS OS ARQUIVOS (ÁUDIOS, CENAS E LEGENDAS) -->
+      <!-- ABA 2: TODOS OS ARQUIVOS (ÁUDIOS, CENAS E LEGENDAS) COM PREVIEW E EXCLUSÃO EM LOTE -->
       <div v-else class="space-y-4">
+        <!-- Barra de Ação em Lote -->
+        <div
+          v-if="selectedFilePaths.length > 0"
+          class="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-wrap items-center justify-between gap-3"
+        >
+          <div class="flex items-center space-x-2 text-xs text-rose-200 font-semibold">
+            <span>🗑️</span>
+            <span>{{ selectedFilePaths.length }} arquivo(s) selecionado(s) para exclusão</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button
+              @click="selectedFilePaths = []"
+              class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs transition"
+            >
+              Desmarcar Tudo
+            </button>
+            <button
+              @click="handleDeleteBatchSelected"
+              :disabled="isDeletingBatch"
+              class="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow transition disabled:opacity-50"
+            >
+              {{ isDeletingBatch ? 'Excluindo...' : `Excluir Selecionados (${selectedFilePaths.length})` }}
+            </button>
+          </div>
+        </div>
+
         <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead>
               <tr class="border-b border-slate-800 text-[11px] text-slate-400 uppercase font-semibold">
-                <th class="py-2.5 px-3">Tipo</th>
+                <th class="py-2.5 px-3 w-8">
+                  <input
+                    type="checkbox"
+                    :checked="allFilteredSelected"
+                    @change="toggleSelectAllFiltered"
+                    class="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer"
+                    title="Selecionar todos os arquivos filtrados"
+                  />
+                </th>
+                <th class="py-2.5 px-3">Preview / Tipo</th>
                 <th class="py-2.5 px-3">Nome do Arquivo</th>
                 <th class="py-2.5 px-3">Venture / Task</th>
                 <th class="py-2.5 px-3">Tamanho</th>
@@ -679,43 +1009,89 @@ async function handleDispatchDefaultSeries() {
             </thead>
             <tbody class="divide-y divide-slate-800/60 font-mono">
               <tr v-if="filteredFiles.length === 0">
-                <td colspan="6" class="py-8 text-center text-slate-500">
-                  Nenhum arquivo encontrado para os filtros selecionados.
+                <td colspan="7" class="py-8 text-center text-slate-500">
+                  Nenhum arquivo encontrado na VPS para os filtros selecionados.
                 </td>
               </tr>
               <tr
                 v-for="f in filteredFiles"
                 :key="f.relative_path"
                 class="hover:bg-slate-850/60 transition"
+                :class="{'bg-indigo-950/20': selectedFilePaths.includes(f.relative_path)}"
               >
                 <td class="py-2.5 px-3">
-                  <span
-                    class="px-2 py-0.5 rounded text-[10px] uppercase font-bold"
-                    :class="{
-                      'bg-indigo-500/20 text-indigo-300': f.type === 'video',
-                      'bg-emerald-500/20 text-emerald-300': f.type === 'audio',
-                      'bg-sky-500/20 text-sky-300': f.type === 'image',
-                      'bg-amber-500/20 text-amber-300': f.type === 'subtitle',
-                    }"
-                  >
-                    {{ f.type }}
-                  </span>
+                  <input
+                    type="checkbox"
+                    :checked="selectedFilePaths.includes(f.relative_path)"
+                    @change="toggleFileSelection(f.relative_path)"
+                    class="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer"
+                  />
                 </td>
+
+                <!-- Coluna de Preview Visual -->
+                <td class="py-2.5 px-3">
+                  <div class="flex items-center space-x-2.5">
+                    <!-- Miniatura clicável se for imagem -->
+                    <div
+                      v-if="f.type === 'image'"
+                      @click="openLightbox(f)"
+                      class="w-10 h-14 rounded-lg overflow-hidden border border-slate-700 hover:border-emerald-400 cursor-pointer bg-slate-950 shrink-0 relative group"
+                      title="Clique para ampliar imagem"
+                    >
+                      <img :src="f.static_url" :alt="f.name" loading="lazy" class="w-full h-full object-cover" />
+                    </div>
+
+                    <span
+                      class="px-2 py-0.5 rounded text-[10px] uppercase font-bold"
+                      :class="{
+                        'bg-indigo-500/20 text-indigo-300': f.type === 'video',
+                        'bg-emerald-500/20 text-emerald-300': f.type === 'audio',
+                        'bg-sky-500/20 text-sky-300': f.type === 'image',
+                        'bg-amber-500/20 text-amber-300': f.type === 'subtitle',
+                      }"
+                    >
+                      {{ f.type }}
+                    </span>
+                  </div>
+                </td>
+
                 <td class="py-2.5 px-3 font-semibold text-slate-200">
                   <div class="truncate max-w-xs">{{ f.name }}</div>
                   <div class="text-[10px] text-slate-500 truncate">{{ f.relative_path }}</div>
+                  <!-- Player de áudio compacto direto na tabela -->
+                  <div v-if="f.type === 'audio'" class="mt-1.5 max-w-xs">
+                    <audio :src="f.static_url" controls preload="none" class="w-full h-7"></audio>
+                  </div>
                 </td>
+
                 <td class="py-2.5 px-3 text-slate-400">
                   <div class="text-slate-300 truncate max-w-[200px]">{{ f.business_name || `Biz #${f.business_id || '•'}` }}</div>
                   <div class="text-[10px] text-slate-500 truncate max-w-[200px]">{{ f.task_title || `Task #${f.task_id || '•'}` }}</div>
                 </td>
+
                 <td class="py-2.5 px-3 text-slate-300">
                   {{ f.size_mb }} MB
                 </td>
+
                 <td class="py-2.5 px-3 text-slate-400 text-[11px]">
                   {{ new Date(f.modified_at).toLocaleString() }}
                 </td>
-                <td class="py-2.5 px-3 text-right space-x-1.5">
+
+                <td class="py-2.5 px-3 text-right space-x-1.5 whitespace-nowrap">
+                  <button
+                    v-if="f.type === 'image'"
+                    @click="openLightbox(f)"
+                    class="px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-[10px] font-bold transition"
+                  >
+                    👁️ Ver
+                  </button>
+                  <button
+                    v-else-if="f.type === 'video'"
+                    @click="selectVideo(f)"
+                    class="px-2 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 text-[10px] font-bold transition"
+                  >
+                    ▶ Play
+                  </button>
                   <a
                     :href="f.static_url"
                     target="_blank"
@@ -728,12 +1104,85 @@ async function handleDispatchDefaultSeries() {
                     @click="handleDownload(f)"
                     class="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-[10px] font-bold transition"
                   >
-                    Download
+                    ⬇ Baixar
+                  </button>
+                  <button
+                    @click="handleDeleteFile(f)"
+                    class="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold transition"
+                    title="Excluir este arquivo da VPS"
+                  >
+                    🗑️ Excluir
                   </button>
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIGHTBOX MODAL PARA INSPEÇÃO VISUAL DE CENAS EM TELA CHEIA -->
+    <div
+      v-if="lightboxFile"
+      class="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+      @click="closeLightbox"
+    >
+      <div class="relative max-w-xl w-full max-h-[92vh] flex flex-col items-center space-y-3" @click.stop>
+        <!-- Barra Superior do Lightbox -->
+        <div class="w-full flex items-center justify-between text-white border-b border-slate-800 pb-2.5">
+          <div>
+            <h4 class="text-xs font-bold">{{ lightboxFile.name }}</h4>
+            <p class="text-[10px] text-slate-400 font-mono">
+              {{ lightboxFile.relative_path }} • {{ lightboxFile.size_mb }} MB
+            </p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button
+              @click="handleDownload(lightboxFile)"
+              class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition"
+            >
+              ⬇ Baixar
+            </button>
+            <button
+              @click="handleDeleteFile(lightboxFile)"
+              class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition"
+            >
+              🗑️ Excluir
+            </button>
+            <button
+              @click="closeLightbox"
+              class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <!-- Imagem em Alta Definição com Navegação -->
+        <div class="relative w-full flex items-center justify-center">
+          <button
+            v-if="navigableImages.length > 1"
+            @click="stepLightbox(-1)"
+            class="absolute left-2 p-2.5 rounded-full bg-black/75 hover:bg-black text-white border border-white/20 transition z-10"
+            title="Cena Anterior"
+          >
+            ◀
+          </button>
+
+          <img
+            :src="lightboxFile.static_url"
+            :alt="lightboxFile.name"
+            class="max-h-[78vh] w-auto rounded-2xl border border-slate-800 shadow-2xl object-contain"
+          />
+
+          <button
+            v-if="navigableImages.length > 1"
+            @click="stepLightbox(1)"
+            class="absolute right-2 p-2.5 rounded-full bg-black/75 hover:bg-black text-white border border-white/20 transition z-10"
+            title="Próxima Cena"
+          >
+            ▶
+          </button>
         </div>
       </div>
     </div>

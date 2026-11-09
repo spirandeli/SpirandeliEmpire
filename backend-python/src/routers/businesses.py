@@ -17,15 +17,23 @@ from src.models import (
     ApprovalQueue,
     ContentAsset,
     ConversionEvent,
+    TikTokProduct,
 )
 from src.schemas.business import (
     BusinessAutomationCreateRequest,
     BusinessAutomationResponse,
+    BusinessChannelsUpdateRequest,
     BusinessCreateRequest,
     BusinessResponse,
     BusinessUpdateRequest,
     DarkScriptCreateRequest,
     DarkScriptResponse,
+)
+from src.services.business_credentials import (
+    configured_platforms,
+    merge_channel_updates,
+    reveal_channels,
+    summarize_channels,
 )
 from src.services.dark_channel_service import (
     generate_dark_script,
@@ -73,6 +81,54 @@ async def _get_user_business(business_id: int, user: User, db: AsyncSession) -> 
     return biz
 
 
+def _serialize_tiktok_product(p: TikTokProduct) -> dict[str, Any]:
+    return {
+        "id": p.id,
+        "title": p.title,
+        "category": p.category,
+        "shop_name": p.shop_name,
+        "image_url": p.image_url,
+        "product_url": p.product_url,
+        "affiliate_link": p.affiliate_link,
+        "price": float(p.price or 0),
+        "commission_rate": float(p.commission_rate or 0),
+        "commission_value": float(p.commission_value or 0),
+        "viral_score": p.viral_score,
+        "velocity_score": p.velocity_score,
+        "overall_score": p.overall_score,
+        "status": p.status,
+    }
+
+
+async def _business_detail_payload(biz: Business, db: AsyncSession) -> dict[str, Any]:
+    """Payload completo do detalhe do negócio (sem segredos de credenciais)."""
+    resp = BusinessResponse.model_validate(biz)
+    resp.business_model = _get_business_model_label(biz.archetype, biz.type)
+    data = resp.model_dump(mode="json")
+
+    autos_res = await db.execute(
+        select(BusinessAutomation)
+        .where(BusinessAutomation.business_id == biz.id)
+        .order_by(BusinessAutomation.id)
+    )
+    data["automations"] = [
+        {**BusinessAutomationResponse.model_validate(a).model_dump(mode="json"), "description": (a.config or {}).get("description")}
+        for a in autos_res.scalars().all()
+    ]
+
+    prods_res = await db.execute(
+        select(TikTokProduct)
+        .where(TikTokProduct.business_id == biz.id)
+        .order_by(TikTokProduct.overall_score.desc())
+        .limit(60)
+    )
+    data["tiktok_products"] = [_serialize_tiktok_product(p) for p in prods_res.scalars().all()]
+
+    data["channels"] = summarize_channels(biz)
+    data["channels_configured"] = configured_platforms(biz)
+    return data
+
+
 @router.get("")
 async def index(
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -97,7 +153,17 @@ async def index(
             await db.execute(
                 select(func.count(Task.id)).where(
                     Task.business_id == b.id,
-                    Task.status.in_(["backlog", "ready", "in_progress", "supervision"]),
+                    Task.deleted_at.is_(None),
+                    Task.status.notin_(["done", "completed", "cancelled", "archived"]),
+                )
+            )
+        ).scalar() or 0
+
+        automations_count = (
+            await db.execute(
+                select(func.count(BusinessAutomation.id)).where(
+                    BusinessAutomation.business_id == b.id,
+                    BusinessAutomation.is_enabled.is_(True),
                 )
             )
         ).scalar() or 0
@@ -124,7 +190,9 @@ async def index(
             "niche": b.niche,
             "description": b.description,
             "tasks_open": open_tasks,
+            "automations_count": automations_count,
             "pending_approvals": pending_approvals,
+            "channels_configured": configured_platforms(b),
             "created_at": b.created_at.isoformat() if b.created_at else None,
             "updated_at": b.updated_at.isoformat() if b.updated_at else None,
         })
@@ -269,9 +337,7 @@ async def show(
     db: AsyncSession = Depends(get_db),
 ):
     biz = await _get_user_business(business_id, current_user, db)
-    resp = BusinessResponse.model_validate(biz)
-    resp.business_model = _get_business_model_label(biz.archetype, biz.type)
-    return {"data": resp}
+    return {"data": await _business_detail_payload(biz, db)}
 
 
 @router.put("/{business_id}")
@@ -285,13 +351,49 @@ async def update(
     biz = await _get_user_business(business_id, current_user, db)
 
     for field, val in payload.model_dump(exclude_unset=True).items():
+        if field == "name" and not (val or "").strip():
+            continue
         setattr(biz, field, val)
 
     biz.updated_at = _utc_now()
     await db.commit()
     await db.refresh(biz)
 
-    return {"data": BusinessResponse.model_validate(biz)}
+    return {"data": await _business_detail_payload(biz, db)}
+
+
+@router.get("/{business_id}/credentials")
+async def show_credentials(
+    business_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna os acessos das plataformas com segredos descriptografados (somente o dono)."""
+    biz = await _get_user_business(business_id, current_user, db)
+    return {"data": reveal_channels(biz)}
+
+
+@router.put("/{business_id}/credentials")
+async def update_credentials(
+    business_id: int,
+    payload: BusinessChannelsUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Salva os acessos das plataformas; senhas/tokens são criptografados antes de persistir."""
+    biz = await _get_user_business(business_id, current_user, db)
+    now = _utc_now()
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    # Reatribui um novo dict para o SQLAlchemy detectar a mudança na coluna JSON
+    biz.acquisition_channels = merge_channel_updates(biz, updates, now.isoformat())
+    biz.updated_at = now
+    await db.commit()
+    await db.refresh(biz)
+    return {
+        "message": "Acessos do negócio salvos com segurança.",
+        "data": summarize_channels(biz),
+        "channels_configured": configured_platforms(biz),
+    }
 
 
 @router.delete("/{business_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -320,7 +422,7 @@ async def activate(
     biz.updated_at = now
     await db.commit()
     await db.refresh(biz)
-    return {"data": BusinessResponse.model_validate(biz)}
+    return {"data": await _business_detail_payload(biz, db)}
 
 
 @router.post("/{business_id}/pause")
@@ -335,7 +437,7 @@ async def pause(
     biz.updated_at = _utc_now()
     await db.commit()
     await db.refresh(biz)
-    return {"data": BusinessResponse.model_validate(biz)}
+    return {"data": await _business_detail_payload(biz, db)}
 
 
 @router.post("/{business_id}/mine")
