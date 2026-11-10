@@ -394,7 +394,10 @@ async def _try_google_genai_image(
         _GEMINI_IMAGE_MODEL_COOLDOWN[(api_key, model_name)] = time.monotonic() + seconds
 
     def _sync_call() -> Optional[bytes]:
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=20000),
+        )
 
         # 1. Tenta Gemini Flash Image Generation (com ImageConfig 9:16 nativo)
         gemini_image_models = (

@@ -289,7 +289,10 @@ Retorne APENAS JSON válido no formato:
         )
 
         def _sync_generate() -> Optional[Dict[str, Any]]:
-            client = genai.Client(api_key=ctx.gemini_key)
+            client = genai.Client(
+                api_key=ctx.gemini_key,
+                http_options=types.HttpOptions(timeout=15000),
+            )
             for model_cand in ("gemini-2.5-flash", "gemini-3.8-flash", "gemini-2.0-flash"):
                 try:
                     response = client.models.generate_content(
