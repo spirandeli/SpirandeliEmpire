@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
+import { api } from '@/services/api'
 import { useSwal } from '@/composables/useSwal'
 import TaskMediaGallery from '@/components/TaskMediaGallery.vue'
 
@@ -24,16 +25,102 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['close', 'execute', 'move', 'delete'])
+const emit = defineEmits(['close', 'execute', 'move', 'delete', 'updated'])
 const swal = useSwal()
 
 const activeTab = ref('deliverable') // 'deliverable' | 'briefing' | 'technical'
 const activeImagePreview = ref(null)
+const pipelineData = ref(null)
+const pipelineLoading = ref(false)
+const runningStage = ref(null)
+const regeneratingScene = ref(null)
+const scriptRevisionFeedback = ref('')
 
-// Quando abre o modal, define a aba inicial
+const isPipelineTask = computed(() => {
+  const act = props.task?.agent_action || ''
+  return Boolean(
+    props.task?.payload?.pipeline_stage ||
+      props.task?.payload?.stage_statuses ||
+      props.task?.result?.pipeline_manifest ||
+      ['orchestrate_video_pipeline', 'render_video_series', 'agent_script', 'agent_video_scenes', 'agent_narration', 'agent_subtitles', 'agent_assemble_video'].includes(act)
+  )
+})
+
+const pipelineParentId = computed(() => props.task?.parent_id || props.task?.id)
+
+async function fetchPipelineState() {
+  if (!props.task?.id || !isPipelineTask.value) {
+    pipelineData.value = null
+    return
+  }
+  pipelineLoading.value = true
+  try {
+    const res = await api.get(`/tasks/${props.task.id}/pipeline`)
+    pipelineData.value = res.data?.data || null
+  } catch {
+    pipelineData.value = null
+  } finally {
+    pipelineLoading.value = false
+  }
+}
+
+async function handleApproveScriptAndContinue() {
+  if (!pipelineParentId.value) return
+  runningStage.value = 'continue'
+  try {
+    const res = await api.post(`/tasks/${pipelineParentId.value}/agents/continue`)
+    swal.toast(res.data?.message || 'Agentes 2 a 5 iniciados!', 'success')
+    await fetchPipelineState()
+    emit('updated')
+  } catch (err) {
+    swal.error('Erro ao liberar pipeline', err.response?.data?.detail || err.message)
+  } finally {
+    runningStage.value = null
+  }
+}
+
+async function handleRunSingleAgent(stage, cascade = true) {
+  if (!pipelineParentId.value) return
+  runningStage.value = stage
+  try {
+    const payload = { cascade }
+    if (stage === 'script' && scriptRevisionFeedback.value.trim()) {
+      payload.feedback = scriptRevisionFeedback.value.trim()
+      payload.cascade = false
+    }
+    const res = await api.post(`/tasks/${pipelineParentId.value}/agents/${stage}/run`, payload)
+    swal.toast(res.data?.message || `Agente '${stage}' iniciado!`, 'success')
+    if (stage === 'script') scriptRevisionFeedback.value = ''
+    await fetchPipelineState()
+    emit('updated')
+  } catch (err) {
+    swal.error('Erro ao executar agente', err.response?.data?.detail || err.message)
+  } finally {
+    runningStage.value = null
+  }
+}
+
+async function handleRegenerateScene(sceneNumber) {
+  if (!pipelineParentId.value) return
+  regeneratingScene.value = sceneNumber
+  try {
+    const res = await api.post(`/tasks/${pipelineParentId.value}/scenes/${sceneNumber}/regenerate`, {
+      reassemble: true,
+    })
+    swal.toast(res.data?.message || `Cena #${sceneNumber} regenerada via Gemini!`, 'success')
+    await fetchPipelineState()
+    emit('updated')
+  } catch (err) {
+    swal.error('Erro ao regenerar cena', err.response?.data?.detail || err.message)
+  } finally {
+    regeneratingScene.value = null
+  }
+}
+
+// Quando abre o modal, define a aba inicial e carrega estado dos 5 agentes
 watch(
-  () => props.isOpen,
-  (open) => {
+  () => [props.isOpen, props.task?.id],
+  ([open]) => {
     if (open) {
       document.body.style.overflow = 'hidden'
       // Se houver entregável, foca nele, senão foca no briefing
@@ -43,6 +130,7 @@ watch(
         activeTab.value = 'briefing'
       }
       activeImagePreview.value = null
+      fetchPipelineState()
     } else {
       document.body.style.overflow = ''
     }
@@ -323,7 +411,77 @@ function getPriorityBadge(priority) {
 
           <!-- Caso HAJA entregável produzido -->
           <template v-else>
-            <!-- BLOCO 1: PLAYER DE VÍDEO 9:16, ÁUDIO & GRID DE 20 CENAS -->
+            <!-- BLOCO 0: PAINEL DE CONTROLE DOS 5 AGENTES ESPECIALIZADOS -->
+            <div v-if="isPipelineTask && pipelineData?.stages?.length" class="p-4 rounded-2xl bg-slate-950/90 border border-indigo-500/30 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <span>🤖</span>
+                    <span>Pipeline Multi-Agente (5 Especialistas)</span>
+                  </h4>
+                  <p class="text-[11px] text-slate-400">
+                    Re-execute qualquer agente isoladamente ou aprove o roteiro para gerar cenas via Gemini, narração, legendas e montagem.
+                  </p>
+                </div>
+                <button
+                  v-if="!pipelineData.script_approved && (pipelineData.stages[0]?.manifest_status === 'completed' || task.status === 'awaiting_supervision')"
+                  type="button"
+                  @click="handleApproveScriptAndContinue"
+                  :disabled="runningStage !== null"
+                  class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
+                >
+                  {{ runningStage === 'continue' ? '⏳ Liberando Agentes...' : '✅ Aprovar Roteiro & Gerar Vídeo (Agentes 2–5)' }}
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                <div
+                  v-for="st in pipelineData.stages"
+                  :key="st.stage"
+                  class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-2"
+                >
+                  <div class="space-y-1">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[10px] font-bold text-white">{{ st.short_label }}</span>
+                      <span
+                        class="w-2 h-2 rounded-full"
+                        :class="st.manifest_status === 'completed' ? 'bg-emerald-400' : st.subtask?.status === 'in_progress_agent' ? 'bg-indigo-400 animate-pulse' : st.subtask?.status === 'awaiting_supervision' ? 'bg-amber-400' : 'bg-slate-600'"
+                      ></span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2">{{ st.description }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    @click="handleRunSingleAgent(st.stage, st.stage !== 'script')"
+                    :disabled="runningStage !== null"
+                    class="w-full py-1 px-2 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-[10px] font-semibold transition disabled:opacity-50"
+                  >
+                    {{ runningStage === st.stage ? '⏳ Rodando...' : '↻ Re-executar' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Campo opcional para pedir ajuste específico ao Agente 1 (Roteiro) -->
+              <div class="flex items-center gap-2 pt-1">
+                <input
+                  v-model="scriptRevisionFeedback"
+                  type="text"
+                  placeholder="Opcional: pedir ajuste ao Agente 1 (ex: deixar gancho mais curto e tom mais documental)..."
+                  class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  v-if="scriptRevisionFeedback.trim()"
+                  type="button"
+                  @click="handleRunSingleAgent('script', false)"
+                  :disabled="runningStage !== null"
+                  class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition disabled:opacity-50"
+                >
+                  Refazer Roteiro
+                </button>
+              </div>
+            </div>
+
+            <!-- BLOCO 1: PLAYER DE VÍDEO 9:16, ÁUDIO & GRID DE CENAS -->
             <TaskMediaGallery
               :task-id="task.id"
               :business-id="task.business_id"
@@ -417,17 +575,28 @@ function getPriorityBadge(priority) {
                     <p class="text-slate-200 text-[11px] leading-relaxed">{{ it.script }}</p>
                   </div>
 
-                  <!-- Prompt Visual para IA Generativa -->
+                  <!-- Prompt Visual para IA Generativa (Google Gemini) -->
                   <div v-if="it.visual_prompt" class="bg-indigo-950/30 p-3 rounded-lg border border-indigo-500/20 space-y-1">
-                    <div class="flex items-center justify-between">
-                      <span class="font-bold text-[10px] uppercase text-indigo-400">🎨 Prompt Visual (Midjourney / Leonardo):</span>
-                      <button
-                        type="button"
-                        @click="copyText(it.visual_prompt, 'Prompt visual copiado!')"
-                        class="text-[10px] text-indigo-300 hover:text-white underline font-medium"
-                      >
-                        Copiar Prompt
-                      </button>
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="font-bold text-[10px] uppercase text-indigo-400">🎨 Prompt Visual (Google Gemini 9:16):</span>
+                      <div class="flex items-center space-x-2">
+                        <button
+                          v-if="isPipelineTask"
+                          type="button"
+                          @click="handleRegenerateScene(idx + 1)"
+                          :disabled="regeneratingScene === idx + 1"
+                          class="px-2 py-0.5 rounded bg-indigo-600/80 hover:bg-indigo-500 text-white text-[10px] font-semibold transition disabled:opacity-50"
+                        >
+                          {{ regeneratingScene === idx + 1 ? '⏳ Gerando...' : '🔄 Regenerar Cena' }}
+                        </button>
+                        <button
+                          type="button"
+                          @click="copyText(it.visual_prompt, 'Prompt visual copiado!')"
+                          class="text-[10px] text-indigo-300 hover:text-white underline font-medium"
+                        >
+                          Copiar Prompt
+                        </button>
+                      </div>
                     </div>
                     <code class="block font-mono text-[10px] text-indigo-200 bg-slate-950/60 p-2 rounded border border-indigo-500/10 select-all whitespace-pre-wrap">
                       {{ it.visual_prompt }}

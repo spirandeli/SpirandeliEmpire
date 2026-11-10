@@ -91,6 +91,160 @@ def get_audio_duration_seconds(audio_path: str) -> float:
     return estimated
 
 
+_PTBR_UNITS = [
+    "zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+    "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove",
+]
+_PTBR_TENS = [
+    "", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa",
+]
+_PTBR_HUNDREDS = [
+    "", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos",
+    "seiscentos", "setecentos", "oitocentos", "novecentos",
+]
+
+
+def _int_to_ptbr(n: int) -> str:
+    """Converte inteiros de 0 a 999999 em texto falado PT-BR para leitura natural em TTS."""
+    if n < 0:
+        return f"menos {_int_to_ptbr(-n)}"
+    if n == 0:
+        return "zero"
+    if n == 100:
+        return "cem"
+    if n < 20:
+        return _PTBR_UNITS[n]
+    if n < 100:
+        t, u = divmod(n, 10)
+        return _PTBR_TENS[t] if u == 0 else f"{_PTBR_TENS[t]} e {_PTBR_UNITS[u]}"
+    if n < 1000:
+        c, rest = divmod(n, 100)
+        return _PTBR_HUNDREDS[c] if rest == 0 else f"{_PTBR_HUNDREDS[c]} e {_int_to_ptbr(rest)}"
+    if n < 1_000_000:
+        th, rest = divmod(n, 1000)
+        prefix = "mil" if th == 1 else f"{_int_to_ptbr(th)} mil"
+        if rest == 0:
+            return prefix
+        sep = " e " if rest < 100 or rest % 100 == 0 else " "
+        return f"{prefix}{sep}{_int_to_ptbr(rest)}"
+    return str(n)
+
+
+def normalize_ptbr_for_speech(text: str) -> str:
+    """
+    Normaliza números, porcentagens e abreviações para que o TTS pronuncie naturalmente em PT-BR
+    sem soletrar dígitos ou engasgar em símbolos.
+    """
+    cleaned = clean_narration_for_tts(text)
+    if not cleaned:
+        return ""
+
+    # Porcentagens inteiras: "90%" -> "noventa por cento"
+    def _repl_pct(m: re.Match) -> str:
+        val = int(m.group(1))
+        return f"{_int_to_ptbr(val)} por cento" if val <= 9999 else f"{val} por cento"
+
+    cleaned = re.sub(r"\b(\d{1,4})\s*%", _repl_pct, cleaned)
+
+    # Valores monetários simples: "R$ 50" -> "cinquenta reais"
+    def _repl_brl(m: re.Match) -> str:
+        val = int(m.group(1))
+        unit = "real" if val == 1 else "reais"
+        return f"{_int_to_ptbr(val)} {unit}" if val <= 999999 else m.group(0)
+
+    cleaned = re.sub(r"R\$\s*(\d{1,6})\b", _repl_brl, cleaned)
+
+    # Números inteiros isolados até 9999 (anos, quantidades)
+    def _repl_num(m: re.Match) -> str:
+        val = int(m.group(0))
+        return _int_to_ptbr(val) if val <= 9999 else m.group(0)
+
+    cleaned = re.sub(r"\b\d{1,4}\b", _repl_num, cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+async def generate_speech_elevenlabs_with_timestamps(
+    text: str,
+    output_path: str,
+    api_key: str,
+    voice_id: Optional[str] = None,
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """
+    Gera áudio usando ElevenLabs `/with-timestamps` para obter alinhamento real de palavras,
+    com fallback automático para o endpoint padrão caso a conta não suporte timestamps.
+    """
+    import base64
+
+    clean_text = clean_narration_for_tts(text) or text
+    voice = voice_id if (voice_id and len(voice_id) == 20 and " " not in voice_id) else (
+        os.getenv("ELEVENLABS_VOICE_ID") or "pNInz6obpgDQGcFmaJgB"
+    )
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/with-timestamps"
+    headers = {
+        "xi-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "text": clean_text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.50,
+            "similarity_boost": 0.85,
+            "style": 0.45,
+            "use_speaker_boost": True,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                audio_b64 = data.get("audio_base64")
+                if audio_b64:
+                    audio_bytes = base64.b64decode(audio_b64)
+                    if len(audio_bytes) > 512:
+                        with open(output_path, "wb") as f:
+                            f.write(audio_bytes)
+                        align = data.get("alignment") or {}
+                        chars = align.get("characters") or []
+                        starts = align.get("character_start_times_seconds") or []
+                        ends = align.get("character_end_times_seconds") or []
+                        raw_words: List[Dict[str, Any]] = []
+                        curr_word = []
+                        curr_start = None
+                        curr_end = None
+                        for ch, st, en in zip(chars, starts, ends):
+                            if ch.isspace():
+                                if curr_word and curr_start is not None:
+                                    raw_words.append({
+                                        "text": "".join(curr_word),
+                                        "start": round(float(curr_start), 3),
+                                        "end": round(float(curr_end or curr_start + 0.1), 3),
+                                    })
+                                    curr_word, curr_start, curr_end = [], None, None
+                            else:
+                                if curr_start is None:
+                                    curr_start = st
+                                curr_word.append(ch)
+                                curr_end = en
+                        if curr_word and curr_start is not None:
+                            raw_words.append({
+                                "text": "".join(curr_word),
+                                "start": round(float(curr_start), 3),
+                                "end": round(float(curr_end or curr_start + 0.1), 3),
+                            })
+                        aligned = _align_word_timings_with_punctuation(clean_text, raw_words)
+                        logger.info(f"Áudio ElevenLabs com timestamps gerado: {output_path} ({len(aligned)} palavras)")
+                        return True, aligned
+    except Exception as e:
+        logger.warning(f"ElevenLabs with-timestamps indisponível ({e}), tentando endpoint padrão...")
+
+    ok = await generate_speech_elevenlabs(text=clean_text, output_path=output_path, api_key=api_key, voice_id=voice_id)
+    return ok, []
+
+
 async def generate_speech_elevenlabs(
     text: str,
     output_path: str,
@@ -325,22 +479,26 @@ async def synthesize_narration(
     output_path: str,
     elevenlabs_key: Optional[str] = None,
     preferred_voice: Optional[str] = None,
+    rate: Optional[str] = None,
+    normalize_ptbr: bool = True,
 ) -> Dict[str, Any]:
     """
     Pipeline unificado de TTS:
-    Higieniza o roteiro falado, tenta ElevenLabs se chave configurada, ou executa
-    Edge-TTS Neural retornando também os timestamps palavra por palavra (word_timings).
+    Higieniza e normaliza o roteiro falado, tenta ElevenLabs com timestamps se chave configurada,
+    ou executa Edge-TTS Neural retornando também os timestamps palavra por palavra (word_timings).
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    clean_text = clean_narration_for_tts(text) or text.strip()
+    clean_text = normalize_ptbr_for_speech(text) if normalize_ptbr else (clean_narration_for_tts(text) or text.strip())
+    if not clean_text:
+        clean_text = text.strip()
     provider_used = "edge_tts"
     success = False
     word_timings: List[Dict[str, Any]] = []
 
     effective_key = elevenlabs_key or os.getenv("ELEVENLABS_API_KEY")
     if effective_key and effective_key.strip():
-        logger.info("Tentando síntese via ElevenLabs...")
-        success = await generate_speech_elevenlabs(
+        logger.info("Tentando síntese via ElevenLabs (com timestamps)...")
+        success, word_timings = await generate_speech_elevenlabs_with_timestamps(
             text=clean_text,
             output_path=output_path,
             api_key=effective_key,
@@ -355,6 +513,7 @@ async def synthesize_narration(
             text=clean_text,
             output_path=output_path,
             voice=preferred_voice or DEFAULT_EDGE_VOICE_PT,
+            rate=rate,
         )
         provider_used = "edge_tts"
 

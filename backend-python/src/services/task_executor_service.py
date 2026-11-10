@@ -17,6 +17,7 @@ from src.models import (
     User,
 )
 from src.services.jeffrey_orchestrator import call_gemini_generate_content, get_effective_gemini_key
+from src.services.media.agents.orchestrator import STAGE_ACTION_MAP, VideoOrchestrator
 from src.services.media.pipeline import execute_full_media_pipeline, _persist_video_progress
 
 logger = logging.getLogger("abvos.task_executor")
@@ -52,6 +53,86 @@ async def execute_agent_task(
     business: Optional[Business] = task.business
     now = _utc_now()
     task.started_at = now
+
+    # 0A. Se a tarefa for uma subtarefa de um dos 5 agentes especializados, delega ao estágio correspondente
+    if getattr(task, "agent_action", None) in STAGE_ACTION_MAP and task.parent_id:
+        p_res = await db.execute(
+            select(Task)
+            .options(selectinload(Task.business))
+            .where(Task.id == task.parent_id, Task.deleted_at.is_(None))
+        )
+        parent_task = p_res.scalar_one_or_none()
+        if parent_task:
+            stage = STAGE_ACTION_MAP[task.agent_action]
+            orchestrator = VideoOrchestrator()
+            orch_res = await orchestrator.run_single_stage(
+                db=db,
+                parent_task=parent_task,
+                user=user,
+                stage=stage,
+                cascade=False,
+            )
+            await db.refresh(task)
+            return {
+                "success": True,
+                "task_id": task.id,
+                "parent_task_id": parent_task.id,
+                "stage": stage.value,
+                "status": task.status,
+                "summary": (task.result or {}).get("summary") or f"Estágio {stage.value} executado.",
+                "result": orch_res.get("result"),
+            }
+
+    # 0B. Verifica se a tarefa envolve produção multimídia / Canal Dark / Vídeo
+    is_video_task = (
+        (business and business.archetype in ("canal_dark", "dark_channel_automation"))
+        or getattr(task, "agent_action", None) in ("render_video_series", "orchestrate_video_pipeline")
+        or any(
+            k in (task.title + " " + (task.description or "")).lower()
+            for k in ["vídeo", "video", "roteiro", "tiktok", "shorts", "dark", "cena", "narração", "locução", "reels", "série", "serie", "mp4"]
+        )
+    )
+
+    if is_video_task:
+        orchestrator = VideoOrchestrator()
+        payload_dict = dict(task.payload or {})
+        pause_flag = payload_dict.get("pause_after_script")
+        if pause_flag is None:
+            pause_flag = not bool(payload_dict.get("script_approved", False))
+        try:
+            orch_res = await orchestrator.run_pipeline(
+                db=db,
+                parent_task=task,
+                user=user,
+                pause_after_script=bool(pause_flag),
+            )
+            await db.refresh(task)
+            return {
+                "success": True,
+                "task_id": task.id,
+                "status": task.status,
+                "paused_for_approval": orch_res.get("paused_for_approval", False),
+                "summary": (task.result or {}).get("summary", f"Pipeline multi-agente executado para Tarefa #{task.id}."),
+                "model_used": "multi-agent-pipeline",
+                "assets_created": [],
+                "result": orch_res.get("result"),
+            }
+        except Exception as media_err:
+            logger.error(f"Erro no orquestrador multi-agente para tarefa #{task.id}: {media_err}")
+            task.failure_reason = f"Falha no pipeline multi-agente: {media_err}"
+            task.status_log = f"Erro no pipeline: {str(media_err)[:180]}"
+            task.status = "awaiting_supervision"
+            p_copy = dict(task.payload or {})
+            p_copy["video_progress"] = {
+                "stage": "failed",
+                "percent": 0.0,
+                "status_log": task.status_log,
+                "error": str(media_err),
+                "updated_at": _utc_now().isoformat(),
+            }
+            task.payload = p_copy
+            await db.commit()
+            raise RuntimeError(f"Erro no pipeline multi-agente: {media_err}")
 
     api_key = await get_effective_gemini_key(user, db)
 

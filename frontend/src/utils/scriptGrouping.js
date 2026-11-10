@@ -150,6 +150,9 @@ export function groupKanbanTasks(tasks = []) {
 
   for (const t of tasks) {
     const { seriesTitle, isSeriesOrScene, sceneNumber, sceneTitle } = parseSeriesAndScene(t.title)
+    const isAgentStage = Boolean(t.payload?.pipeline_stage)
+    const stageOrder = t.payload?.stage_order ?? sceneNumber
+    const stageLabel = t.payload?.stage_short_label || null
     const groupKey = t.parent_id ? `parent_${t.parent_id}` : (isSeriesOrScene ? seriesTitle.toLowerCase() : null)
 
     if (groupKey) {
@@ -157,6 +160,7 @@ export function groupKanbanTasks(tasks = []) {
         groupsMap.set(groupKey, {
           id: `group_${groupKey}`,
           isGroup: true,
+          isMultiAgentGroup: isAgentStage,
           groupKey,
           title: seriesTitle,
           business: t.business,
@@ -169,9 +173,11 @@ export function groupKanbanTasks(tasks = []) {
       }
 
       const group = groupsMap.get(groupKey)
+      if (isAgentStage) group.isMultiAgentGroup = true
       group.subtasks.push({
         ...t,
-        parsedSceneNumber: sceneNumber,
+        parsedSceneNumber: stageOrder,
+        parsedStageLabel: stageLabel,
         parsedSceneTitle: sceneTitle,
       })
 

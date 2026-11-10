@@ -758,11 +758,13 @@ async def render_dark_script_video(
             status="in_progress_agent",
             priority="high",
             source="agent",
-            agent_action="render_video_series",
+            agent_action="orchestrate_video_pipeline",
             payload={
                 "content_asset_id": asset.id,
-                "scenes_count": len(scenes) or 20,
+                "scenes_count": len(scenes) or 16,
                 "visual_bible": content_dict.get("visual_bible"),
+                "script_approved": True,
+                "pause_after_script": False,
             },
             started_at=now,
             created_at=now,
@@ -779,6 +781,8 @@ async def render_dark_script_video(
         task.updated_at = now
         p_copy = dict(task.payload or {})
         p_copy["content_asset_id"] = asset.id
+        p_copy["script_approved"] = True
+        p_copy["pause_after_script"] = False
         task.payload = p_copy
 
     await db.commit()

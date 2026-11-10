@@ -525,10 +525,12 @@ async function handleDispatchSeries() {
                   </div>
                 </div>
 
-                <!-- Resumo & Barra de Progresso de Cenas -->
+                <!-- Resumo & Barra de Progresso de Cenas / Agentes -->
                 <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
                   <div class="flex items-center justify-between text-[10px]">
-                    <span class="text-slate-400 font-semibold">{{ task.subtasks.length }} subtarefas / cenas</span>
+                    <span class="text-slate-400 font-semibold">
+                      {{ task.isMultiAgentGroup ? `${task.subtasks.length} agentes especializados` : `${task.subtasks.length} subtarefas / cenas` }}
+                    </span>
                     <span class="font-mono font-bold text-indigo-300">{{ task.completedCount }}/{{ task.totalCount }}</span>
                   </div>
                   <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
@@ -546,8 +548,14 @@ async function handleDispatchSeries() {
                   class="w-full px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-900 border border-slate-800 flex items-center justify-between text-[11px] text-slate-300 transition"
                 >
                   <span class="flex items-center space-x-1.5">
-                    <span class="text-indigo-400">🎞️</span>
-                    <span>{{ isTaskGroupExpanded(task.groupKey) ? 'Ocultar Cenas' : `Ver ${task.subtasks.length} Cenas da Série` }}</span>
+                    <span class="text-indigo-400">{{ task.isMultiAgentGroup ? '🤖' : '🎞️' }}</span>
+                    <span>
+                      {{
+                        isTaskGroupExpanded(task.groupKey)
+                          ? (task.isMultiAgentGroup ? 'Ocultar Agentes' : 'Ocultar Cenas')
+                          : (task.isMultiAgentGroup ? `Ver ${task.subtasks.length} Agentes do Pipeline` : `Ver ${task.subtasks.length} Cenas da Série`)
+                      }}
+                    </span>
                   </span>
                   <svg
                     class="w-3.5 h-3.5 transition-transform duration-200"
@@ -570,7 +578,7 @@ async function handleDispatchSeries() {
                   >
                     <div class="flex items-center justify-between text-[10px]">
                       <span class="font-mono text-indigo-300 font-bold">
-                        Cena #{{ sub.parsedSceneNumber || '•' }}
+                        {{ sub.parsedStageLabel || `Cena #${sub.parsedSceneNumber || '•'}` }}
                       </span>
                       <span
                         class="px-1.5 py-0.2 rounded font-semibold text-[9px] uppercase"
@@ -964,6 +972,7 @@ async function handleDispatchSeries() {
       :is-executing="executingTaskId === selectedTaskForDetail?.id"
       @close="showDetailModal = false"
       @execute="handleExecuteTask"
+      @updated="loadBoard"
       @move="(task, status) => { handleMove(task, status); showDetailModal = false; }"
       @delete="(task) => { handleDeleteTask(task); showDetailModal = false; }"
     />

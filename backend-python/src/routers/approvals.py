@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 from typing import Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func
-from src.database import get_db
+from src.database import AsyncSessionLocal, get_db
 from src.dependencies import get_current_user
-from src.models import ApprovalQueue, Task, User
+from src.models import ApprovalQueue, ContentAsset, Task, User
 from src.schemas.approval import (
     ApprovalQueueResponse,
     ApproveRequest,
@@ -135,10 +135,52 @@ async def show(
     return {"data": _format_approval(appr)}
 
 
+async def _bg_continue_video_pipeline(task_id: int, user_id: int) -> None:
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    async with AsyncSessionLocal() as session:
+        u_res = await session.execute(select(User).where(User.id == user_id))
+        db_user = u_res.scalar_one_or_none()
+        t_res = await session.execute(
+            select(Task).options(selectinload(Task.business)).where(Task.id == task_id)
+        )
+        db_task = t_res.scalar_one_or_none()
+        if db_user and db_task:
+            await VideoOrchestrator().run_pipeline(
+                db=session,
+                parent_task=db_task,
+                user=db_user,
+                pause_after_script=False,
+            )
+
+
+async def _bg_revise_script_stage(task_id: int, user_id: int, feedback: str) -> None:
+    from src.services.media.agents.contracts import AgentStage
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    async with AsyncSessionLocal() as session:
+        u_res = await session.execute(select(User).where(User.id == user_id))
+        db_user = u_res.scalar_one_or_none()
+        t_res = await session.execute(
+            select(Task).options(selectinload(Task.business)).where(Task.id == task_id)
+        )
+        db_task = t_res.scalar_one_or_none()
+        if db_user and db_task:
+            await VideoOrchestrator().run_single_stage(
+                db=session,
+                parent_task=db_task,
+                user=db_user,
+                stage=AgentStage.SCRIPT,
+                cascade=False,
+                feedback=feedback,
+            )
+
+
 @router.post("/{approval_id}/approve")
 async def approve(
     approval_id: int,
     payload: ApproveRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -154,14 +196,38 @@ async def approve(
         item_payload["selected_hook_index"] = payload.selected_hook_index
     appr.payload = item_payload
 
-    # Atualiza a tarefa associada para done
+    is_script_pause = (
+        appr.type == "dark_script_approval"
+        or item_payload.get("pipeline_pause_stage") == "script"
+    )
+
+    if item_payload.get("content_asset_id"):
+        ca_res = await db.execute(select(ContentAsset).where(ContentAsset.id == int(item_payload["content_asset_id"])))
+        ca = ca_res.scalar_one_or_none()
+        if ca:
+            ca.status = "approved"
+            ca.updated_at = now
+
+    trigger_task_id: Optional[int] = None
     if appr.task:
-        appr.task.status = "done"
-        appr.task.completed_at = now
+        if is_script_pause:
+            t_payload = dict(appr.task.payload or {})
+            t_payload["script_approved"] = True
+            t_payload["pause_after_script"] = False
+            appr.task.payload = t_payload
+            appr.task.status = "in_progress_agent"
+            appr.task.status_log = "Roteiro aprovado! Liberando Agentes 2 a 5..."
+            trigger_task_id = appr.task.id
+        else:
+            appr.task.status = "done"
+            appr.task.completed_at = now
 
     appr.updated_at = now
     await db.commit()
     await db.refresh(appr)
+
+    if trigger_task_id is not None:
+        background_tasks.add_task(_bg_continue_video_pipeline, trigger_task_id, current_user.id)
 
     return {"data": _format_approval(appr)}
 
@@ -170,6 +236,7 @@ async def approve(
 async def revision(
     approval_id: int,
     payload: RevisionRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -189,13 +256,23 @@ async def revision(
     })
     appr.revision_history = history
 
-    # Tarefa volta para o agente
+    item_payload = dict(appr.payload or {})
+    is_script_pause = (
+        appr.type == "dark_script_approval"
+        or item_payload.get("pipeline_pause_stage") == "script"
+    )
+    revise_task_id: Optional[int] = None
     if appr.task:
         appr.task.status = "in_progress_agent"
+        if is_script_pause:
+            revise_task_id = appr.task.id
 
     appr.updated_at = now
     await db.commit()
     await db.refresh(appr)
+
+    if revise_task_id is not None and payload.feedback:
+        background_tasks.add_task(_bg_revise_script_stage, revise_task_id, current_user.id, payload.feedback)
 
     return {"data": _format_approval(appr)}
 

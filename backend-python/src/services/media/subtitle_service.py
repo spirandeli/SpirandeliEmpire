@@ -233,6 +233,12 @@ def _build_chunks_from_word_timings(
         merged_sentences.append(s_words)
         idx_s += 1
 
+    _CONNECTORS = {
+        "O", "A", "OS", "AS", "UM", "UMA", "UNS", "UMAS",
+        "DE", "DO", "DA", "DOS", "DAS", "EM", "NO", "NA", "NOS", "NAS",
+        "PARA", "PRA", "COM", "POR", "SEM", "SOB", "QUE", "E", "OU", "AO", "AOS", "À", "ÀS",
+    }
+
     grouped: List[Dict[str, Any]] = []
     for s_words in merged_sentences:
         n = len(s_words)
@@ -248,9 +254,17 @@ def _build_chunks_from_word_timings(
 
         base_size = n // num_chunks
         rem = n % num_chunks
+        sizes = [base_size + (1 if c_idx < rem else 0) for c_idx in range(num_chunks)]
+
+        # Ajuste prosódico: evita terminar um bloco com artigo/preposição solta quando o próximo bloco tem >= 3 palavras
+        for c_idx in range(len(sizes) - 1):
+            end_pos = sum(sizes[: c_idx + 1]) - 1
+            if 0 <= end_pos < n and s_words[end_pos]["word"] in _CONNECTORS and sizes[c_idx] >= 3 and sizes[c_idx + 1] <= max_words:
+                sizes[c_idx] -= 1
+                sizes[c_idx + 1] += 1
+
         pos = 0
-        for c_idx in range(num_chunks):
-            c_size = base_size + (1 if c_idx < rem else 0)
+        for c_idx, c_size in enumerate(sizes):
             slice_words = s_words[pos : pos + c_size]
             pos += c_size
             if not slice_words:
@@ -259,9 +273,10 @@ def _build_chunks_from_word_timings(
             c_end = max(slice_words[-1]["end"], c_start + 0.25)
             grouped.append({
                 "text": " ".join(x["word"] for x in slice_words),
+                "words": [dict(x) for x in slice_words],
                 "start": round(c_start, 2),
                 "end": round(c_end, 2),
-                "sentence_end": (c_idx == num_chunks - 1),
+                "sentence_end": (c_idx == len(sizes) - 1),
             })
 
     # Garante que o primeiro bloco apareça desde o início (0.0s) se a fala começar nos primeiros 300ms
@@ -281,6 +296,54 @@ def _build_chunks_from_word_timings(
     return grouped
 
 
+def _build_word_highlight_ass_events(
+    chunk: Dict[str, Any],
+    highlight_color: str,
+    primary_color: str,
+) -> List[str]:
+    """
+    Gera eventos ASS com destaque ativo palavra-a-palavra: enquanto o bloco permanece
+    na tela, a palavra exatamente falada naquele instante recebe destaque amarelo/dourado
+    e escala sutil (\\fscx108\\fscy108), mantendo as demais palavras em branco nítido.
+    """
+    words = chunk.get("words") or []
+    c_start = float(chunk["start"])
+    c_end = max(c_start + 0.25, float(chunk["end"]))
+    if len(words) <= 1:
+        text = chunk["text"]
+        return [
+            f"Dialogue: 0,{format_ass_timestamp(c_start)},{format_ass_timestamp(c_end)},HormoziYellow,,0,0,0,,{text}"
+        ]
+
+    events: List[str] = []
+    for w_idx, w_item in enumerate(words):
+        w_start = c_start if w_idx == 0 else max(c_start, float(w_item["start"]))
+        if w_idx < len(words) - 1:
+            next_w_start = float(words[w_idx + 1]["start"])
+            w_end = max(w_start + 0.06, min(c_end, next_w_start))
+        else:
+            w_end = c_end
+        if w_end <= w_start:
+            continue
+
+        parts: List[str] = []
+        for j, token in enumerate(words):
+            tok_text = token["word"]
+            if j == w_idx:
+                parts.append(f"{{\\c{highlight_color}\\fscx108\\fscy108}}{tok_text}{{\\rHormoziWhite}}")
+            else:
+                parts.append(f"{{\\c{primary_color}}}{tok_text}")
+        line_text = " ".join(parts)
+        events.append(
+            f"Dialogue: 0,{format_ass_timestamp(w_start)},{format_ass_timestamp(w_end)},HormoziWhite,,0,0,0,,{line_text}"
+        )
+    if not events:
+        events.append(
+            f"Dialogue: 0,{format_ass_timestamp(c_start)},{format_ass_timestamp(c_end)},HormoziYellow,,0,0,0,,{chunk['text']}"
+        )
+    return events
+
+
 def generate_subtitles(
     scenes_timing: List[Dict[str, Any]],
     output_srt_path: str,
@@ -289,11 +352,12 @@ def generate_subtitles(
     primary_color: str = "&H00FFFFFF",    # Branco puro
     outline_color: str = "&H00000000",    # Preto puro
     word_timings: Optional[List[Dict[str, Any]]] = None,
-) -> Dict[str, str]:
+    style_preset: str = "hormozi_karaoke",
+) -> Dict[str, Any]:
     """
-    Gera arquivos .srt padrão e .ass com tipografia cinemática de alta retenção (Hormozi style).
-    Se `word_timings` (WordBoundary do TTS) for fornecido, sincroniza cada bloco de 3-4 palavras
-    exatamente com o milissegundo da fala; caso contrário, distribui proporcionalmente por cena.
+    Gera arquivos .srt padrão e .ass com tipografia cinemática de alta retenção.
+    No modo `hormozi_karaoke` com `word_timings`, destaca exatamente a palavra falada
+    em cada milissegundo sem sobreposição nem palavras órfãs.
     """
     srt_lines = []
     ass_dialogues = []
@@ -301,7 +365,7 @@ def generate_subtitles(
 
     # Cabeçalho ASS usando DejaVu Sans (instalada no container) com contorno forte e sombra nítida
     ass_header = f"""[Script Info]
-Title: ABVOS Dark Channel Dynamic Subtitles
+Title: ABVOS Dynamic Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
@@ -318,8 +382,10 @@ Style: HormoziWhite,DejaVu Sans,66,{primary_color},&H000000FF,{outline_color},&H
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
+    chunks_count = 0
     if word_timings:
         timed_chunks = _build_chunks_from_word_timings(word_timings, max_words=4)
+        chunks_count = len(timed_chunks)
         for i, item in enumerate(timed_chunks):
             c_text = item["text"]
             c_start = item["start"]
@@ -333,10 +399,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             srt_lines.append("")
             counter += 1
 
-            style_name = "HormoziYellow" if (i % 2 == 0) else "HormoziWhite"
-            ass_dialogues.append(
-                f"Dialogue: 0,{format_ass_timestamp(c_start)},{format_ass_timestamp(c_end)},{style_name},,0,0,0,,{c_text}"
-            )
+            if style_preset == "hormozi_karaoke" and item.get("words"):
+                ass_dialogues.extend(
+                    _build_word_highlight_ass_events(
+                        chunk=item,
+                        highlight_color=highlight_color,
+                        primary_color=primary_color,
+                    )
+                )
+            else:
+                style_name = "HormoziYellow" if (i % 2 == 0) else "HormoziWhite"
+                ass_dialogues.append(
+                    f"Dialogue: 0,{format_ass_timestamp(c_start)},{format_ass_timestamp(c_end)},{style_name},,0,0,0,,{c_text}"
+                )
     else:
         for scene in scenes_timing:
             scene_text = clean_narration_for_tts(scene.get("text", ""))
@@ -351,6 +426,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             chunk_duration = total_duration / len(chunks)
 
             for i, chunk in enumerate(chunks):
+                chunks_count += 1
                 chunk_start = start + (i * chunk_duration)
                 chunk_end = start + ((i + 1) * chunk_duration)
 
@@ -374,4 +450,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return {
         "srt_path": output_srt_path,
         "ass_path": output_ass_path,
+        "chunks_count": chunks_count,
+        "events_count": len(ass_dialogues),
+        "style_preset": style_preset,
     }

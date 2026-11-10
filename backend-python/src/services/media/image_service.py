@@ -18,8 +18,9 @@ from google.genai import types
 
 logger = logging.getLogger("abvos.media.images")
 
-# Cache em memória para não repetir chamadas em modelos indisponíveis para a mesma chave
+# Cache com cooldown por (chave, modelo) para não bloquear permanentemente a chave Gemini em erros transitórios
 _UNAVAILABLE_IMAGEN_KEYS: set[str] = set()
+_GEMINI_IMAGE_MODEL_COOLDOWN: Dict[tuple[str, str], float] = {}
 
 # Controle de janela de rate-limit por provedor (evita chamadas desnecessárias em cooldown)
 _POLLINATIONS_NEXT_AVAILABLE_AT: float = 0.0
@@ -313,36 +314,49 @@ def _save_and_normalize_image_bytes(
 def _build_styled_prompt(
     prompt: str,
     visual_bible: Optional[Dict[str, str]] = None,
+    include_character: bool = True,
 ) -> str:
     """
     Constrói um prompt cinematográfico equilibrado, garantindo riqueza de cenário (Worldbuilding),
-    enquadramentos cinematográficos em camadas (foreground/midground/background) e continuidade de personagem
-    sem que o personagem fique isolado ou centralizado em pose estática ("centered passport portrait").
+    enquadramentos cinematográficos em camadas (foreground/midground/background) e respeito ao
+    `art_style` definido pela Bíblia Visual (sem impor estilo fixo quando outro estilo foi pedido).
     """
     clean_prompt = re.sub(r"\s+", " ", (prompt or "").split("--ar")[0]).strip()
     clean_prompt = re.sub(r"consistent character (?:design )?sheet,?\s*", "", clean_prompt, flags=re.IGNORECASE)
 
     parts: List[str] = [clean_prompt]
+    art_style = "cinematic film still, high detail, dramatic volumetric lighting"
+    negative_constraints = "no centered passport portrait, no plain background, no empty wall, no watermark, no text, no split screen"
+
     if visual_bible:
         protagonist = (visual_bible.get("protagonist_description") or "").strip()
         world_setting = (visual_bible.get("world_setting") or "").strip()
         color_palette = (visual_bible.get("color_palette") or "").strip()
+        vb_style = (visual_bible.get("art_style") or "").strip()
+        vb_negative = (visual_bible.get("negative_constraints") or "").strip()
 
-        if protagonist and protagonist.lower()[:24] not in clean_prompt.lower():
+        if include_character and protagonist and protagonist.lower()[:24] not in clean_prompt.lower():
             parts.append(f"Character (off-center, integrated): {protagonist}")
         if world_setting and world_setting.lower()[:20] not in clean_prompt.lower():
             parts.append(f"Environment: {world_setting}")
         if color_palette and color_palette.lower()[:18] not in clean_prompt.lower():
             parts.append(f"Palette: {color_palette}")
+        if vb_style:
+            art_style = vb_style
+        if vb_negative:
+            negative_constraints = f"{negative_constraints}, {vb_negative}"
 
     combined = ". ".join(p.rstrip(".") for p in parts if p)
-    combined = combined[:900].strip()
+    combined = combined[:950].strip()
+
+    style_suffix = ""
+    if art_style.lower()[:18] not in combined.lower():
+        style_suffix = f", {art_style}"
 
     return (
-        f"{combined}, 2D dark epic anime cinematic film still in the style of Castlevania Nocturne, "
-        "rule of thirds composition, deep environmental perspective, rich detailed background architecture, "
-        "dramatic chiaroscuro volumetric Tyndall lighting, sharp focus, masterpiece 8k vertical 9:16, "
-        "no centered passport portrait, no plain background, no empty wall, no text, no split screen"
+        f"{combined}{style_suffix}, "
+        "rule of thirds composition, deep environmental perspective, rich detailed background, "
+        f"sharp focus, vertical 9:16 aspect ratio, {negative_constraints}"
     )
 
 
@@ -351,23 +365,83 @@ async def _try_google_genai_image(
     output_path: str,
     api_key: str,
     scene_number: int,
-    timeout: float = 22.0,
+    timeout: float = 35.0,
     visual_bible: Optional[Dict[str, str]] = None,
+    include_character: bool = True,
+    max_attempts: int = 2,
 ) -> bool:
     """
-    Provedor 1: Tenta gerar imagem 9:16 via Google GenAI (Imagen 3 / Gemini Flash Image Generation).
+    Provedor Principal (Gemini / Imagen): Gera imagem nativa 9:16 via Google GenAI
+    (Gemini Flash Image com ImageConfig 9:16 e Imagen 3).
+    Usa cooldown por (chave, modelo) em vez de bloquear permanentemente a chave inteira.
     """
     if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") == "1":
         return False
     if not api_key or api_key in _UNAVAILABLE_IMAGEN_KEYS:
         return False
 
-    enhanced_prompt = _build_styled_prompt(prompt, visual_bible=visual_bible)
+    enhanced_prompt = _build_styled_prompt(
+        prompt,
+        visual_bible=visual_bible,
+        include_character=include_character,
+    )
+
+    def _is_model_cooled_down(model_name: str) -> bool:
+        until = _GEMINI_IMAGE_MODEL_COOLDOWN.get((api_key, model_name), 0.0)
+        return time.monotonic() < until
+
+    def _set_model_cooldown(model_name: str, seconds: float) -> None:
+        _GEMINI_IMAGE_MODEL_COOLDOWN[(api_key, model_name)] = time.monotonic() + seconds
 
     def _sync_call() -> Optional[bytes]:
         client = genai.Client(api_key=api_key)
-        # 1. Tenta Imagen 3 com aspect_ratio 9:16 nativo
+
+        # 1. Tenta Gemini Flash Image Generation (com ImageConfig 9:16 nativo)
+        gemini_image_models = (
+            "gemini-2.5-flash-image",
+            "gemini-2.0-flash-preview-image-generation",
+        )
+        for model_name in gemini_image_models:
+            if _is_model_cooled_down(model_name):
+                continue
+            try:
+                cfg = types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(aspect_ratio="9:16"),
+                )
+            except Exception:
+                cfg = types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                )
+            try:
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=enhanced_prompt,
+                    config=cfg,
+                )
+                for cand in getattr(resp, "candidates", []) or []:
+                    for part in getattr(cand.content, "parts", []) or []:
+                        inline = getattr(part, "inline_data", None)
+                        if inline and getattr(inline, "data", None):
+                            return inline.data
+            except Exception as ex:
+                err_str = str(ex).lower()
+                if any(k in err_str for k in ("404", "not_found")):
+                    _set_model_cooldown(model_name, 3600.0)
+                    continue
+                if any(k in err_str for k in ("429", "resource_exhausted", "quota")):
+                    _set_model_cooldown(model_name, 30.0)
+                    continue
+                if any(k in err_str for k in ("403", "billing", "permission")):
+                    _set_model_cooldown(model_name, 300.0)
+                    continue
+                logger.debug(f"[Cena #{scene_number}] Erro Gemini {model_name}: {ex}")
+                continue
+
+        # 2. Tenta Imagen 3 com aspect_ratio 9:16 nativo
         for imagen_model in ("imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"):
+            if _is_model_cooled_down(imagen_model):
+                continue
             try:
                 img_resp = client.models.generate_images(
                     model=imagen_model,
@@ -384,41 +458,28 @@ async def _try_google_genai_image(
                     img_bytes = getattr(image_obj, "image_bytes", None)
                     if img_bytes:
                         return img_bytes
-            except Exception:
-                continue
-
-        # 2. Tenta Gemini Flash Image Generation
-        for model_name in ("gemini-2.0-flash-preview-image-generation", "gemini-2.5-flash-image"):
-            try:
-                resp = client.models.generate_content(
-                    model=model_name,
-                    contents=enhanced_prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
-                for cand in getattr(resp, "candidates", []) or []:
-                    for part in getattr(cand.content, "parts", []) or []:
-                        inline = getattr(part, "inline_data", None)
-                        if inline and getattr(inline, "data", None):
-                            return inline.data
             except Exception as ex:
                 err_str = str(ex).lower()
-                if any(k in err_str for k in ("429", "resource_exhausted", "quota", "404", "not_found", "403", "billing", "invalid")):
-                    continue
-                raise ex
+                if any(k in err_str for k in ("404", "not_found")):
+                    _set_model_cooldown(imagen_model, 3600.0)
+                elif any(k in err_str for k in ("429", "resource_exhausted", "quota")):
+                    _set_model_cooldown(imagen_model, 30.0)
+                elif any(k in err_str for k in ("403", "billing", "permission")):
+                    _set_model_cooldown(imagen_model, 300.0)
+                continue
         return None
 
-    try:
-        loop = asyncio.get_running_loop()
-        img_bytes = await asyncio.wait_for(loop.run_in_executor(None, _sync_call), timeout=timeout)
-        if img_bytes and _save_and_normalize_image_bytes(img_bytes, output_path):
-            logger.info(f"[Cena #{scene_number}] Imagem real gerada via Google GenAI: {output_path}")
-            return True
-        _UNAVAILABLE_IMAGEN_KEYS.add(api_key)
-    except Exception as e:
-        logger.warning(f"[Cena #{scene_number}] Google GenAI Image indisponível ({e}), alternando para próximo provedor...")
-        _UNAVAILABLE_IMAGEN_KEYS.add(api_key)
+    loop = asyncio.get_running_loop()
+    for attempt in range(max(1, max_attempts)):
+        try:
+            img_bytes = await asyncio.wait_for(loop.run_in_executor(None, _sync_call), timeout=timeout)
+            if img_bytes and _save_and_normalize_image_bytes(img_bytes, output_path):
+                logger.info(f"[Cena #{scene_number}] Imagem real gerada via Google GenAI (tentativa {attempt + 1}): {output_path}")
+                return True
+        except Exception as e:
+            logger.warning(f"[Cena #{scene_number}] Google GenAI Image tentativa {attempt + 1} falhou ({e})")
+        if attempt + 1 < max_attempts:
+            await asyncio.sleep(1.5 * (attempt + 1))
 
     return False
 
@@ -705,6 +766,101 @@ async def _try_pollinations_flux_image(
     return False
 
 
+async def generate_scene_image_detailed(
+    prompt: str,
+    output_path: str,
+    gemini_key: Optional[str] = None,
+    scene_number: int = 1,
+    title: str = "",
+    max_retries: int = 2,
+    timeout_per_attempt: float = 35.0,
+    visual_bible: Optional[Dict[str, str]] = None,
+    story_seed: int = 424242,
+    include_character: bool = True,
+    prefer_gemini_only: bool = False,
+) -> Dict[str, Any]:
+    """
+    Gera imagem de cena real 9:16 (1080x1920) priorizando Google Gemini (Imagen 3 / Gemini Flash Image)
+    e retornando metadados de provedor usado para auditoria do VideoSceneAgent.
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    clean_key = (gemini_key or os.getenv("GEMINI_API_KEY", "")).strip()
+
+    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") != "1":
+        # 1. Google GenAI (provedor principal configurado pelo usuário)
+        if clean_key:
+            if await _try_google_genai_image(
+                prompt=prompt,
+                output_path=output_path,
+                api_key=clean_key,
+                scene_number=scene_number,
+                timeout=timeout_per_attempt,
+                visual_bible=visual_bible,
+                include_character=include_character,
+                max_attempts=max(2, max_retries),
+            ):
+                return {"path": output_path, "provider": "google_gemini", "fallback": False}
+
+        if not prefer_gemini_only:
+            # 2. AI Horde Flux.1-Schnell fp8 (Compact) nativo em 576x1024
+            if await _try_aihorde_image(
+                prompt=prompt,
+                output_path=output_path,
+                scene_number=scene_number,
+                timeout=42.0,
+                visual_bible=visual_bible,
+                story_seed=story_seed,
+            ):
+                return {"path": output_path, "provider": "aihorde_flux", "fallback": False}
+
+            # 3. Pollinations Flux 1024x1024 imediato
+            if await _try_pollinations_flux_image(
+                prompt=prompt,
+                output_path=output_path,
+                scene_number=scene_number,
+                timeout=timeout_per_attempt,
+                wait_on_rate_limit=False,
+                visual_bible=visual_bible,
+                story_seed=story_seed,
+            ):
+                return {"path": output_path, "provider": "pollinations_flux", "fallback": False}
+
+            # 4. HuggingFace Gradio Spaces
+            if await _try_hf_gradio_flux_image(
+                prompt=prompt,
+                output_path=output_path,
+                scene_number=scene_number,
+                timeout=25.0,
+                visual_bible=visual_bible,
+                story_seed=story_seed,
+            ):
+                return {"path": output_path, "provider": "hf_gradio_flux", "fallback": False}
+
+            # 5. Pollinations Flux aguardando janela se necessário
+            if await _try_pollinations_flux_image(
+                prompt=prompt,
+                output_path=output_path,
+                scene_number=scene_number,
+                timeout=35.0,
+                wait_on_rate_limit=True,
+                visual_bible=visual_bible,
+                story_seed=story_seed,
+            ):
+                return {"path": output_path, "provider": "pollinations_flux", "fallback": False}
+
+    # 6. Fallback offline (testes sem internet ou falha total de API)
+    logger.info(f"[Cena #{scene_number}] Gerando arte visual offline de segurança (sem texto sobreposto).")
+    fallback_img = create_cinematic_dark_backdrop(
+        width=1080,
+        height=1920,
+        scene_number=scene_number,
+        title=title or f"Cena {scene_number}",
+        prompt=prompt,
+    )
+    fallback_img.save(output_path, "JPEG", quality=92)
+    return {"path": output_path, "provider": "offline_backdrop", "fallback": True}
+
+
 async def generate_single_scene_image_with_retry(
     prompt: str,
     output_path: str,
@@ -717,88 +873,20 @@ async def generate_single_scene_image_with_retry(
     story_seed: int = 424242,
 ) -> str:
     """
-    Gera imagem de cena real 9:16 (1080x1920) garantindo 100% de cenas reais geradas por IA,
-    zero distorção vertical e continuidade de personagem (visual_bible + story_seed) em todas as 20 cenas:
-    1. Google GenAI (Imagen 3 / Gemini Flash Image)
-    2. AI Horde `Flux.1-Schnell fp8 (Compact)` nativo 576x1024 (9:16 exato, sem rate-limit de 45s por IP)
-    3. Pollinations Flux 1024x1024 (sem distorção vertical) imediato
-    4. HuggingFace Gradio Flux.1 Schnell / Flux.1 Merged
-    5. Pollinations Flux 1024x1024 aguardando janela (garante zero fallback geométrico)
-    6. Fallback visual Dark Anime (exclusivo para execução de testes offline)
+    Wrapper retrocompatível que retorna o caminho do arquivo salvo.
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    clean_key = (gemini_key or os.getenv("GEMINI_API_KEY", "")).strip()
-
-    if os.getenv("ABVOS_DISABLE_EXTERNAL_IMAGE_API") != "1":
-        # 1. Google GenAI
-        if clean_key:
-            if await _try_google_genai_image(
-                prompt=prompt,
-                output_path=output_path,
-                api_key=clean_key,
-                scene_number=scene_number,
-                timeout=timeout_per_attempt,
-                visual_bible=visual_bible,
-            ):
-                return output_path
-
-        # 2. AI Horde Flux.1-Schnell fp8 (Compact) nativo em 576x1024 (9:16 real sem esticar e sem limite de 45s)
-        if await _try_aihorde_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=42.0,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-        # 3. Pollinations Flux 1024x1024 imediato (com composição 9:16 sem distorção)
-        if await _try_pollinations_flux_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=timeout_per_attempt,
-            wait_on_rate_limit=False,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-        # 4. HuggingFace Gradio Spaces (Flux.1 Schnell / Merged)
-        if await _try_hf_gradio_flux_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=25.0,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-        # 5. Garantia final via Pollinations Flux aguardando janela se necessário
-        if await _try_pollinations_flux_image(
-            prompt=prompt,
-            output_path=output_path,
-            scene_number=scene_number,
-            timeout=35.0,
-            wait_on_rate_limit=True,
-            visual_bible=visual_bible,
-            story_seed=story_seed,
-        ):
-            return output_path
-
-    # 6. Fallback offline com arte silhueta Dark Anime (apenas para testes sem internet)
-    logger.info(f"[Cena #{scene_number}] Gerando arte visual Dark Anime offline (sem texto sobreposto).")
-    fallback_img = create_cinematic_dark_backdrop(
-        width=1080,
-        height=1920,
-        scene_number=scene_number,
-        title=title or f"Cena {scene_number}",
+    res = await generate_scene_image_detailed(
         prompt=prompt,
+        output_path=output_path,
+        gemini_key=gemini_key,
+        scene_number=scene_number,
+        title=title,
+        max_retries=max_retries,
+        timeout_per_attempt=timeout_per_attempt,
+        visual_bible=visual_bible,
+        story_seed=story_seed,
     )
-    fallback_img.save(output_path, "JPEG", quality=92)
-    return output_path
+    return res["path"]
 
 
 async def generate_single_scene_image(

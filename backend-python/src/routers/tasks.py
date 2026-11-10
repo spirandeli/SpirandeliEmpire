@@ -3,12 +3,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from src.database import get_db, AsyncSessionLocal
 from src.dependencies import get_current_user
-from src.models import Business, Task, User
+from src.models import ApprovalQueue, Business, ContentAsset, Task, User
 from src.schemas.task import (
     TaskCreateRequest,
     TaskMoveRequest,
@@ -433,6 +434,304 @@ async def execute_pending(
         "message": f"{len(executed)} tarefas executadas com sucesso.",
         "executed": executed,
         "errors": errors,
+    }
+
+
+class RunAgentStageRequest(BaseModel):
+    cascade: bool = True
+    feedback: Optional[str] = None
+    sync: bool = False
+
+
+class RegenerateSceneRequest(BaseModel):
+    custom_prompt: Optional[str] = None
+    reassemble: bool = False
+    sync: bool = False
+
+
+async def _resolve_parent_task(task: Task, user: User, db: AsyncSession) -> Task:
+    if task.parent_id:
+        p_res = await db.execute(
+            select(Task).options(selectinload(Task.business)).where(
+                Task.id == task.parent_id,
+                Task.user_id == user.id,
+                Task.deleted_at.is_(None),
+            )
+        )
+        parent = p_res.scalar_one_or_none()
+        if parent:
+            return parent
+    return task
+
+
+async def _bg_run_stage(task_id: int, user_id: int, stage_val: str, cascade: bool, feedback: Optional[str]) -> None:
+    from src.services.media.agents.contracts import AgentStage
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    async with AsyncSessionLocal() as session:
+        u_res = await session.execute(select(User).where(User.id == user_id))
+        db_user = u_res.scalar_one_or_none()
+        t_res = await session.execute(select(Task).options(selectinload(Task.business)).where(Task.id == task_id))
+        db_task = t_res.scalar_one_or_none()
+        if db_user and db_task:
+            await VideoOrchestrator().run_single_stage(
+                db=session,
+                parent_task=db_task,
+                user=db_user,
+                stage=AgentStage(stage_val),
+                cascade=cascade,
+                feedback=feedback,
+            )
+
+
+async def _bg_continue_pipeline(task_id: int, user_id: int) -> None:
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    async with AsyncSessionLocal() as session:
+        u_res = await session.execute(select(User).where(User.id == user_id))
+        db_user = u_res.scalar_one_or_none()
+        t_res = await session.execute(select(Task).options(selectinload(Task.business)).where(Task.id == task_id))
+        db_task = t_res.scalar_one_or_none()
+        if db_user and db_task:
+            await VideoOrchestrator().run_pipeline(
+                db=session,
+                parent_task=db_task,
+                user=db_user,
+                pause_after_script=False,
+            )
+
+
+async def _bg_regenerate_scene(
+    task_id: int,
+    user_id: int,
+    scene_number: int,
+    custom_prompt: Optional[str],
+    reassemble: bool,
+) -> None:
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    async with AsyncSessionLocal() as session:
+        u_res = await session.execute(select(User).where(User.id == user_id))
+        db_user = u_res.scalar_one_or_none()
+        t_res = await session.execute(select(Task).options(selectinload(Task.business)).where(Task.id == task_id))
+        db_task = t_res.scalar_one_or_none()
+        if db_user and db_task:
+            await VideoOrchestrator().regenerate_scene(
+                db=session,
+                parent_task=db_task,
+                user=db_user,
+                scene_number=scene_number,
+                custom_prompt=custom_prompt,
+                reassemble=reassemble,
+            )
+
+
+@router.get("/{task_id}/pipeline")
+async def get_task_pipeline(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna o manifesto completo dos 5 agentes e suas subtarefas agrupadas."""
+    from src.services.media.agents.base import load_manifest
+    from src.services.media.agents.contracts import STAGE_METADATA, STAGE_ORDER
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    task = await _get_user_task(task_id, current_user, db)
+    parent = await _resolve_parent_task(task, current_user, db)
+
+    orchestrator = VideoOrchestrator()
+    ctx = await orchestrator.build_context(db, parent, current_user)
+    manifest = load_manifest(ctx)
+
+    sub_res = await db.execute(
+        select(Task)
+        .options(selectinload(Task.business))
+        .where(Task.parent_id == parent.id, Task.deleted_at.is_(None))
+        .order_by(Task.position.asc(), Task.id.asc())
+    )
+    subtasks = sub_res.scalars().all()
+    sub_by_stage = {
+        (st.payload or {}).get("pipeline_stage"): _format_task(st)
+        for st in subtasks
+        if (st.payload or {}).get("pipeline_stage")
+    }
+
+    stages_view = []
+    for st in STAGE_ORDER:
+        meta = STAGE_METADATA[st.value]
+        stages_view.append({
+            "stage": st.value,
+            "order": meta["order"],
+            "agent_action": meta["agent_action"],
+            "label": meta["label"],
+            "short_label": meta["short_label"],
+            "description": meta["description"],
+            "manifest_status": manifest.stage_statuses.get(st.value, "pending"),
+            "subtask": sub_by_stage.get(st.value),
+        })
+
+    return {
+        "data": {
+            "parent_task": _format_task(parent),
+            "script_approved": bool((parent.payload or {}).get("script_approved", False)),
+            "manifest": manifest.model_dump(mode="json"),
+            "stages": stages_view,
+        }
+    }
+
+
+@router.post("/{task_id}/agents/continue")
+async def continue_video_pipeline(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    sync: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aprova o roteiro (Agente 1) e libera a execução encadeada dos Agentes 2 a 5."""
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    task = await _get_user_task(task_id, current_user, db)
+    parent = await _resolve_parent_task(task, current_user, db)
+    now = _utc_now()
+
+    payload = dict(parent.payload or {})
+    payload["script_approved"] = True
+    payload["pause_after_script"] = False
+    parent.payload = payload
+    parent.status = "in_progress_agent"
+    parent.status_log = "Roteiro aprovado! Iniciando Agentes 2 a 5..."
+    parent.updated_at = now
+
+    # Atualiza aprovações pendentes e ContentAsset associados
+    ap_res = await db.execute(
+        select(ApprovalQueue).where(
+            ApprovalQueue.task_id == parent.id,
+            ApprovalQueue.status == "pending",
+        )
+    )
+    for appr in ap_res.scalars().all():
+        appr.status = "approved"
+        appr.reviewed_at = now
+        appr.updated_at = now
+
+    if payload.get("content_asset_id"):
+        ca_res = await db.execute(select(ContentAsset).where(ContentAsset.id == int(payload["content_asset_id"])))
+        ca = ca_res.scalar_one_or_none()
+        if ca:
+            ca.status = "approved"
+            ca.updated_at = now
+
+    await db.commit()
+    await db.refresh(parent)
+
+    if sync:
+        res = await VideoOrchestrator().run_pipeline(
+            db=db,
+            parent_task=parent,
+            user=current_user,
+            pause_after_script=False,
+        )
+        return {"message": "Pipeline concluído!", "data": res}
+
+    background_tasks.add_task(_bg_continue_pipeline, parent.id, current_user.id)
+    return {
+        "message": "Roteiro aprovado! Agentes 2 (Cenas Gemini), 3 (Narração), 4 (Legendas) e 5 (Montagem) iniciados.",
+        "task_id": parent.id,
+        "status": "in_progress_agent",
+        "data": _format_task(parent),
+    }
+
+
+@router.post("/{task_id}/agents/{stage}/run")
+async def run_agent_stage(
+    task_id: int,
+    stage: str,
+    body: RunAgentStageRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Executa ou re-executa um dos 5 agentes isoladamente (com opção de cascata)."""
+    from src.services.media.agents.contracts import AgentStage
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    try:
+        target_stage = AgentStage(stage)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estágio inválido '{stage}'. Use: script, video_scenes, narration, subtitles ou assemble.",
+        )
+
+    task = await _get_user_task(task_id, current_user, db)
+    parent = await _resolve_parent_task(task, current_user, db)
+
+    if body.sync:
+        res = await VideoOrchestrator().run_single_stage(
+            db=db,
+            parent_task=parent,
+            user=current_user,
+            stage=target_stage,
+            cascade=body.cascade,
+            feedback=body.feedback,
+        )
+        return {"message": f"Agente '{target_stage.value}' executado!", "data": res}
+
+    parent.status = "in_progress_agent"
+    parent.status_log = f"Executando agente '{target_stage.value}'..."
+    parent.updated_at = _utc_now()
+    await db.commit()
+    background_tasks.add_task(_bg_run_stage, parent.id, current_user.id, target_stage.value, body.cascade, body.feedback)
+    return {
+        "message": f"Agente '{target_stage.value}' disparado em segundo plano.",
+        "task_id": parent.id,
+        "stage": target_stage.value,
+    }
+
+
+@router.post("/{task_id}/scenes/{scene_number}/regenerate")
+async def regenerate_task_scene(
+    task_id: int,
+    scene_number: int,
+    body: RegenerateSceneRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Regenera apenas uma cena específica via Agente 2 (Gemini Image)."""
+    from src.services.media.agents.orchestrator import VideoOrchestrator
+
+    if scene_number < 1 or scene_number > 40:
+        raise HTTPException(status_code=400, detail="Número de cena inválido.")
+
+    task = await _get_user_task(task_id, current_user, db)
+    parent = await _resolve_parent_task(task, current_user, db)
+
+    if body.sync:
+        res = await VideoOrchestrator().regenerate_scene(
+            db=db,
+            parent_task=parent,
+            user=current_user,
+            scene_number=scene_number,
+            custom_prompt=body.custom_prompt,
+            reassemble=body.reassemble,
+        )
+        return {"message": f"Cena #{scene_number} regenerada com Gemini!", "data": res}
+
+    background_tasks.add_task(
+        _bg_regenerate_scene,
+        parent.id,
+        current_user.id,
+        scene_number,
+        body.custom_prompt,
+        body.reassemble,
+    )
+    return {
+        "message": f"Regeneração da Cena #{scene_number} iniciada via Gemini.",
+        "task_id": parent.id,
+        "scene_number": scene_number,
     }
 
 
