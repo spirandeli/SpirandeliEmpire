@@ -116,19 +116,24 @@ async def seed_default_owner_if_needed() -> None:
                         plain_gemini = candidate
 
                 if plain_gemini:
-                    session.add(
-                        AIProviderCredentialModel(
-                            user_id=admin_user.id,
-                            provider="gemini",
-                            label="Gemini Principal (Migrada)",
-                            encrypted_api_key=encrypt_secret(plain_gemini, settings.ENCRYPTION_KEY_VERSION),
-                            encryption_key_version=settings.ENCRYPTION_KEY_VERSION,
-                            status="active",
-                            is_default=True,
-                            is_active=True,
-                        )
+                    new_cred = AIProviderCredentialModel(
+                        user_id=admin_user.id,
+                        provider="gemini",
+                        label="Gemini Principal (Migrada)",
+                        encrypted_api_key=encrypt_secret(plain_gemini, settings.ENCRYPTION_KEY_VERSION),
+                        encryption_key_version=settings.ENCRYPTION_KEY_VERSION,
+                        status="active",
+                        is_default=True,
+                        is_active=True,
                     )
+                    session.add(new_cred)
                     await session.commit()
+                    await session.refresh(new_cred)
+                    try:
+                        from app.providers.discovery import model_discovery_service
+                        await model_discovery_service.sync_models(admin_user.id, new_cred.id, force=True)
+                    except Exception:
+                        pass
 
 
 async def get_current_user_allow_pw_change(
