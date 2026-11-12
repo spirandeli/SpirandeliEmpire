@@ -1,132 +1,167 @@
-name: abvos
-
-# Autonomous Business Venture OS - Ambiente Docker FastAPI (Python) + Vue 3 (Vite).
+name: spirandeliempire
 
 services:
-  # --- FastAPI Backend (Python 3.12) -----------------------------------------
-  app-py:
-    build:
-      context: .
-      dockerfile: docker/python/Dockerfile
-    image: abvos/app-py:dev
-    container_name: abvos-app-py
-    working_dir: /app
-    env_file:
-      - ./.env
-    volumes:
-      - ./backend-python:/app
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+  postgres:
+    image: postgres:16-alpine
+    container_name: spirandeli-postgres
+    restart: unless-stopped
     environment:
-      - PYTHONPATH=/app
-      - DB_HOST=db
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_DATABASE}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-spirandeliempire}
+      POSTGRES_USER: ${POSTGRES_USER:-spirandeli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spirandeli_secret_pass}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spirandeli} -d ${POSTGRES_DB:-spirandeliempire}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
-      - abvos
+      - empire_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: spirandeli-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - empire_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: spirandeli-backend
+    restart: unless-stopped
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - APP_KEY=${APP_KEY:-spirandeli-empire-super-secret-master-key-32b-min}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-spirandeli}:${POSTGRES_PASSWORD:-spirandeli_secret_pass}@postgres:5432/${POSTGRES_DB:-spirandeliempire}
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY:-gAamH43t9g86xK_V3zP0N5h3B9lU2mX6qT1y8oQ4z9E=}
+      - ENCRYPTION_KEY_VERSION=${ENCRYPTION_KEY_VERSION:-v1}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-spirandelidev@gmail.com}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
+      - REGISTRATION_MODE=${REGISTRATION_MODE:-public}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+    volumes:
+      - ./storage:/home/spira/spirandeliempire/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: 1536m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    networks:
+      - empire_net
 
-  # --- Node: Vite + Vue 3 (HMR) ----------------------------------------------
-  node:
-    image: node:22-alpine
-    container_name: abvos-node
-    working_dir: /app
-    user: "${UID:-1000}:${GID:-1000}"
-    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: spirandeli-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     environment:
-      - HOME=/tmp
-      - VITE_HMR_CLIENT_PORT=${WEB_PORT:-8080}
-      - VITE_API_BASE_URL=/api
+      - APP_ENV=${APP_ENV:-production}
+      - APP_KEY=${APP_KEY:-spirandeli-empire-super-secret-master-key-32b-min}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-spirandeli}:${POSTGRES_PASSWORD:-spirandeli_secret_pass}@postgres:5432/${POSTGRES_DB:-spirandeliempire}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY:-gAamH43t9g86xK_V3zP0N5h3B9lU2mX6qT1y8oQ4z9E=}
+      - ENCRYPTION_KEY_VERSION=${ENCRYPTION_KEY_VERSION:-v1}
     volumes:
-      - ./frontend:/app
-      - node_modules:/app/node_modules
-    networks:
-      - abvos
-    restart: unless-stopped
-
-  # --- Nginx: reverse proxy (API FastAPI + SPA Vue) --------------------------
-  web:
-    image: nginx:1.27-alpine
-    container_name: abvos-web
-    ports:
-      - "${WEB_PORT:-8080}:80"
-    volumes:
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - abvos
+      - ./storage:/home/spira/spirandeliempire/storage
+    mem_limit: 1536m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
-      - app-py
-      - node
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - empire_net
 
-  # --- MySQL 8.0 ---------------------------------------------------------------
-  db:
-    image: mysql:8.0
-    container_name: abvos-db
-    command: --defaults-extra-file=/etc/mysql/conf.d/abvos.cnf
-    environment:
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      TZ: ${APP_TIMEZONE:-America/Sao_Paulo}
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: spirandeli-frontend
+    restart: unless-stopped
+    mem_limit: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - empire_net
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: spirandeli-nginx
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:${DB_FORWARD_PORT:-3307}:3306"
+      - "${WEB_PORT:-8086}:80"
     volumes:
-      - db_data:/var/lib/mysql
-      - ./docker/mysql/abvos.cnf:/etc/mysql/conf.d/abvos.cnf:ro
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    mem_limit: 128m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - frontend
+      - backend
     networks:
-      - abvos
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 20s
-    restart: unless-stopped
-
-  # --- Redis (cache, filas, broadcasting) -----------------------------------
-  redis:
-    image: redis:7-alpine
-    container_name: abvos-redis
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory-policy", "noeviction"]
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    networks:
-      - abvos
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
-  # --- Mailpit (e-mail em DEV) -----------------------------------------------
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: abvos-mailpit
-    ports:
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
-    networks:
-      - abvos
-    restart: unless-stopped
-
-networks:
-  abvos:
-    driver: bridge
+      - empire_net
 
 volumes:
-  db_data:
+  postgres_data:
   redis_data:
-  node_modules:
+
+networks:
+  empire_net:
+    driver: bridge

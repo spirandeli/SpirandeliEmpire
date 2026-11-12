@@ -1,0 +1,30 @@
+[
+  {
+    "workflow_id": "8595e86c-721b-40b0-a9f3-56b30ea698a0",
+    "node_name": "requirements",
+    "step_number": 1,
+    "timestamp": "2026-11-12T13:49:37.789058+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "8595e86c-721b-40b0-a9f3-56b30ea698a0",
+    "node_name": "architecture",
+    "step_number": 2,
+    "timestamp": "2026-11-12T13:49:37.798647+00:00",
+    "state_snapshot": {
+      "current_node": "requirements",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  }
+]

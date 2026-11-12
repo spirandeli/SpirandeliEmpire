@@ -1,0 +1,58 @@
+[
+  {
+    "workflow_id": "edee5b06-b54c-4a64-b659-cd87b46112fe",
+    "node_name": "requirements",
+    "step_number": 1,
+    "timestamp": "2026-11-12T13:58:14.911996+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "edee5b06-b54c-4a64-b659-cd87b46112fe",
+    "node_name": "architecture",
+    "step_number": 2,
+    "timestamp": "2026-11-12T13:58:14.961021+00:00",
+    "state_snapshot": {
+      "current_node": "requirements",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "edee5b06-b54c-4a64-b659-cd87b46112fe",
+    "node_name": "deployment_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T13:58:15.102473+00:00",
+    "state_snapshot": {
+      "current_node": "review",
+      "tasks_count": 3,
+      "completed_tasks": 0,
+      "artifacts_count": 4,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "edee5b06-b54c-4a64-b659-cd87b46112fe",
+    "node_name": "deployment_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T13:58:15.166712+00:00",
+    "state_snapshot": {
+      "current_node": "review",
+      "tasks_count": 3,
+      "completed_tasks": 0,
+      "artifacts_count": 4,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  }
+]

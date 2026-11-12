@@ -1,0 +1,153 @@
+[
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "interpret_request",
+    "step_number": 1,
+    "timestamp": "2026-11-12T14:34:45.692025+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "plan_execution",
+    "step_number": 2,
+    "timestamp": "2026-11-12T14:34:45.705360+00:00",
+    "state_snapshot": {
+      "current_node": "classify_objective",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "request_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T14:34:45.711947+00:00",
+    "state_snapshot": {
+      "current_node": "validate_plan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": true,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "request_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T14:36:18.840855+00:00",
+    "state_snapshot": {
+      "current_node": "validate_plan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": true,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T14:36:18.971263+00:00",
+    "state_snapshot": {
+      "current_node": "request_approval",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T14:36:19.090309+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T14:36:19.210003+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  },
+  {
+    "workflow_id": "03b81570-94d6-41c6-aadd-d12e182fe279",
+    "node_name": "consolidate_result",
+    "step_number": 5,
+    "timestamp": "2026-11-12T14:36:19.230909+00:00",
+    "state_snapshot": {
+      "current_node": "evaluate_results",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente noe falhou em 'Definir Arquitetura e Contratos': Configuration Required: Nenhum modelo padrão ou por agente configurado para este usuário.",
+        "Dependência não satisfeita para tarefa 'Modelagem de Dados e Migrations'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Backend FastAPI'.",
+        "Dependência não satisfeita para tarefa 'Desenvolver Frontend React'.",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  }
+]

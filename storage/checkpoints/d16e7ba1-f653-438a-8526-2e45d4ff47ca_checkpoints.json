@@ -1,0 +1,58 @@
+[
+  {
+    "workflow_id": "d16e7ba1-f653-438a-8526-2e45d4ff47ca",
+    "node_name": "interpret_request",
+    "step_number": 1,
+    "timestamp": "2026-11-12T15:07:38.838834+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "d16e7ba1-f653-438a-8526-2e45d4ff47ca",
+    "node_name": "plan_execution",
+    "step_number": 2,
+    "timestamp": "2026-11-12T15:07:38.852575+00:00",
+    "state_snapshot": {
+      "current_node": "classify_objective",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "d16e7ba1-f653-438a-8526-2e45d4ff47ca",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T15:07:39.030943+00:00",
+    "state_snapshot": {
+      "current_node": "validate_plan",
+      "tasks_count": 3,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "d16e7ba1-f653-438a-8526-2e45d4ff47ca",
+    "node_name": "consolidate_result",
+    "step_number": 5,
+    "timestamp": "2026-11-12T15:07:39.050973+00:00",
+    "state_snapshot": {
+      "current_node": "evaluate_results",
+      "tasks_count": 3,
+      "completed_tasks": 3,
+      "artifacts_count": 2,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  }
+]
