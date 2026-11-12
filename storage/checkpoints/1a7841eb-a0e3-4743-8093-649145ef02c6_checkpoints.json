@@ -1,0 +1,30 @@
+[
+  {
+    "workflow_id": "1a7841eb-a0e3-4743-8093-649145ef02c6",
+    "node_name": "research",
+    "step_number": 1,
+    "timestamp": "2026-11-12T17:58:22.016324+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "1a7841eb-a0e3-4743-8093-649145ef02c6",
+    "node_name": "script",
+    "step_number": 2,
+    "timestamp": "2026-11-12T17:58:22.780061+00:00",
+    "state_snapshot": {
+      "current_node": "content_strategy",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  }
+]

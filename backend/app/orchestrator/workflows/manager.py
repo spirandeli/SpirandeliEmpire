@@ -2,6 +2,7 @@
 
 import json
 import uuid
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List
 import redis
@@ -345,11 +346,35 @@ class WorkflowManager:
         workflow_id: str,
         approved: bool,
         feedback: Optional[str] = None,
+        async_dispatch: bool = True,
     ) -> Dict[str, Any]:
         async with AsyncSessionLocal() as session:
             wf_record = await session.get(WorkflowModel, workflow_id)
             if not wf_record:
                 raise ValueError("Workflow not found")
+            wf_record.status = "running"
+            await session.commit()
+
+        if async_dispatch and self._is_redis_broker_available():
+            from app.workers.celery_app import resume_workflow_task
+            task = resume_workflow_task.delay(
+                workflow_id=workflow_id,
+                approved=approved,
+                feedback=feedback,
+            )
+            return {
+                "workflow_id": workflow_id,
+                "celery_task_id": task.id,
+                "status": "resumed",
+            }
+        elif async_dispatch:
+            asyncio.create_task(
+                self.run_resume_execution(workflow_id, approved, feedback)
+            )
+            return {
+                "workflow_id": workflow_id,
+                "status": "resumed",
+            }
 
         return await self.run_resume_execution(workflow_id, approved, feedback)
 

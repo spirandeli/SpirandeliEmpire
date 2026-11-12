@@ -28,6 +28,7 @@ class TaskStatusUpdate(BaseModel):
 async def list_tasks(
     project_id: Optional[str] = None,
     agent_id: Optional[str] = None,
+    workflow_id: Optional[str] = None,
     status_filter: Optional[str] = Query(default=None, alias="status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -36,6 +37,7 @@ async def list_tasks(
     return await task_service.list_tasks(
         project_id=project_id,
         agent_id=agent_id,
+        workflow_id=workflow_id,
         status=status_filter,
         user_id=current_user.id,
         limit=limit,

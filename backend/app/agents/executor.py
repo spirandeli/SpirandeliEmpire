@@ -191,7 +191,7 @@ class AgentExecutor:
             )
 
         except Exception as exc:
-            err_msg = str(exc)
+            err_msg = str(exc).strip() or exc.__class__.__name__
             async with AsyncSessionLocal() as session:
                 t_db = await session.get(TaskModel, db_task_id)
                 if t_db:

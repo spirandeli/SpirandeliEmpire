@@ -57,6 +57,7 @@ class TaskService:
         self,
         project_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
         status: Optional[str] = None,
         user_id: Optional[str] = None,
         limit: int = 50,
@@ -70,6 +71,8 @@ class TaskService:
                 query = query.where(TaskModel.project_id == project_id)
             if agent_id:
                 query = query.where(TaskModel.assigned_agent_id == agent_id)
+            if workflow_id:
+                query = query.where(TaskModel.workflow_id == workflow_id)
             if status:
                 query = query.where(TaskModel.status == status)
 
@@ -89,7 +92,12 @@ class TaskService:
                     "priority": t.priority,
                     "quality_score": t.quality_score,
                     "result_summary": t.result_summary,
+                    "artifacts": t.artifacts or [],
+                    "dependencies": t.dependencies or [],
+                    "attempts": t.attempts or 0,
+                    "approvals_required": t.approvals_required or False,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "updated_at": t.updated_at.isoformat() if t.updated_at else None,
                 }
                 for t in tasks
             ]
@@ -110,7 +118,12 @@ class TaskService:
                 "priority": t.priority,
                 "quality_score": t.quality_score,
                 "result_summary": t.result_summary,
+                "artifacts": t.artifacts or [],
+                "dependencies": t.dependencies or [],
+                "attempts": t.attempts or 0,
+                "approvals_required": t.approvals_required or False,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
             }
 
     async def update_task_status(

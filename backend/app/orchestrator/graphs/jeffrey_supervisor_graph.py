@@ -36,6 +36,7 @@ BACKUP_AGENT_MAP: Dict[str, str] = {
 async def interpret_request_node(state: EmpireState) -> Dict[str, Any]:
     workflow_id = state["workflow_id"]
     req = state["user_request"]
+    user_id = (state.get("execution_context") or {}).get("user_id")
 
     await event_system.publish(
         event_type="AgentStarted",
@@ -47,15 +48,32 @@ async def interpret_request_node(state: EmpireState) -> Dict[str, Any]:
 
     prompt = (
         f"Como CEO do SpirandeliEmpire, interprete esta solicitação do proprietário "
-        f"e defina o objetivo estratégico:\n{req}"
-    )
-    response = await gemini_provider.generate(
-        prompt=prompt,
-        system_instruction="Você é Jeffrey, CEO. Resuma o objetivo em uma frase clara e de alto impacto.",
-        temperature=0.3,
+        f"e defina o objetivo estratégico em uma frase objetiva:\n{req}"
     )
 
-    objective = response.content.strip()
+    objective = ""
+    if user_id:
+        try:
+            from app.providers.model_resolver import model_router
+            routed = await model_router.generate(
+                user_id=user_id,
+                prompt=prompt,
+                system_instruction="Você é Jeffrey, CEO. Resuma o objetivo em uma frase clara e de alto impacto.",
+                agent_id="jeffrey",
+                temperature=0.3,
+            )
+            objective = routed.get("content", "").strip()
+        except Exception:
+            objective = ""
+
+    if not objective:
+        response = await gemini_provider.generate(
+            prompt=prompt,
+            system_instruction="Você é Jeffrey, CEO. Resuma o objetivo em uma frase clara e de alto impacto.",
+            temperature=0.3,
+        )
+        objective = response.content.strip()
+
     checkpoint_manager.save_checkpoint(workflow_id, "interpret_request", state, 1)
 
     return {
@@ -66,16 +84,26 @@ async def interpret_request_node(state: EmpireState) -> Dict[str, Any]:
 
 
 async def classify_objective_node(state: EmpireState) -> Dict[str, Any]:
-    obj = state["objective"].lower()
+    obj = (state.get("objective") or "").lower()
     req = state["user_request"].lower()
 
-    if any(k in req or k in obj for k in ["desenvolv", "código", "software", "api", "sistema", "app", "site"]):
-        domain = "development"
-    elif any(k in req or k in obj for k in ["roteiro", "shorts", "vídeo", "video", "tiktok", "conteúdo", "história"]):
-        domain = "content"
-    elif any(k in req or k in obj for k in ["corte", "clip", "clipe", "clipagem"]):
+    # Prioritize actual user request first
+    if any(k in req for k in ["corte", "clip", "clipe", "clipagem"]):
         domain = "clip"
-    elif any(k in req or k in obj for k in ["negócio", "startup", "monetiz", "business", "empresa"]):
+    elif any(k in req for k in ["roteiro", "shorts", "vídeo", "video", "tiktok", "conteúdo", "história", "youtube"]):
+        domain = "content"
+    elif any(k in req for k in ["desenvolv", "código", "software", "api", "sistema", "app", "site", "migration", "docker"]):
+        domain = "development"
+    elif any(k in req for k in ["negócio", "startup", "monetiz", "business", "empresa"]):
+        domain = "business"
+    # Fallback to objective string
+    elif any(k in obj for k in ["corte", "clip", "clipe"]):
+        domain = "clip"
+    elif any(k in obj for k in ["roteiro", "shorts", "vídeo", "video", "conteúdo"]):
+        domain = "content"
+    elif any(k in obj for k in ["desenvolv", "código", "software", "api"]):
+        domain = "development"
+    elif any(k in obj for k in ["negócio", "startup", "monetiz"]):
         domain = "business"
     else:
         domain = "supervisor"
@@ -118,12 +146,21 @@ async def plan_execution_node(state: EmpireState) -> Dict[str, Any]:
             {"id": "t7", "title": "Quality Gate de Mídia Murphy", "assigned_agent": "murphy", "dependencies": ["t6"], "status": "pending"},
         ]
     elif domain == "clip":
-        tasks = [
-            {"id": "t1", "title": "Análise de Retenção de Vídeo", "assigned_agent": "clipador_agent", "dependencies": [], "status": "pending"},
-            {"id": "t2", "title": "Extração de Cortes Candidatos", "assigned_agent": "clipador_agent", "dependencies": ["t1"], "status": "pending"},
-            {"id": "t3", "title": "Legendas Dinâmicas Verticais", "assigned_agent": "subtitle_agent", "dependencies": ["t2"], "status": "pending"},
-            {"id": "t4", "title": "Validação de Qualidade", "assigned_agent": "murphy", "dependencies": ["t3"], "status": "pending"},
-        ]
+        req = state["user_request"].lower()
+        if any(k in req for k in ["encontr", "pesquis", "busqu", "procur", "selecion"]):
+            tasks = [
+                {"id": "t1", "title": "Pesquisa e Triagem de Vídeos e Lives em Alta", "assigned_agent": "clipador_agent", "dependencies": [], "status": "pending"},
+                {"id": "t2", "title": "Mapeamento de Melhores Momentos e Minutagem", "assigned_agent": "clipador_agent", "dependencies": ["t1"], "status": "pending"},
+                {"id": "t3", "title": "Estruturação de Ganchos e Propostas de Cortes", "assigned_agent": "script_agent", "dependencies": ["t2"], "status": "pending"},
+                {"id": "t4", "title": "Validação de Qualidade e Potencial Viral", "assigned_agent": "murphy", "dependencies": ["t3"], "status": "pending"},
+            ]
+        else:
+            tasks = [
+                {"id": "t1", "title": "Análise de Retenção de Vídeo", "assigned_agent": "clipador_agent", "dependencies": [], "status": "pending"},
+                {"id": "t2", "title": "Extração de Cortes Candidatos", "assigned_agent": "clipador_agent", "dependencies": ["t1"], "status": "pending"},
+                {"id": "t3", "title": "Legendas Dinâmicas Verticais", "assigned_agent": "subtitle_agent", "dependencies": ["t2"], "status": "pending"},
+                {"id": "t4", "title": "Validação de Qualidade", "assigned_agent": "murphy", "dependencies": ["t3"], "status": "pending"},
+            ]
     elif domain == "business":
         tasks = [
             {"id": "t1", "title": "Análise de Mercado e Nicho", "assigned_agent": "news_agent", "dependencies": [], "status": "pending"},

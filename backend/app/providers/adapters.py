@@ -1,5 +1,7 @@
 """SpirandeliEmpire OS 3.2 — Provider Adapters (Google Gemini, OpenAI, Anthropic Claude)"""
 
+import asyncio
+import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
@@ -47,15 +49,29 @@ class AdapterGenerationResult(BaseModel):
 
 
 def _classify_http_error(status_code: int, body_text: str) -> Tuple[str, str]:
+    detail = ""
+    try:
+        data = json.loads(body_text)
+        if isinstance(data, dict) and "error" in data:
+            err = data["error"]
+            detail = err.get("message") if isinstance(err, dict) else str(err)
+    except Exception:
+        pass
+
+    if not detail:
+        detail = body_text[:200] if body_text else f"Status HTTP {status_code}"
+
     if status_code in (400, 401):
-        return "Invalid Credential", f"Credencial inválida ou rejeitada ({status_code})."
+        return "Invalid Credential", f"Credencial inválida ou rejeitada ({status_code}): {detail}"
     if status_code == 403:
-        return "Permission Denied", f"Permissão negada pelo provedor ({status_code})."
+        return "Permission Denied", f"Permissão negada pelo provedor ({status_code}): {detail}"
+    if status_code == 404:
+        return "Model Not Found", f"Modelo não encontrado no provedor ({status_code}): {detail}"
     if status_code == 429:
-        return "Rate Limited", "Limite de requisições atingido (429)."
+        return "Rate Limited", f"Limite de requisições atingido (429): {detail}"
     if status_code >= 500:
-        return "Provider Unavailable", f"Provedor temporariamente indisponível ({status_code})."
-    return "Connection Error", f"Erro HTTP {status_code}: {body_text[:200]}"
+        return "Provider Unavailable", f"Provedor temporariamente indisponível ({status_code}): {detail}"
+    return "Connection Error", f"Erro HTTP {status_code}: {detail}"
 
 
 class GeminiAdapter:
@@ -165,15 +181,33 @@ class GeminiAdapter:
         if system_instruction:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{self.BASE_URL}/models/{model_id}:generateContent",
-                params={"key": api_key},
-                json=payload,
-            )
+        resp = None
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async with httpx.AsyncClient(timeout=45.0) as client:
+                    resp = await client.post(
+                        f"{self.BASE_URL}/models/{model_id}:generateContent",
+                        params={"key": api_key},
+                        json=payload,
+                    )
+                if resp.status_code == 200:
+                    break
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts:
+                    await asyncio.sleep(attempt * 1.5)
+                    continue
+                st, msg = _classify_http_error(resp.status_code, resp.text)
+                raise RuntimeError(f"Gemini {st}: {msg}")
+            except (httpx.TimeoutException, httpx.RequestError) as net_err:
+                if attempt < max_attempts:
+                    await asyncio.sleep(attempt * 1.5)
+                    continue
+                err_detail = str(net_err).strip() or net_err.__class__.__name__
+                raise RuntimeError(f"Gemini Connection Error: Falha de rede ou tempo esgotado ({err_detail}).") from net_err
+
         latency = int((time.monotonic() - t0) * 1000)
-        if resp.status_code != 200:
-            st, msg = _classify_http_error(resp.status_code, resp.text)
+        if resp is None or resp.status_code != 200:
+            st, msg = _classify_http_error(resp.status_code if resp else 500, resp.text if resp else "")
             raise RuntimeError(f"Gemini {st}: {msg}")
 
         data = resp.json()

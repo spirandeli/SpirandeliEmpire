@@ -1,0 +1,16 @@
+[
+  {
+    "workflow_id": "test-123",
+    "node_name": "plan_execution",
+    "step_number": 2,
+    "timestamp": "2026-11-12T18:01:32.135561+00:00",
+    "state_snapshot": {
+      "current_node": null,
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  }
+]

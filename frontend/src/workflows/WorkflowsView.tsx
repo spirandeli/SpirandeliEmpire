@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api, liveEvents } from '../services/api';
-import { GitFork, CheckCircle2, AlertTriangle, Clock, XCircle, Play } from 'lucide-react';
+import { GitFork, CheckCircle2, AlertTriangle, Clock, XCircle, Play, Eye, Sparkles, CheckSquare } from 'lucide-react';
+import { TaskDetailsModal, TaskData } from '../tasks/TaskDetailsModal';
 
 export const WorkflowsView: React.FC = () => {
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [selectedWf, setSelectedWf] = useState<any | null>(null);
+  const [wfTasks, setWfTasks] = useState<any[]>([]);
+  const [selectedTask, setSelectedTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadWorkflows = async () => {
@@ -14,6 +17,7 @@ export const WorkflowsView: React.FC = () => {
       if (data.length > 0 && !selectedWf) {
         const details = await api.getWorkflow(data[0].id);
         setSelectedWf(details);
+        loadWorkflowTasks(data[0].id);
       }
     } catch (e) {
       console.error(e);
@@ -22,16 +26,31 @@ export const WorkflowsView: React.FC = () => {
     }
   };
 
+  const loadWorkflowTasks = async (workflowId: string) => {
+    try {
+      const tasks = await api.getTasks({ workflow_id: workflowId });
+      setWfTasks(tasks);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     loadWorkflows();
-    const unsub = liveEvents.subscribe(() => loadWorkflows());
+    const unsub = liveEvents.subscribe(() => {
+      loadWorkflows();
+      if (selectedWf) {
+        loadWorkflowTasks(selectedWf.id);
+      }
+    });
     return () => unsub();
-  }, []);
+  }, [selectedWf?.id]);
 
   const handleSelectWorkflow = async (id: string) => {
     try {
       const details = await api.getWorkflow(id);
       setSelectedWf(details);
+      await loadWorkflowTasks(id);
     } catch (e) {
       console.error(e);
     }
@@ -185,12 +204,83 @@ export const WorkflowsView: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Tasks Executed in Workflow */}
+              <div>
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                    Tarefas Executadas no Workflow ({wfTasks.length})
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-normal">Clique para ver o que foi feito</span>
+                </h4>
+                <div className="mt-3 space-y-2">
+                  {wfTasks.length === 0 ? (
+                    <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800 text-xs text-slate-500 text-center">
+                      Nenhuma tarefa registrada para este workflow ainda.
+                    </div>
+                  ) : (
+                    wfTasks.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => setSelectedTask(t)}
+                        className="p-3 bg-slate-950/60 hover:bg-slate-950 border border-slate-800/80 hover:border-slate-700 rounded-xl flex items-center justify-between gap-3 text-xs cursor-pointer transition shadow-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-white truncate hover:text-indigo-300">{t.title}</span>
+                            {t.result_summary && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                                Relatório pronto
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            Agente: <b className="capitalize text-indigo-300">{t.assigned_agent}</b>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            t.status === 'completed'
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                              : t.status === 'failed'
+                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              : 'bg-indigo-500/20 text-indigo-300'
+                          }`}>
+                            {t.status}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }}
+                            className="p-1.5 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg transition"
+                            title="Ver O que foi feito"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="text-center py-16 text-slate-500 text-sm">Selecione um workflow para inspecionar.</div>
           )}
         </div>
       </div>
+
+      {selectedTask && (
+        <TaskDetailsModal
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onStatusChange={async (id, status) => {
+            await api.updateTaskStatus(id, status);
+            if (selectedWf) await loadWorkflowTasks(selectedWf.id);
+          }}
+        />
+      )}
     </div>
   );
 };

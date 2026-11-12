@@ -1,0 +1,202 @@
+[
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "interpret_request",
+    "step_number": 1,
+    "timestamp": "2026-11-12T15:59:18.285712+00:00",
+    "state_snapshot": {
+      "current_node": "start",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "plan_execution",
+    "step_number": 2,
+    "timestamp": "2026-11-12T15:59:18.296137+00:00",
+    "state_snapshot": {
+      "current_node": "classify_objective",
+      "tasks_count": 0,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "request_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T15:59:18.302504+00:00",
+    "state_snapshot": {
+      "current_node": "validate_plan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": true,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "request_approval",
+    "step_number": 3,
+    "timestamp": "2026-11-12T15:59:42.972248+00:00",
+    "state_snapshot": {
+      "current_node": "validate_plan",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": true,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:03:22.821931+00:00",
+    "state_snapshot": {
+      "current_node": "request_approval",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:03:45.637882+00:00",
+    "state_snapshot": {
+      "current_node": "request_approval",
+      "tasks_count": 6,
+      "completed_tasks": 0,
+      "artifacts_count": 0,
+      "waiting_for_approval": false,
+      "errors": []
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:04:02.669422+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 4,
+      "artifacts_count": 4,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente murphy falhou em 'Quality Gate e Testes Automatizados': ",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:04:19.555236+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 5,
+      "artifacts_count": 4,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente murphy falhou em 'Quality Gate e Testes Automatizados': ",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente jarvis falhou em 'Configuração de Deploy e Docker': Gemini Rate Limited: Limite de requisições atingido (429)."
+      ]
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "consolidate_result",
+    "step_number": 5,
+    "timestamp": "2026-11-12T16:04:19.585136+00:00",
+    "state_snapshot": {
+      "current_node": "evaluate_results",
+      "tasks_count": 6,
+      "completed_tasks": 6,
+      "artifacts_count": 5,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente murphy falhou em 'Quality Gate e Testes Automatizados': ",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente jarvis falhou em 'Configuração de Deploy e Docker': Gemini Rate Limited: Limite de requisições atingido (429)."
+      ]
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:04:23.520623+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 3,
+      "artifacts_count": 3,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': ",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "execute_plan",
+    "step_number": 4,
+    "timestamp": "2026-11-12T16:04:24.629750+00:00",
+    "state_snapshot": {
+      "current_node": "replan",
+      "tasks_count": 6,
+      "completed_tasks": 3,
+      "artifacts_count": 3,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': ",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': ",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  },
+  {
+    "workflow_id": "b01da5ac-ff30-4783-abe9-446bb9c4d700",
+    "node_name": "consolidate_result",
+    "step_number": 5,
+    "timestamp": "2026-11-12T16:04:24.656912+00:00",
+    "state_snapshot": {
+      "current_node": "evaluate_results",
+      "tasks_count": 6,
+      "completed_tasks": 3,
+      "artifacts_count": 3,
+      "waiting_for_approval": false,
+      "errors": [
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': ",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': ",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'.",
+        "Agente ford falhou em 'Modelagem de Dados e Migrations': Gemini Rate Limited: Limite de requisições atingido (429).",
+        "Dependência não satisfeita para tarefa 'Quality Gate e Testes Automatizados'.",
+        "Dependência não satisfeita para tarefa 'Configuração de Deploy e Docker'."
+      ]
+    }
+  }
+]

@@ -109,14 +109,22 @@ async def send_message(
         )
         reply_text = routed["content"]
         total_tokens = routed["total_tokens"]
-    except ModelResolutionError:
-        llm_res = await gemini_provider.generate(
-            prompt=jeffrey_prompt,
-            system_instruction=sys_inst,
-            temperature=0.3,
-        )
-        reply_text = llm_res.content
-        total_tokens = llm_res.total_tokens
+    except Exception as llm_err:
+        # Graceful fallback: return clear executive message instead of HTTP 500
+        err_msg = str(llm_err).strip() or llm_err.__class__.__name__
+        try:
+            fallback_msg = gemini_provider._generate_intelligent_fallback(user_msg_text, sys_inst)
+        except Exception:
+            fallback_msg = None
+
+        if fallback_msg:
+            reply_text = f"{fallback_msg}\n\n*(Nota do Sistema: Operando em modo de contingência devido à oscilação da IA: {err_msg})*"
+        else:
+            reply_text = (
+                f"Olá! Recebi sua solicitação, mas o provedor de IA retornou uma limitação temporária: {err_msg}. "
+                "A ação necessária foi registrada no sistema."
+            )
+        total_tokens = 0
 
     async with AsyncSessionLocal() as session:
         jeffrey_msg = ChatMessageModel(

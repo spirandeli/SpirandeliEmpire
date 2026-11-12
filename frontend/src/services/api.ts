@@ -39,10 +39,21 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
     try {
-      const data = await res.json();
-      msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+      const rawText = await res.text();
+      try {
+        const data = JSON.parse(rawText);
+        msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+      } catch {
+        if (res.status === 504) {
+          msg = 'O servidor demorou para responder (Gateway Timeout). A operação continua em segundo plano.';
+        } else if (rawText && rawText.length < 500 && !rawText.trim().startsWith('<')) {
+          msg = rawText;
+        } else {
+          msg = `Erro HTTP ${res.status}`;
+        }
+      }
     } catch {
-      msg = await res.text();
+      msg = `Falha na comunicação com o servidor (${res.status})`;
     }
     throw new Error(msg);
   }
@@ -154,12 +165,15 @@ export const api = {
     fetchJson<any>('/projects/digital-business', { method: 'POST', body: JSON.stringify(data) }),
 
   // Tasks
-  getTasks: (params?: { project_id?: string; agent_id?: string }) => {
+  getTasks: (params?: { project_id?: string; agent_id?: string; workflow_id?: string; status?: string }) => {
     const q = new URLSearchParams();
     if (params?.project_id) q.set('project_id', params.project_id);
     if (params?.agent_id) q.set('agent_id', params.agent_id);
+    if (params?.workflow_id) q.set('workflow_id', params.workflow_id);
+    if (params?.status) q.set('status', params.status);
     return fetchJson<any[]>(`/tasks/?${q.toString()}`);
   },
+  getTask: (id: string) => fetchJson<any>(`/tasks/${id}`),
   createTask: (data: { title: string; description?: string; assigned_agent_id?: string; project_id?: string; priority?: string }) =>
     fetchJson<any>('/tasks/', { method: 'POST', body: JSON.stringify(data) }),
   updateTaskStatus: (id: string, status: string, result_summary?: string) =>

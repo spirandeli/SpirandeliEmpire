@@ -142,29 +142,27 @@ class GeminiProvider(BaseLLMProvider):
 
     def _generate_intelligent_fallback(self, prompt: str, system_instruction: Optional[str]) -> str:
         p_lower = prompt.lower()
-        if "planeje" in p_lower or "plano" in p_lower or "objetivo" in p_lower:
+        if any(k in p_lower for k in ["corte", "clip", "clipe", "vídeo", "video", "shorts", "tiktok", "paulinho", "youtube", "canal"]):
             return (
-                "Com base na análise estratégica do objetivo, estruturei o plano de ação:\n"
-                "1. [Arquitetura & Especificação] Decomposição de requisitos e modelagem dos contratos por Noé.\n"
-                "2. [Desenvolvimento do Core] Implementação da API FastAPI por Balsini e interface por Fonseca.\n"
-                "3. [Persistência & Dados] Criação das migrações e schemas por Ford.\n"
-                "4. [Quality Gate Murphy] Execução de suíte de testes automatizados e validação de cobertura.\n"
-                "5. [Deploy Jarvis] Verificação de recursos da VPS e containerização Docker."
+                "Objetivo Estratégico: Localizar, triar e mapear vídeos de alto potencial de retenção para extração de cortes virais e publicação multicanal."
             )
-        elif "roteiro" in p_lower or "script" in p_lower or "história" in p_lower:
+        elif any(k in p_lower for k in ["roteiro", "script", "história", "narrativa"]):
             return (
-                "### ROTEIRO DE ALTA RETENÇÃO — SPIRANDELIEMPIRE\n"
-                "**Hook (00:00 - 00:03):** O segredo que nenhuma empresa quer que você descubra...\n"
-                "**Desenvolvimento:** A revolução dos sistemas autônomos operando em perfeita sincronia.\n"
-                "**Clímax:** A autonomia completa com orquestração LangGraph.\n"
-                "**CTA:** Inscreva-se e ative as notificações para mais conteúdos como esse!"
+                "Objetivo Estratégico: Elaborar roteiro estruturado com gancho de alta retenção, desenvolvimento dinâmico e CTA estratégico."
+            )
+        elif any(k in p_lower for k in ["código", "software", "api", "sistema", "app", "site", "backend", "frontend", "desenvolv"]):
+            return (
+                "Objetivo Estratégico: Arquitetar, desenvolver e validar a entrega técnica do software com testes automatizados e deploy seguro."
+            )
+        elif any(k in p_lower for k in ["negócio", "startup", "monetiz", "business", "empresa"]):
+            return (
+                "Objetivo Estratégico: Desenhar o modelo de negócios, estratégia de monetização e plano de validação comercial."
             )
         elif "teste" in p_lower or "qa" in p_lower:
             return "Quality Gate Murphy: Validação técnica concluída com verificação de artefatos."
         else:
             return (
-                "Entendido. Como especialista do SpirandeliEmpire, analisei a solicitação e "
-                "executei as ações necessárias dentro das permissões atribuídas."
+                f"Objetivo Estratégico: Analisar e orquestrar a execução da solicitação com foco em excelência e entregas verificáveis."
             )
 
 
