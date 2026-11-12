@@ -284,7 +284,15 @@ export const AIModelManagerView: React.FC = () => {
                     <td className="p-3.5">
                       <select
                         value={ag.model_id || ''}
-                        onChange={(e) => handleUpdateAgent(ag.agent_id, { model_id: e.target.value })}
+                        onChange={(e) => {
+                          const mId = e.target.value;
+                          const found = availModels.find((m) => m.model_id === mId);
+                          handleUpdateAgent(ag.agent_id, {
+                            model_id: mId,
+                            provider: found?.provider || ag.provider || undefined,
+                            credential_id: found?.credential_id || ag.credential_id || undefined,
+                          });
+                        }}
                         className="px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono max-w-xs"
                       >
                         <option value="">Herdar padrão</option>

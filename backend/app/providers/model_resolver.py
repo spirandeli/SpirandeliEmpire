@@ -142,13 +142,32 @@ class ModelResolver:
             credential_id = chosen.get("credential_id") or ""
             model_id = chosen["model_id"]
 
+            # Automatically upgrade deprecated Gemini models
+            if model_id in ("gemini-2.5-flash", "models/gemini-2.5-flash"):
+                model_id = "gemini-3.5-flash"
+            elif model_id in ("gemini-2.5-flash-lite", "models/gemini-2.5-flash-lite"):
+                model_id = "gemini-3.5-flash-lite"
+
+            # Auto-infer provider if missing from candidate
+            if not provider:
+                m_lower = model_id.lower()
+                if "gemini" in m_lower:
+                    provider = "gemini"
+                elif any(p in m_lower for p in ["gpt", "o1", "o3", "text-embedding"]):
+                    provider = "openai"
+                elif "claude" in m_lower:
+                    provider = "anthropic"
+                elif pref and pref.default_provider:
+                    provider = pref.default_provider
+
             # Verify credential belongs to user & is active
             cred: Optional[AIProviderCredentialModel] = None
             if credential_id:
                 cred = await session.get(AIProviderCredentialModel, credential_id)
                 if not cred or cred.user_id != user_id or not cred.is_active:
-                    raise ModelResolutionError("Credencial configurada inválida, inativa ou pertence a outro usuário.")
-            elif provider:
+                    cred = None  # fallback to search active credentials
+
+            if not cred and provider:
                 res_c = await session.execute(
                     select(AIProviderCredentialModel).where(
                         AIProviderCredentialModel.user_id == user_id,
@@ -157,11 +176,19 @@ class ModelResolver:
                     ).order_by(AIProviderCredentialModel.is_default.desc())
                 )
                 cred = res_c.scalar_one_or_none()
-                if not cred:
-                    raise ModelResolutionError(f"Nenhuma credencial ativa encontrada para o provedor '{provider}'.")
-                credential_id = cred.id
-            else:
-                raise ModelResolutionError("Provider ou credential_id ausente na configuração de modelo.")
+                if cred:
+                    credential_id = cred.id
+
+            if not cred and pref and pref.default_credential_id:
+                cred = await session.get(AIProviderCredentialModel, pref.default_credential_id)
+                if cred and cred.is_active:
+                    credential_id = cred.id
+                    provider = cred.provider
+
+            if not cred:
+                raise ModelResolutionError(
+                    f"Nenhuma credencial ativa encontrada para o provedor '{provider or 'padrão'}'. Configure em Provedores de IA."
+                )
 
             # Validate catalog availability & capabilities if synced
             cat_res = await session.execute(

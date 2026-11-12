@@ -193,7 +193,26 @@ class GeminiAdapter:
                     )
                 if resp.status_code == 200:
                     break
-                if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts:
+                if resp.status_code == 429:
+                    # If free-tier quota is reached on a full model, gracefully fallback to flash-lite
+                    if "flash-lite" not in model_id:
+                        try:
+                            async with httpx.AsyncClient(timeout=45.0) as client:
+                                lite_resp = await client.post(
+                                    f"{self.BASE_URL}/models/gemini-3.5-flash-lite:generateContent",
+                                    params={"key": api_key},
+                                    json=payload,
+                                )
+                            if lite_resp.status_code == 200:
+                                resp = lite_resp
+                                model_id = "gemini-3.5-flash-lite"
+                                break
+                        except Exception:
+                            pass
+                    if attempt < max_attempts:
+                        await asyncio.sleep(attempt * 1.5)
+                        continue
+                elif resp.status_code in (500, 502, 503, 504) and attempt < max_attempts:
                     await asyncio.sleep(attempt * 1.5)
                     continue
                 st, msg = _classify_http_error(resp.status_code, resp.text)
